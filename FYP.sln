@@ -7,7 +7,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Model", "Model\Model.csproj
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "API", "API\API.csproj", "{478265B7-7A96-445C-9505-EEA7A51CD966}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BlazorApp1", "D:\mano\final_year_project\BlazorApp1\BlazorApp1.csproj", "{DAFE89A9-A676-4634-8987-88FA2B7A8C48}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BlazorApp1", "final_year_project\BlazorApp1\BlazorApp1.csproj", "{DAFE89A9-A676-4634-8987-88FA2B7A8C48}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
