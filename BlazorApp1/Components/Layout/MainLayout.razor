@@ -1,0 +1,92 @@
+﻿@inherits LayoutComponentBase
+@inject NavigationManager Navigation
+
+@{
+    var currentUri = Navigation.ToAbsoluteUri(Navigation.Uri).LocalPath;
+    var hideNavbar = currentUri == "/dashboard" || currentUri == "/patients" || currentUri == "/formdoc" || currentUri == "/formuser";
+}
+
+<div class="page">
+    <!-- Navbar -->
+    @if (!hideNavbar)
+    {
+        <header>
+            <nav class="navbar">
+                <div class="navbar-right">
+                    <button class="nav-btn" @onclick="@(() => Navigation.NavigateTo("/"))">Home</button>
+                    <button class="nav-btn" @onclick="@(() => Navigation.NavigateTo("/login"))">Login</button>
+                    <button class="nav-btn" @onclick="@(() => Navigation.NavigateTo("/signup"))">Sign Up</button>
+                </div>
+            </nav>
+        </header>
+    }
+
+    <!-- Page content -->
+    <main class="content @(hideNavbar ? "no-navbar" : "")">
+        @Body
+    </main>
+</div>
+
+<style>
+    body {
+        margin: 0;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    .page {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .navbar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 60px;
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        padding: 0 2rem;
+        background-color: #3b3bbf;
+        box-sizing: border-box;
+        z-index: 1000;
+    }
+
+
+    .navbar-right {
+        display: flex;
+        gap: 1rem;
+    }
+
+
+    .nav-btn {
+        background: white;
+        color: #3b3bbf;
+        border: none;
+        border-radius: 20px;
+        padding: 0.5rem 1.2rem;
+        cursor: pointer;
+        font-size: 0.95rem;
+        font-weight: 600;
+        transition: background 0.2s, transform 0.1s;
+    }
+
+        .nav-btn:hover {
+            background: #f0f0f0;
+            transform: translateY(-1px);
+        }
+
+
+    .content {
+        flex-grow: 1;
+        padding: 5rem 2rem 2rem;
+        background: #f9f9f9;
+    }
+
+        .content.no-navbar {
+            padding: 0;
+        }
+
+</style>

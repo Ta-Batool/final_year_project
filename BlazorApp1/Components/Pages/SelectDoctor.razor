@@ -1,0 +1,133 @@
+﻿@page "/selectdoctor"
+
+@page "/selectdoctor/{mode}"
+@layout UserDashboardLayout
+@using BlazorApp1.Components.Layout
+@using Model
+@inject IDService DoctorService
+@inject NavigationManager Nav
+@inject IJSRuntime JS 
+<div class="doctor-page">
+    <h2>👨‍⚕️ Select a Doctor</h2>
+
+    @if (isLoading)
+    {
+        <p>Loading doctors...</p>
+    }
+    else if (doctors == null || doctors.Count == 0)
+    {
+        <p>No doctors found.</p>
+    }
+    else
+    {
+        <table class="doctor-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Specialization</th>
+                    <th>Phone</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var doc in doctors)
+                {
+                    <tr>
+                        <td>@doc.Name</td>
+                        <td>@doc.Specialization</td>
+                        <td>@doc.Phone</td>
+                        <td>
+                            <button class="btn btn-select" @onclick="() => ChooseDoctor(doc.ClientId)">Select</button>
+
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    [Parameter] public string? mode { get; set; }   // 👈 new
+
+    private List<Doctor>? doctors;
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            doctors = await DoctorService.GetAllDoctorsAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ Error loading doctors: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task ChooseDoctor(string doctorClientId)
+    {
+        // If called in "chat" mode → go to chat
+        if (string.Equals(mode, "chat", StringComparison.OrdinalIgnoreCase))
+        {
+            // read userId from localStorage
+            var userId = await JS.InvokeAsync<string>("localStorage.getItem", "userId");
+
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                Console.WriteLine("❌ userId not found in localStorage. Make sure the user is logged in and registered.");
+                return;
+            }
+
+            Nav.NavigateTo($"/messages/{doctorClientId}/{userId}");
+        }
+        else
+        {
+            // Default behaviour → used from appointments page
+            Nav.NavigateTo($"/userappointments?doctorId={doctorClientId}");
+        }
+    }
+}
+
+<style>
+    .doctor-page {
+        background: #f5f6fa;
+        padding: 20px;
+        border-radius: 10px;
+    }
+
+    .doctor-table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #fff;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+
+        .doctor-table th, .doctor-table td {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .doctor-table th {
+            background: #3b3bbf;
+            color: white;
+            text-align: left;
+        }
+
+    .btn-select {
+        background: #27ae60;
+        color: white;
+        border: none;
+        padding: 6px 10px;
+        border-radius: 5px;
+        cursor: pointer;
+    }
+
+        .btn-select:hover {
+            background: #219150;
+        }
+</style>

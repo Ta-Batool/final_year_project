@@ -1,0 +1,17 @@
+cd /path/to/final_year_project
+
+
+# If .gitignore doesn't exist, create it; otherwise, open and add lines
+cat >> .gitignore << 'EOF'
+# Build output
+bin/
+obj/
+
+# VS/IDE stuff
+.vs/
+*.user
+*.suo
+
+# Logs
+*.log
+EOF

@@ -1,0 +1,244 @@
+﻿@page "/form/{ClientId}"    
+@using System.ComponentModel.DataAnnotations
+@inject NavigationManager Navigation
+
+@inject IJSRuntime JS
+@inject IDService DoctorService
+@using Model
+
+<div class="auth-container">
+    <div class="auth-left">
+        <h1>Registration Form</h1>
+        <p>Please complete your details below</p>
+    </div>
+
+    <div class="auth-right">
+        <div class="auth-card">
+            @if (step == 1)
+            {
+                <EditForm Model="@doctor" OnValidSubmit="@GoToProfessional">
+                    <DataAnnotationsValidator />
+
+                    <div class="form-group">
+                        <label>Full Name</label>
+                        <InputText class="form-input" @bind-Value="doctor.Name" placeholder="Enter your full name" />
+                        <ValidationMessage For="@(() => doctor.Name)" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Gender</label>
+                        <InputSelect class="form-input" @bind-Value="doctor.Gender">
+                            <option value="">Select Gender</option>
+                            <option>Male</option>
+                            <option>Female</option>
+                            <option>Other</option>
+                        </InputSelect>
+                        <ValidationMessage For="@(() => doctor.Gender)" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Age</label>
+                        <InputNumber class="form-input" @bind-Value="doctor.Age" />
+                        <ValidationMessage For="@(() => doctor.Age)" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Phone Number</label>
+                        <InputText class="form-input" @bind-Value="doctor.Phone" placeholder="Enter phone number" />
+                        <ValidationMessage For="@(() => doctor.Phone)" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Address</label>
+                        <InputText class="form-input" @bind-Value="doctor.Address" placeholder="Enter address" />
+                        <ValidationMessage For="@(() => doctor.Address)" />
+                    </div>
+
+                    <button type="submit" class="btn-next">Next</button>
+                </EditForm>
+            }
+            else if (step == 2)
+            {
+                <EditForm Model="@doctor" OnValidSubmit="@HandleSubmit">
+                    <DataAnnotationsValidator />
+
+                    <div class="form-group">
+                        <label>Specialization</label>
+                        <InputText class="form-input" @bind-Value="doctor.Specialization" placeholder="Enter specialization" />
+                        <ValidationMessage For="@(() => doctor.Specialization)" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Years of Experience</label>
+                        <InputNumber class="form-input" @bind-Value="doctor.ExperienceYears" />
+                        <ValidationMessage For="@(() => doctor.ExperienceYears)" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>PMDC Number</label>
+                        <InputText class="form-input" @bind-Value="doctor.PMDCNumber" placeholder="Enter PMDC number" />
+                        <ValidationMessage For="@(() => doctor.PMDCNumber)" />
+                    </div>
+
+                    <button type="submit" class="btn-submit">Submit</button>
+                </EditForm>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public string? ClientId { get; set; }  // comes from URL
+
+    private int step = 1;
+    private Doctor doctor = new();
+
+    protected override void OnInitialized()
+    {
+        if (!string.IsNullOrEmpty(ClientId))
+        {
+            doctor.ClientId = ClientId;
+            Console.WriteLine($"✅ Client ID set: {doctor.ClientId}");
+        }
+        else
+        {
+            Console.WriteLine("⚠️ ClientId not found in URL!");
+        }
+    }
+
+    private void GoToProfessional() => step = 2;
+
+    private async Task HandleSubmit()
+    {
+        await DoctorService.AddDoctorAsync(doctor);
+
+        // ⭐ store doctorId for chat/messages
+        if (!string.IsNullOrEmpty(doctor.ClientId))
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", "doctorId", doctor.ClientId);
+        }
+
+        Navigation.NavigateTo("/dashboard?submitted=true");
+    }
+}
+
+<style>
+    /* Container */
+    .auth-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        max-width: 1000px;
+        margin: 40px auto;
+        height: 80vh;
+        border-radius: 20px;
+        overflow: hidden;
+        background: #4a47a3;
+        color: white;
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+    }
+
+    .auth-left {
+        flex: 1;
+        color: white;
+        text-align: center;
+        padding: 40px;
+    }
+
+        .auth-left h1 {
+            font-size: 26px;
+            margin-bottom: 12px;
+        }
+
+        .auth-left p {
+            font-size: 16px;
+            color: #ddd;
+        }
+
+    .auth-right {
+        flex: 1;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+
+    /* White form card */
+    .auth-card {
+        background: #fff;
+        color: #333;
+        padding: 40px;
+        border-radius: 15px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        width: 100%;
+        max-width: 420px; /* slightly wider */
+        text-align: left;
+    }
+
+    /* Form groups */
+    .form-group {
+        margin-bottom: 18px;
+    }
+
+        .form-group label {
+            font-weight: bold;
+            display: block;
+            margin-bottom: 6px;
+            font-size: 14px;
+        }
+
+    /* Inputs */
+    .form-input {
+        width: 100%;
+        padding: 12px 14px;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        font-size: 14px;
+        outline: none;
+        box-sizing: border-box;
+    }
+
+        .form-input:focus {
+            border-color: #3f3da6;
+            box-shadow: 0 0 5px rgba(63,61,166,0.4);
+        }
+
+    /* Validation messages */
+    .validation-message {
+        font-size: 13px;
+        color: #e50000;
+        margin-top: 4px;
+        display: block;
+    }
+
+    /* Buttons */
+    .btn-next, .btn-submit {
+        width: 100%;
+        padding: 12px;
+        border: none;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+        margin-top: 10px;
+        transition: 0.2s ease-in-out;
+    }
+
+    .btn-next {
+        background: #3f3da6;
+        color: white;
+    }
+
+        .btn-next:hover {
+            background: #2f2b8f;
+        }
+
+    .btn-submit {
+        background: #28a745;
+        color: white;
+    }
+
+        .btn-submit:hover {
+            background: #218838;
+        }
+</style>

@@ -1,0 +1,28 @@
+﻿@page "/signup"
+@inject NavigationManager Navigation
+
+<div class="auth-container">
+    <div class="auth-left">
+        <h1>Name whatever</h1>
+        <p>Stay healthy</p>
+    </div>
+
+    <div class="auth-right">
+        <div class="auth-card">
+            <h2>Sign Up</h2>
+            <button class="google-btn" @onclick="SignupWithGoogle">
+                <img src="https://developers.google.com/identity/images/g-logo.png" alt="Google" />
+                <span>SignUp with Google</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private void SignupWithGoogle()
+    {
+        // Redirect user to server endpoint for Google login
+        Navigation.NavigateTo("/login-google", true);
+    }
+}
+
