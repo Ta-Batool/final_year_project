@@ -35,7 +35,7 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorization();
 
 
-var apiBaseUrl = "http://localhost:5092/"; // your API base
+var apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? "http://localhost:5092/";
 
 // Register HttpClients per service:
 builder.Services.AddHttpClient<IDService, DService>(client =>
