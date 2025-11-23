@@ -1,0 +1,365 @@
+﻿@page "/profile/{ClientId}"
+@using Model
+@using BlazorApp1.Components.Layout
+@layout DashboardLayout
+@inject NavigationManager Navigation
+@inject IDService DoctorService
+
+<div class="profile-wrapper">
+    <div class="profile-card">
+        <div class="profile-header">
+            <div class="avatar-wrapper">
+                <img src="@(!string.IsNullOrEmpty(doctor.ProfileImageUrl) ? doctor.ProfileImageUrl : "https://via.placeholder.com/120")"
+                     alt="Doctor Profile" class="profile-pic" />
+                <button class="edit-avatar">
+                    <i class="fas fa-camera"></i>
+                </button>
+            </div>
+        </div>
+
+        <EditForm Model="@doctor" OnValidSubmit="SaveProfile" class="profile-form">
+            <DataAnnotationsValidator />
+
+            <div class="form-row">
+                <label>Full Name</label>
+                <InputText class="form-input" @bind-Value="doctor.Name" />
+            </div>
+
+            <div class="form-row">
+                <label>Email</label>
+                <InputText class="form-input" @bind-Value="doctor.Email" />
+            </div>
+
+            <div class="form-row">
+                <label>Phone</label>
+                <InputText class="form-input" @bind-Value="doctor.Phone" />
+            </div>
+
+            <div class="form-row">
+                <label>Address</label>
+                <InputText class="form-input" @bind-Value="doctor.Address" />
+            </div>
+
+            <div class="form-row">
+                <label>Gender</label>
+                <InputSelect class="form-input" @bind-Value="doctor.Gender">
+                    <option value="">Select Gender</option>
+                    <option>Male</option>
+                    <option>Female</option>
+                    <option>Other</option>
+                </InputSelect>
+            </div>
+
+            <div class="form-row">
+                <label>Age</label>
+                <InputNumber class="form-input" @bind-Value="doctor.Age" />
+            </div>
+
+            <div class="form-row">
+                <label>Specialization</label>
+                <InputText class="form-input" @bind-Value="doctor.Specialization" />
+            </div>
+
+            <div class="form-row">
+                <label>Department</label>
+                <InputText class="form-input" @bind-Value="doctor.Department" />
+            </div>
+
+            <div class="form-row">
+                <label>Qualification</label>
+                <InputText class="form-input" @bind-Value="doctor.Qualification" />
+            </div>
+
+            <div class="form-row">
+                <label>Consultation Fee</label>
+                <InputNumber class="form-input" @bind-Value="doctor.ConsultationFee" />
+            </div>
+
+            <div class="form-row">
+                <label>PMDC Number</label>
+                <InputText class="form-input" @bind-Value="doctor.PMDCNumber" />
+            </div>
+
+            <div class="form-row">
+                <label>Joining Date</label>
+                <InputDate class="form-input" @bind-Value="doctor.JoiningDate" />
+            </div>
+
+            <div class="form-row">
+                <label>Workplace Name</label>
+                <InputText class="form-input" @bind-Value="doctor.WorkplaceName" />
+            </div>
+
+            <div class="form-row">
+                <label>Workplace Address</label>
+                <InputText class="form-input" @bind-Value="doctor.WorkplaceAddress" />
+            </div>
+
+            <div class="form-row">
+                <label>Workplace Contact</label>
+                <InputText class="form-input" @bind-Value="doctor.WorkplaceContact" />
+            </div>
+
+            <div class="form-row">
+                <label>Languages (comma separated)</label>
+                <InputText class="form-input"
+                           @bind-Value="languagesInput"
+                           @onchange="UpdateLanguages" />
+            </div>
+
+            @* <div class="form-row">
+                <label>Slot Modes (comma separated)</label>
+                <InputText class="form-input"
+                           @bind-Value="slotModesInput"
+                           @onchange="UpdateSlotModes" />
+            </div> *@
+
+            <!-- Day, Start Time, End Time Fields -->
+
+            @if (doctor.Slots != null && doctor.Slots.Count > 0)
+            {
+                <div class="form-row">
+                    <label>Available Day</label>
+                    <InputSelect class="form-input" @bind-Value = "doctor.Slots[0].Day">
+                        <option value="">Select Day</option>
+                        <option>Monday</option>
+                        <option>Tuesday</option>
+                        <option>Wednesday</option>
+                        <option>Thursday</option>
+                        <option>Friday</option>
+                        <option>Saturday</option>
+                        <option>Sunday</option>
+                    </InputSelect>
+                </div>
+
+                @* <div class="form-row">
+                    <label>Start Time</label>
+                    <InputTime class="form-input" @bind-Value="doctor.Slots[0].StartTime" />
+                </div>
+
+                <div class="form-row">
+                    <label>End Time</label>
+                    <InputTime class="form-input" @bind-Value="doctor.Slots[0].EndTime" />
+                </div> *@
+            }@* 
+            else
+            {
+                doctor.Slots = new List<TimeSlots>() 
+                {
+                    new TimeSlots()
+                };
+            } *@
+
+
+
+            <div class="form-row">
+                <label>Profile Image URL</label>
+                <InputText class="form-input" @bind-Value="doctor.ProfileImageUrl" />
+            </div>
+
+            <div class="button-row">
+                <button type="button" class="back-btn" @onclick='() => Navigation.NavigateTo("/dashboard")'>Back To Home</button>
+                <button type="submit" class="save-btn">Save Changes</button>
+            </div>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public string? ClientId { get; set; }   // 👈 Get ClientId from URL
+
+    private Doctor doctor = new();
+    private string languagesInput = string.Empty;
+    private string slotModesInput = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            if (!string.IsNullOrEmpty(ClientId))
+            {
+                if (doctor.Slots == null || doctor.Slots.Count == 0)
+                {
+                    doctor.Slots = new List<TimeSlots>()
+                    {
+                        new TimeSlots()
+                    };
+                }
+                // ✅ Fetch doctor using ClientId from URL
+                var existingDoctor = await DoctorService.GetDoctorByClientIdAsync(ClientId);
+
+                if (existingDoctor != null)
+                {
+                    doctor = existingDoctor;
+                    languagesInput = doctor.Languages != null ? string.Join(", ", doctor.Languages) : "";
+                    slotModesInput = doctor.SlotModes != null ? string.Join(", ", doctor.SlotModes) : "";
+                }
+                else
+                {
+                    Console.WriteLine($"⚠️ No doctor found for ClientId: {ClientId}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ Error fetching doctor: {ex.Message}");
+        }
+    }
+
+    private void UpdateLanguages(ChangeEventArgs e)
+    {
+        languagesInput = e.Value?.ToString() ?? "";
+        doctor.Languages = languagesInput.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                                         .Select(x => x.Trim()).ToList();
+    }
+
+    private void UpdateSlotModes(ChangeEventArgs e)
+    {
+        slotModesInput = e.Value?.ToString() ?? "";
+        doctor.SlotModes = slotModesInput.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                                         .Select(x => x.Trim()).ToList();
+    }
+
+    private async Task SaveProfile()
+    {
+        try
+        {
+            await DoctorService.UpdateDoctorByClientIdAsync(ClientId!, doctor);
+            Console.WriteLine("✅ Doctor profile updated successfully!");
+            Navigation.NavigateTo("/dashboard");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ Failed to update profile: {ex.Message}");
+        }
+    }
+}
+<style>
+    /* Center the card */
+    .profile-wrapper {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100%;
+        background-color: #f6f6f9;
+        padding: 40px;
+    }
+
+    /* Card */
+    .profile-card {
+        background: white;
+        width: 480px;
+        border-radius: 16px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        padding: 40px 30px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    /* Profile Image + Edit Icon */
+    .avatar-wrapper {
+        position: relative;
+        margin-bottom: 20px;
+    }
+
+    .profile-pic {
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 4px solid #fff;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+
+    .edit-avatar {
+        position: absolute;
+        bottom: 8px;
+        right: 10px;
+        background-color: #5b2dfc;
+        border: none;
+        color: white;
+        border-radius: 50%;
+        width: 30px;
+        height: 30px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+        .edit-avatar:hover {
+            background-color: #4720c8;
+        }
+
+    /* Form styling */
+    .profile-form {
+        width: 100%;
+    }
+
+    .form-row {
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 18px;
+    }
+
+    label {
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 5px;
+    }
+
+    .form-input {
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        padding: 10px 14px;
+        font-size: 14px;
+        outline: none;
+        transition: border 0.2s ease;
+    }
+
+        .form-input:focus {
+            border-color: #5b2dfc;
+            box-shadow: 0 0 0 2px rgba(91,45,252,0.1);
+        }
+
+    .bio-textarea {
+        min-height: 80px;
+        resize: none;
+    }
+
+    /* Buttons */
+    .button-row {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 25px;
+    }
+
+    .back-btn, .save-btn {
+        border: none;
+        border-radius: 8px;
+        padding: 10px 22px;
+        font-weight: 600;
+        cursor: pointer;
+        font-size: 14px;
+    }
+
+    .back-btn {
+        background-color: #f3f3f3;
+        color: #333;
+    }
+
+    .save-btn {
+        background-color: #5b2dfc;
+        color: white;
+    }
+
+        .save-btn:hover {
+            background-color: #4720c8;
+        }
+
+    .back-btn:hover {
+        background-color: #e2e2e2;
+    }
+</style>

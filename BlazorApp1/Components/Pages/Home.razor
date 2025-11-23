@@ -1,0 +1,94 @@
+﻿@page "/"
+@inject NavigationManager Navigation
+
+<div class="home-container">
+    <div class="home-left">
+        <h1>Your Personal Nutritionist</h1>
+        <ul class="features">
+            <li><i class="fas fa-check-circle"></i> We track & chart every calorie & micronutrient</li>
+            <li><i class="fas fa-check-circle"></i> Real-time SMS access to a personal nutritionist</li>
+            <li><i class="fas fa-check-circle"></i> Get daily and weekly actionable diet insights</li>
+            <li><i class="fas fa-check-circle"></i> Share data with your trainer, friends and doctor</li>
+        </ul>
+        <button class="btn-get-started" @onclick="registeruser">Get Started</button>
+    </div>
+
+    <div class="home-right">
+        <img src="https://isafyi.com/wp-content/uploads/2017/06/PortionServings_Plate_960x504-scaled.jpg" alt="Healthy Food" />
+    </div>
+</div>
+
+@code {
+    private void registeruser() => Navigation.NavigateTo("/register", true);
+}
+
+<style>
+    .home-container {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 30px 80px 60px 80px;
+        background: #ffffff;
+        min-height: calc(100vh - 70px);
+    }
+
+    .home-left {
+        flex: 1;
+        max-width: 50%;
+    }
+
+        .home-left h1 {
+            font-size: 42px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            color: #222;
+        }
+
+    .features {
+        list-style: none;
+        padding: 0;
+        margin-bottom: 30px;
+    }
+
+        .features li {
+            font-size: 18px;
+            margin-bottom: 12px;
+            color: #444;
+            display: flex;
+            align-items: center;
+        }
+
+            .features li i {
+                color: #28a745;
+                margin-right: 10px;
+                font-size: 20px;
+            }
+
+    .btn-get-started {
+        background: #ff6b35;
+        color: white;
+        border: none;
+        padding: 14px 28px;
+        border-radius: 8px;
+        font-size: 18px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: 0.3s ease-in-out;
+    }
+
+        .btn-get-started:hover {
+            background: #e85a2a;
+        }
+
+    .home-right {
+        flex: 1;
+        display: flex;
+        justify-content: center;
+    }
+
+        .home-right img {
+            max-width: 90%;
+            border-radius: 12px;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.15);
+        }
+</style>

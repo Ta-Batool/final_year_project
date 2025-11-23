@@ -1,0 +1,48 @@
+@page "/dashboard"
+@layout BlazorApp1.Components.Layout.DashboardLayout
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+
+<!-- Stats Section -->
+<section class="stats-section">
+    <div class="stat-card">
+        <i class="fas fa-users stat-icon"></i>
+        <div>
+            <h2>666</h2>
+            <p>Patients</p>
+        </div>
+    </div>
+    <div class="stat-card">
+        <i class="fas fa-calendar-check stat-icon"></i>
+        <div>
+            <h2>211</h2>
+            <p>Appointments</p>
+        </div>
+    </div>
+    <div class="stat-card">
+        <i class="fas fa-heartbeat stat-icon"></i>
+        <div>
+            <h2>402</h2>
+            <p>Treatments</p>
+        </div>
+    </div>
+</section>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (!(user.Identity?.IsAuthenticated ?? false))
+        {
+            Navigation.NavigateTo("/login");
+        }
+    }
+
+    public void Logout()
+    {
+
+        Navigation.NavigateTo("/login", true);
+    }
+}

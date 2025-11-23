@@ -1,0 +1,137 @@
+﻿@page "/register"
+@inject NavigationManager Navigation
+@inject ICService ClientServices
+@inject AuthenticationStateProvider AuthStateProvider
+@using Model
+
+<div class="auth-container">
+    <div class="auth-right">
+        <div class="auth-card">
+            <h2 class="role-title">Choose your role</h2>
+
+            <div class="choice-container">
+                <button class="choice-btn doctor" @onclick="GoToDoc">
+                    <div class="icon"></div>
+                    <span>Doctor</span>
+                </button>
+
+                <button class="choice-btn patient" @onclick="GoToUser">
+                    <div class="icon"></div>
+                    <span>Patient</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private Client CurrentClient = new Client();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity != null && user.Identity.IsAuthenticated)
+        {
+            var email = user.FindFirst(c => c.Type.Contains("email"))?.Value ?? "";
+
+            if (!string.IsNullOrEmpty(email))
+            {
+                // ✅ Load client from DB
+                CurrentClient = await ClientServices.GetClientByEmailAsync(email) ?? new Client { Email = email };
+            }
+        }
+    }
+
+    private async Task GoToDoc()
+    {
+        await SetRole("Doctor");
+        Navigation.NavigateTo($"/form/{CurrentClient.Id}");
+
+    }
+
+    private async Task GoToUser()
+    {
+        await SetRole("Patient");
+        Navigation.NavigateTo($"/formuser/{CurrentClient.Id}");
+    }
+
+    private async Task SetRole(string role)
+    {
+        try
+        {
+            CurrentClient.Role = role;
+            await ClientServices.UpdateClientByEmailAsync(CurrentClient.Email, CurrentClient);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error setting role: {ex.Message}");
+        }
+    }
+
+}
+
+
+<style>
+    .auth-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        background-color: #705ebe; /* light background */
+    }
+
+    .auth-right {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+
+    .auth-card {
+        background-color: #b1b1b1; /* blue card */
+        padding: 40px;
+        border-radius: 15px;
+        box-shadow: 0px 4px 20px rgba(0,0,0,0.2);
+        text-align: center;
+        min-width: 350px;
+    }
+
+    .role-title {
+        color: white;
+        font-size: 1.8rem;
+        margin-bottom: 30px;
+        font-weight: bold;
+    }
+
+    .choice-container {
+        display: flex;
+        justify-content: space-between;
+        gap: 20px;
+    }
+
+    .choice-btn {
+        flex: 1;
+        background-color: white;
+        border: none;
+        border-radius: 10px;
+        padding: 15px 20px;
+        font-size: 1.1rem;
+        font-weight: bold;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        transition: transform 0.2s ease, background-color 0.2s ease;
+    }
+
+        .choice-btn:hover {
+            transform: scale(1.08);
+            background-color: #f0f0f0;
+        }
+
+    .icon {
+        font-size: 1.4rem;
+    }
+</style>

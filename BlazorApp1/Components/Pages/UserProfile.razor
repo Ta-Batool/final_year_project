@@ -1,0 +1,220 @@
+﻿@page "/userprofile/{ClientId}"
+@using Model
+@using BlazorApp1.Components.Layout
+@layout UserDashboardLayout
+
+@inject NavigationManager Navigation
+@inject IUService UserService
+@inject IJSRuntime JS
+
+<div class="profile-wrapper">
+    <div class="profile-card">
+        <div class="profile-header">
+            <h2>My Profile</h2>
+            <p>Update your personal details</p>
+        </div>
+
+        <EditForm Model="user" OnValidSubmit="Save">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+
+            <div class="field-grid">
+                <div class="field">
+                    <label>Full Name</label>
+                    <InputText class="input" @bind-Value="user.Name" />
+                </div>
+
+                <div class="field">
+                    <label>Phone</label>
+                    <InputText class="input" @bind-Value="user.Phone" />
+                </div>
+
+                <div class="field">
+                    <label>Address</label>
+                    <InputText class="input" @bind-Value="user.Address" />
+                </div>
+
+                <div class="field">
+                    <label>Reason</label>
+                    <InputText class="input" @bind-Value="user.Reason" />
+                </div>
+
+                <div class="field">
+                    <label>Weight</label>
+                    <InputText class="input" @bind-Value="user.Weight" />
+                </div>
+
+                <div class="field">
+                    <label>Height</label>
+                    <InputText class="input" @bind-Value="user.Height" />
+                </div>
+
+                <div class="field">
+                    <label>Date of Birth</label>
+                    <InputDate class="input" @bind-Value="user.DOB" />
+                </div>
+
+                <div class="field">
+                    <label>Sex</label>
+                    <InputText class="input" @bind-Value="user.Sex" />
+                </div>
+            </div>
+
+            <div class="buttons">
+                <button type="button"
+                        class="back-btn"
+                        @onclick='() => Navigation.NavigateTo("/userdashboard")'>
+                    Back
+                </button>
+                <button type="submit" class="save-btn">
+                    Save Changes
+                </button>
+            </div>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public string? ClientId { get; set; }
+
+    private User user = new();
+    private bool _userIdSetInJs = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrEmpty(ClientId))
+        {
+            var existingUser = await UserService.GetUserByClientIdAsync(ClientId);
+            if (existingUser != null)
+            {
+                user = existingUser;
+            }
+            else
+            {
+                Console.WriteLine("⚠️ User not found.");
+            }
+        }
+        else
+        {
+            Console.WriteLine("⚠️ ClientId was null in UserProfile route.");
+        }
+    }
+
+    // ✅ JS interop MUST be here (not in OnInitializedAsync) when using prerendering
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_userIdSetInJs && !string.IsNullOrEmpty(ClientId))
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("localStorage.setItem", "userId", ClientId);
+                _userIdSetInJs = true;
+                Console.WriteLine($"✅ Stored userId={ClientId} in localStorage.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ Failed to set userId in localStorage: {ex.Message}");
+            }
+        }
+    }
+
+    private async Task Save()
+    {
+        if (!string.IsNullOrEmpty(ClientId))
+        {
+            await UserService.UpdateUserByClientIdAsync(ClientId, user);
+            Console.WriteLine("✅ User profile updated successfully!");
+            Navigation.NavigateTo("/userdashboard");
+        }
+    }
+}
+
+<style>
+    .profile-wrapper {
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        padding: 30px 20px;
+    }
+
+    .profile-card {
+        background: #fff;
+        width: 520px;
+        border-radius: 16px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        padding: 36px 28px 28px;
+    }
+
+    .profile-header h2 {
+        margin: 0 0 4px;
+        font-size: 24px;
+    }
+
+    .profile-header p {
+        margin: 0 0 20px;
+        color: #666;
+        font-size: 14px;
+    }
+
+    .field-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px 20px;
+        margin-bottom: 20px;
+    }
+
+    .field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .field label {
+        font-size: 13px;
+        font-weight: 600;
+        color: #444;
+    }
+
+    .input {
+        border-radius: 8px;
+        border: 1px solid #ddd;
+        padding: 8px 10px;
+        font-size: 14px;
+    }
+
+    .buttons {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 10px;
+    }
+
+    .back-btn,
+    .save-btn {
+        border-radius: 8px;
+        border: none;
+        padding: 8px 16px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .back-btn {
+        background: #f1f1f1;
+        color: #333;
+    }
+
+    .back-btn:hover {
+        background: #e2e2e2;
+    }
+
+    .save-btn {
+        background: #5b2dfc;
+        color: #fff;
+    }
+
+    .save-btn:hover {
+        background: #4720c8;
+    }
+</style>

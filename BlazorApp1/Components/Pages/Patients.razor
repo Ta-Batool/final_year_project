@@ -1,0 +1,181 @@
+﻿@page "/patients"
+@layout BlazorApp1.Components.Layout.DashboardLayout
+
+<div class="patients-list">
+    <h3>Today's Patients</h3>
+    <ul>
+        @foreach (var patient in patients)
+        {
+            <li class="patient-item">
+                <div class="patient-summary" @onclick="() => TogglePatient(patient)">
+                    <div>
+                        <strong>@patient["Name"]</strong><br />
+                        <span>@patient["Reason"]</span>
+                    </div>
+                    <div class="patient-time">@patient["Time"]</div>
+                </div>
+
+                @if (expandedPatient == patient)
+                {
+                    <div class="patient-details-expanded">
+                        <p><strong>Address:</strong> @patient["Address"]</p>
+                        <p><strong>D.O.B:</strong> @patient["DOB"]</p>
+                        <p><strong>Sex:</strong> @patient["Sex"]</p>
+                        <p><strong>Weight:</strong> @patient["Weight"]</p>
+                        <p><strong>Height:</strong> @patient["Height"]</p>
+                        <p><strong>Last Appointment:</strong> @patient["LastAppointment"]</p>
+                        <p><strong>Register Date:</strong> @patient["RegisterDate"]</p>
+
+                        <div class="patient-tags">
+                            @foreach (var tag in (List<string>)patient["Tags"])
+                            {
+                                <span class="tag">@tag</span>
+                            }
+                        </div>
+
+                        <div class="patient-actions">
+                            <button class="btn-call">📞 @patient["Phone"]</button>
+                            <button class="btn">Documents</button>
+                            <button class="btn">Chat</button>
+                        </div>
+                    </div>
+                }
+            </li>
+        }
+    </ul>
+
+</div>
+
+@code {
+    private List<Dictionary<string, object>> patients = new()
+{
+new()
+{
+{ "Name", "Tayyaba" }, { "Reason", "fever" }, { "Time", "11AM" },
+{ "Address", "islamabad" },
+{ "DOB", "15 February 2000" }, { "Sex", "Female" }, { "Weight", "56 kg" },
+{ "Height", "172 cm" }, { "LastAppointment", "02 Jan 2020" },
+{ "RegisterDate", "19 Dec 2018" }, { "Phone", "03445586946" },
+{ "Tags", new List<string>{ "Asthma", "Hypertension"} }
+},
+new()
+{
+{ "Name", "Ali" }, { "Reason", "Medical check up" }, { "Time", "12PM" },
+{ "Address", "Rawalpindi" }, { "DOB", "12 May 1988" }, { "Sex", "Male" },
+{ "Weight", "70 kg" }, { "Height", "180 cm" }, { "LastAppointment", "01 Sep 2023" },
+{ "RegisterDate", "05 Aug 2020" }, { "Phone", "12345" },
+{ "Tags", new List<string>{ "Diabetes" } }
+},
+new()
+{
+{ "Name", "Eman" }, { "Reason", "Medical checkup" }, { "Time", "2PM" },
+{ "Address", "Random St, LA" }, { "DOB", "15 March 1975" }, { "Sex", "Male" },
+{ "Weight", "80 kg" }, { "Height", "175 cm" }, { "LastAppointment", "10 Aug 2023" },
+{ "RegisterDate", "02 Feb 2019" }, { "Phone", "123" },
+{ "Tags", new List<string>{ "Asthma" } }
+}
+};
+
+    private Dictionary<string, object>? expandedPatient;
+
+    private void TogglePatient(Dictionary<string, object> patient)
+    {
+        if (expandedPatient == patient)
+            expandedPatient = null;
+        else
+            expandedPatient = patient;
+    }
+
+
+}
+
+<style>
+    .patients-list {
+        max-width: 600px;
+        margin: 0 auto;
+    }
+
+    .patient-item {
+        background: #fff;
+        border-radius: 10px;
+        margin: 10px 0;
+        padding: 12px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+
+    .patient-summary {
+        display: flex;
+        justify-content: space-between;
+        cursor: pointer;
+    }
+
+    .patient-time {
+        font-weight: bold;
+    }
+
+    .patient-details-expanded {
+        margin-top: 10px;
+        border-top: 1px solid #eee;
+        padding-top: 10px;
+        font-size: 14px;
+        color: #444;
+    }
+
+    .patient-tags {
+        margin: 8px 0;
+    }
+
+    .tag {
+        display: inline-block;
+        background: #eef2ff;
+        border-radius: 12px;
+        padding: 5px 10px;
+        margin: 3px;
+        font-size: 12px;
+    }
+
+    .patient-actions {
+        margin-top: 15px;
+    }
+
+    .btn, .btn-call {
+        border: none;
+        border-radius: 6px;
+        padding: 8px 12px;
+        margin-right: 10px;
+        cursor: pointer;
+        background: #eef2ff;
+        font-size: 14px;
+    }
+
+    .btn-call {
+        background: #dff0d8;
+    }
+
+    .patients-list {
+        margin-left: 20px;
+        margin-right: 20px;
+    }
+
+    .patients-list ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    .patient-item {
+        background: #fff;
+        border-radius: 10px;
+        margin: 12px 0;
+        padding: 12px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        width: 100%;
+    }
+
+    .patient-summary {
+        display: flex;
+        justify-content: space-between;
+        cursor: pointer;
+        font-weight: bold;
+    }
+</style>

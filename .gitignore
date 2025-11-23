@@ -1,0 +1,14 @@
+cat << 'EOF' >> .gitignore
+
+# Build outputs
+bin/
+obj/
+
+# VS / Rider
+.vs/
+*.user
+*.suo
+
+# macOS junk
+.DS_Store
+EOF

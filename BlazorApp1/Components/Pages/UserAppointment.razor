@@ -1,0 +1,261 @@
+﻿@page "/userappointments"
+@layout UserDashboardLayout
+@using BlazorApp1.Components.Layout
+@using Model
+@inject IAService AppointmentService
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<div class="appointments-page">
+    <h2>📅 Manage Appointments</h2>
+
+    <div class="new-appointment-form">
+        <h3>Add New Appointment</h3>
+
+        <EditForm Model="@newAppointment" OnValidSubmit="SaveAppointment">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+
+            <!-- 🧑 Patient Name -->
+            <div class="form-group">
+                <label>👤 Patient Name:</label>
+                <InputText @bind-Value="newAppointment.PatientName" class="form-control" />
+            </div>
+
+            <!-- 👨‍⚕️ Doctor Selection -->
+            <div class="form-group">
+                <label>👨‍⚕️ Doctor:</label>
+                <div class="doctor-select">
+                    @if (!string.IsNullOrEmpty(selectedDoctorName))
+                    {
+                        <span>@selectedDoctorName</span>
+                    }
+                    else
+                    {
+                        <span class="placeholder">No doctor selected</span>
+                    }
+                    <button class="btn btn-info" type="button" @onclick="NavigateToDoctorPage">🩺 Choose Doctor</button>
+                </div>
+            </div>
+
+            <!-- 🕒 Start -->
+            <div class="form-group">
+                <label>🕒 Start Date & Time:</label>
+                <InputDate @bind-Value="newAppointment.Start" class="form-control" />
+            </div>
+
+            <!-- ⏰ End -->
+            <div class="form-group">
+                <label>⏰ End Date & Time:</label>
+                <InputDate @bind-Value="newAppointment.End" class="form-control" />
+            </div>
+
+            <!-- 📝 Notes -->
+            <div class="form-group">
+                <label>📝 Notes:</label>
+                <InputTextArea @bind-Value="newAppointment.Notes" class="form-control" />
+            </div>
+
+            <button type="submit" class="btn btn-primary">💾 Save Appointment</button>
+        </EditForm>
+    </div>
+
+    <hr />
+
+    <h3>All Appointments</h3>
+
+    @if (isLoading)
+    {
+        <p>Loading appointments...</p>
+    }
+    else if (appointments == null || appointments.Count == 0)
+    {
+        <p>No appointments found.</p>
+    }
+    else
+    {
+        <table class="appt-table">
+            <thead>
+                <tr>
+                    <th>Patient</th>
+                    <th>Doctor</th>
+                    <th>Date</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var appt in appointments)
+                {
+                    <tr>
+                        <td>@appt.PatientName</td>
+                        <td>@appt.DoctorId</td> <!-- you can change to show doctor name if you fetch it -->
+                        <td>@appt.Start.ToShortDateString()</td>
+                        <td>@appt.Status</td>
+                        <td>
+                            <button class="btn btn-danger" @onclick="() => DeleteAppointment(appt.Id)">❌ Delete</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private List<Appointment> appointments = new();
+    private Appointment newAppointment = new();
+    private bool isLoading = true;
+    private string? selectedDoctorName;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // ✅ Get current logged-in user's ID
+        var userId = await JS.InvokeAsync<string>("localStorage.getItem", "userId");
+
+        if (!string.IsNullOrEmpty(userId))
+        {
+            newAppointment.UserId = userId;
+        }
+
+        // ✅ Check for doctorId in query string
+        var uri = Nav.ToAbsoluteUri(Nav.Uri);
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        var doctorId = query.Get("doctorId");
+        var doctorName = query.Get("doctorName");
+
+        if (!string.IsNullOrEmpty(doctorId))
+        {
+            newAppointment.DoctorId = doctorId;
+            selectedDoctorName = doctorName;
+        }
+
+        await LoadAppointments();
+    }
+
+    private async Task LoadAppointments()
+    {
+        try
+        {
+            isLoading = true;
+            appointments = await AppointmentService.GetAllAppointmentsAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ Error loading appointments: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SaveAppointment()
+    {
+        try
+        {
+            newAppointment.Status = "Scheduled";
+            await AppointmentService.AddAppointmentAsync(newAppointment);
+
+            Console.WriteLine("✅ Appointment added successfully!");
+            await LoadAppointments();
+            newAppointment = new Appointment();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ Error saving appointment: {ex.Message}");
+        }
+    }
+
+    private async Task DeleteAppointment(string id)
+    {
+        try
+        {
+            await AppointmentService.DeleteAppointmentAsync(id);
+            await LoadAppointments();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ Error deleting appointment: {ex.Message}");
+        }
+    }
+
+    private void NavigateToDoctorPage()
+    {
+        Nav.NavigateTo("/selectdoctor");
+    }
+}
+
+<style>
+    .appointments-page {
+        background: #f5f6fa;
+        padding: 20px;
+        border-radius: 10px;
+    }
+
+    .new-appointment-form {
+        background: #fff;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
+
+    .form-group {
+        margin-bottom: 15px;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 8px;
+        border-radius: 5px;
+        border: 1px solid #ccc;
+    }
+
+    .btn {
+        padding: 8px 12px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+    }
+
+    .btn-primary {
+        background: #3b3bbf;
+        color: white;
+    }
+
+    .btn-danger {
+        background: #e74c3c;
+        color: white;
+    }
+
+    .btn-info {
+        background: #3498db;
+        color: white;
+        margin-left: 10px;
+    }
+
+    .doctor-select {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .appt-table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #fff;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+
+        .appt-table th, .appt-table td {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .appt-table th {
+            background: #3b3bbf;
+            color: #fff;
+            text-align: left;
+        }
+</style>

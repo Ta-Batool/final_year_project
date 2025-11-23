@@ -1,0 +1,56 @@
+﻿@page "/google-callback"
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+@inject HttpClient Http
+@using Model
+
+<p>Processing login...</p>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity != null && user.Identity.IsAuthenticated)
+        {
+            var email = user.FindFirst(c => c.Type.Contains("email"))?.Value;
+            var firstName = user.FindFirst(c => c.Type.Contains("givenname"))?.Value ?? "";
+            var lastName = user.FindFirst(c => c.Type.Contains("surname"))?.Value ?? "";
+            var fullName = user.FindFirst(c => c.Type == "name")?.Value ?? $"{firstName} {lastName}";
+
+            if (!string.IsNullOrEmpty(email))
+            {
+                // ✅ Check if user exists in API
+                var existing = await Http.GetAsync($"api/clients/{email}");
+                if (existing.IsSuccessStatusCode)
+                {
+                    var client = await existing.Content.ReadFromJsonAsync<Client>();
+
+                    if (client.Role == "Doctor")
+                        Navigation.NavigateTo($"/profile/{client.Id}");
+                    else if (client.Role == "Patient")
+                        Navigation.NavigateTo($"/userprofile/{client.Id}");
+                    else
+                        Navigation.NavigateTo("/register");
+                }
+                else
+                {
+                    // ✅ New user → save in API
+                    var newClient = new Client
+                        {
+                            Email = email,
+                            Name = fullName.Trim(),
+                            Role = null
+                        };
+                    await Http.PostAsJsonAsync("api/clients", newClient);
+                    Navigation.NavigateTo("/register");
+                }
+            }
+        }
+        else
+        {
+            Navigation.NavigateTo("/login");
+        }
+    }
+}
