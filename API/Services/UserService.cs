@@ -2,7 +2,6 @@
 using Model;
 using Microsoft.Extensions.Options;
 using API.MongoModel;
-using static System.Net.WebRequestMethods;
 
 namespace API.Services
 {
@@ -17,6 +16,10 @@ namespace API.Services
 
             _users = database.GetCollection<User>("User");
         }
+
+        // -------------------------
+        // Basic CRUD
+        // -------------------------
 
         public async Task<List<User>> GetAllAsync()
         {
@@ -42,23 +45,45 @@ namespace API.Services
         {
             await _users.DeleteOneAsync(u => u.Id == id);
         }
-        public async Task UpdateUserByClientIdAsync(string clientId, User updatedUser)
-        {
-            await _users.ReplaceOneAsync(u => u.ClientId == clientId, updatedUser);
-        }
+
+        // -------------------------
+        // ClientId-based helpers
+        // -------------------------
+
         public async Task<User?> GetUserByClientIdAsync(string clientId)
         {
             return await _users.Find(u => u.ClientId == clientId).FirstOrDefaultAsync();
         }
+
+        // from IUserService: UpdateUserByClientIdAsync(string clientId, User updatedUser)
+        public async Task UpdateUserByClientIdAsync(string clientId, User updatedUser)
+        {
+            // get existing user (to keep Id)
+            var existingUser = await GetUserByClientIdAsync(clientId);
+            if (existingUser == null)
+            {
+                // you can choose to throw instead
+                // throw new InvalidOperationException("User not found for given ClientId");
+                return;
+            }
+
+            updatedUser.Id = existingUser.Id;
+
+            await _users.ReplaceOneAsync(
+                u => u.ClientId == clientId,
+                updatedUser
+            );
+        }
+
+        // from IUserService: UpdateUserAsync(string? id, User updatedUser)
         public async Task UpdateUserAsync(string? id, User updatedUser)
         {
             if (string.IsNullOrEmpty(id))
                 throw new ArgumentException("User ID cannot be null or empty", nameof(id));
 
-            // Replace the existing document in MongoDB with the updated one
+            updatedUser.Id = id;
+
             await _users.ReplaceOneAsync(u => u.Id == id, updatedUser);
         }
-       
-
     }
 }

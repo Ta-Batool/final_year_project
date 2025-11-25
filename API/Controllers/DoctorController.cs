@@ -15,6 +15,7 @@ namespace API.Controllers
             _doctorService = doctorService;
         }
 
+        // GET: api/doctors
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Doctor>>> GetAllDoctors()
         {
@@ -22,6 +23,7 @@ namespace API.Controllers
             return Ok(doctors);
         }
 
+        // GET: api/doctors/{id}
         [HttpGet("{id}")]
         public async Task<ActionResult<Doctor>> GetDoctor(string id)
         {
@@ -33,21 +35,20 @@ namespace API.Controllers
             return Ok(doctor);
         }
 
+        // POST: api/doctors
         [HttpPost]
         public async Task<IActionResult> CreateDoctor([FromBody] Doctor doctor)
         {
             if (doctor == null)
-            {
                 return BadRequest("Doctor data is required.");
-            }
 
             await _doctorService.CreateAsync(doctor);
             return Ok(doctor);
         }
 
-
+        // PUT: api/doctors/{id}
         [HttpPut("{id}")]
-        public async Task<IActionResult> UpdateDoctor(string id, Doctor doctor)
+        public async Task<IActionResult> UpdateDoctor(string id, [FromBody] Doctor doctor)
         {
             var existingDoctor = await _doctorService.GetByIdAsync(id);
             if (existingDoctor == null)
@@ -58,6 +59,7 @@ namespace API.Controllers
             return NoContent();
         }
 
+        // DELETE: api/doctors/{id}
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteDoctor(string id)
         {
@@ -69,6 +71,7 @@ namespace API.Controllers
             return NoContent();
         }
 
+        // GET: api/doctors/by-client/{clientId}
         [HttpGet("by-client/{clientId}")]
         public async Task<ActionResult<Doctor>> GetByClientId(string clientId)
         {
@@ -78,22 +81,25 @@ namespace API.Controllers
 
             return Ok(doctor);
         }
+
+        // PUT: api/doctors/by-client/{clientId}
         [HttpPut("by-client/{clientId}")]
-            public async Task<IActionResult> UpdateDoctorByClientId(
+        public async Task<IActionResult> UpdateDoctorByClientId(
             string clientId,
-            [FromBody] Doctor updatedDoctor)  // must match the body JSON
-            {
-                if (updatedDoctor == null)
-                    return BadRequest("updatedDoctor cannot be null");
+            [FromBody] Doctor updatedDoctor)
+        {
+            if (updatedDoctor == null)
+                return BadRequest("updatedDoctor cannot be null");
 
-                var doctor = await _doctorService.GetDoctorByClientIdAsync(clientId);
-                if (doctor == null)
-                    return NotFound();
+            var doctor = await _doctorService.GetDoctorByClientIdAsync(clientId);
+            if (doctor == null)
+                return NotFound();
 
-                updatedDoctor.Id = doctor.Id;
+            // keep Mongo Id
+            updatedDoctor.Id = doctor.Id;
 
-                await _doctorService.UpdateDoctorAsync(doctor.Id, updatedDoctor);
-                return NoContent();
-            }
+            await _doctorService.UpdateAsync(doctor.Id, updatedDoctor);
+            return NoContent();
+        }
     }
 }

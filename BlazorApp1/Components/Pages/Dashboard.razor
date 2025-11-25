@@ -1,48 +1,124 @@
 @page "/dashboard"
-@layout BlazorApp1.Components.Layout.DashboardLayout
-@inject NavigationManager Navigation
-@inject AuthenticationStateProvider AuthStateProvider
+@attribute [Authorize]
 
-<!-- Stats Section -->
-<section class="stats-section">
-    <div class="stat-card">
-        <i class="fas fa-users stat-icon"></i>
-        <div>
-            <h2>666</h2>
-            <p>Patients</p>
-        </div>
-    </div>
-    <div class="stat-card">
-        <i class="fas fa-calendar-check stat-icon"></i>
-        <div>
-            <h2>211</h2>
-            <p>Appointments</p>
-        </div>
-    </div>
-    <div class="stat-card">
-        <i class="fas fa-heartbeat stat-icon"></i>
-        <div>
-            <h2>402</h2>
-            <p>Treatments</p>
-        </div>
-    </div>
-</section>
+@using System.Security.Claims
+@using Model
+@using Microsoft.AspNetCore.Authorization
+
+
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ICService CService
+@inject IUService UService
+@inject IDService DService
+@inject NavigationManager NavManager
+
+<h3>Dashboard</h3>
+
+@if (isLoading)
+{
+    <p>Loading your profile...</p>
+}
+else if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+else if (currentDoctor is not null)
+{
+    <h4>Welcome, Dr. @currentDoctor.Name</h4>
+    <p><b>Specialization:</b> @currentDoctor.Specialization</p>
+    <p><b>Email:</b> @clientEmail</p>
+    <p><b>Gender:</b> @currentDoctor.Gender</p>
+    <!-- Add more doctor fields here -->
+}
+else if (currentUser is not null)
+{
+    <h4>Welcome, @currentUser.Name</h4>
+    <p><b>Email:</b> @clientEmail</p>
+    <p><b>Phone:</b> @currentUser.Phone</p>
+    <p><b>Reason for visit:</b> @currentUser.Reason</p>
+    <!-- Add more patient fields here -->
+}
+else
+{
+    <p>No profile found. Please complete your registration.</p>
+}
 
 @code {
+    private bool isLoading = true;
+    private string? errorMessage;
+    private string? clientEmail;
+
+    private Client? currentClient;
+    private Doctor? currentDoctor;
+    private User? currentUser;
+
     protected override async Task OnInitializedAsync()
     {
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        var user = authState.User;
+        isLoading = true;
 
-        if (!(user.Identity?.IsAuthenticated ?? false))
+        try
         {
-            Navigation.NavigateTo("/login");
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var principal = authState.User;
+
+            // not authenticated → go to Google login
+            if (!(principal.Identity?.IsAuthenticated ?? false))
+            {
+                NavManager.NavigateTo("/login-google", forceLoad: true);
+                return;
+            }
+
+            // get email from Google claims
+            clientEmail = principal.FindFirst(ClaimTypes.Email)?.Value
+                          ?? principal.FindFirst("email")?.Value;
+
+            if (string.IsNullOrWhiteSpace(clientEmail))
+            {
+                errorMessage = "No email found in your Google account.";
+                return;
+            }
+
+            // 1) Get client record by email (Blazor service name: GetClientByEmailAsync)
+            currentClient = await CService.GetClientByEmailAsync(clientEmail);
+
+            if (currentClient is null)
+            {
+                errorMessage = "No client profile found for this email. Please register first.";
+                return;
+            }
+
+            // 2) Decide role and fetch corresponding profile
+            var role = currentClient.Role?.ToLowerInvariant();
+
+            if (role == "doctor")
+            {
+                // Blazor service name: GetDoctorByClientIdAsync
+                currentDoctor = await DService.GetDoctorByClientIdAsync(currentClient.Id);
+
+                if (currentDoctor is null)
+                {
+                    errorMessage = "Doctor profile not found. Please complete doctor registration.";
+                }
+            }
+            else
+            {
+                // default to patient/user
+                // Blazor service name: GetUserByClientIdAsync
+                currentUser = await UService.GetUserByClientIdAsync(currentClient.Id);
+
+                if (currentUser is null)
+                {
+                    errorMessage = "Patient profile not found. Please complete registration.";
+                }
+            }
         }
-    }
-
-    public void Logout()
-    {
-
-        Navigation.NavigateTo("/login", true);
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load dashboard: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
     }
 }

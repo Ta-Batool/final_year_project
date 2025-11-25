@@ -6,7 +6,7 @@ namespace BlazorApp1.Service
 {
     public interface ICService
     {
-        Task<Client> GetClientByEmailAsync(string email);
+        Task<Client?> GetClientByEmailAsync(string email);
         Task<List<Client>> GetAllClientsAsync();
         Task AddClientAsync(Client client);
         Task UpdateClientByEmailAsync(string email, Client client);

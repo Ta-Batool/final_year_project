@@ -34,20 +34,23 @@ namespace API.Services
 
         public async Task<Client?> GetByEmailAsync(string email)
         {
+            if (string.IsNullOrWhiteSpace(email))
+                return null;
+
             email = email.ToLowerInvariant();
             return await _clients.Find(c => c.Email == email).FirstOrDefaultAsync();
         }
 
         public async Task CreateAsync(Client client)
         {
-            client.Email = client.Email.ToLowerInvariant(); // Store email in lowercase
+            client.Email = client.Email.ToLowerInvariant();
             await _clients.InsertOneAsync(client);
         }
 
         public async Task UpdateAsync(string email, Client client)
         {
             email = email.ToLowerInvariant();
-            client.Email = email; // Ensure updated email is consistent
+            client.Email = email;
             await _clients.ReplaceOneAsync(c => c.Email == email, client);
         }
 

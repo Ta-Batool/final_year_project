@@ -2,7 +2,6 @@
 using Model;
 using Microsoft.Extensions.Options;
 using API.MongoModel;
-using Microsoft.EntityFrameworkCore;
 
 namespace API.Services
 {
@@ -15,7 +14,6 @@ namespace API.Services
             var client = new MongoClient(mongoSettings.Value.ConnectionString);
             var database = client.GetDatabase(mongoSettings.Value.DatabaseName);
 
-            // Make sure this matches your collection name in Atlas
             _doctors = database.GetCollection<Doctor>("Doctor");
         }
 
@@ -48,16 +46,5 @@ namespace API.Services
         {
             return await _doctors.Find(d => d.ClientId == clientId).FirstOrDefaultAsync();
         }
-        public async Task UpdateDoctorAsync(string id, Doctor doctor)
-        {
-            await _doctors.ReplaceOneAsync(d => d.Id == id, doctor);
-        }
-
-        // ✅ Update doctor by ClientId (optional helper)
-        public async Task UpdateDoctorByClientIdAsync(string clientId, Doctor updatedDoctor)
-        {
-            await _doctors.ReplaceOneAsync(d => d.ClientId == clientId, updatedDoctor);
-        }
-
     }
 }
