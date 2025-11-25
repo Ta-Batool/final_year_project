@@ -1,11 +1,12 @@
 window.fypTranslation = (function () {
     let currentLang = "en";
-    let textNodes = [];
-    let originalTexts = [];
+
+    // Keep the original English text per DOM node
+    const originalsMap = new WeakMap();
 
     function collectTextNodes() {
-        textNodes = [];
-        originalTexts = [];
+        const nodes = [];
+        const originals = [];
 
         const walker = document.createTreeWalker(
             document.body,
@@ -14,7 +15,6 @@ window.fypTranslation = (function () {
                 acceptNode(node) {
                     const text = node.nodeValue;
                     if (!text) return NodeFilter.FILTER_REJECT;
-
                     if (!text.trim()) return NodeFilter.FILTER_REJECT;
 
                     const parent = node.parentElement;
@@ -31,29 +31,34 @@ window.fypTranslation = (function () {
 
         let n;
         while ((n = walker.nextNode())) {
-            textNodes.push(n);
-            originalTexts.push(n.nodeValue);
+            nodes.push(n);
+
+            let original = originalsMap.get(n);
+            if (!original) {
+                original = n.nodeValue;
+                originalsMap.set(n, original);
+            }
+
+            originals.push(original);
         }
+
+        return { nodes, originals };
     }
 
     async function setLanguage(lang) {
-        if (lang === currentLang) return;
+        // 🧠 Always rescan the DOM – pages may have changed
+        const { nodes, originals } = collectTextNodes();
 
-        if (textNodes.length === 0) {
-            collectTextNodes();
-        }
-
-        // Back to English → just restore original text, no API call
+        // Back to English → restore originals only, no API call
         if (lang === "en") {
-            for (let i = 0; i < textNodes.length; i++) {
-                textNodes[i].nodeValue = originalTexts[i];
+            for (let i = 0; i < nodes.length; i++) {
+                nodes[i].nodeValue = originals[i];
             }
             currentLang = "en";
             return;
         }
 
-        const textsToTranslate = originalTexts;
-
+        // Call our backend translate endpoint
         const response = await fetch("/api/translate", {
             method: "POST",
             headers: {
@@ -61,7 +66,7 @@ window.fypTranslation = (function () {
             },
             body: JSON.stringify({
                 targetLanguage: lang,
-                texts: textsToTranslate
+                texts: originals
             })
         });
 
@@ -73,8 +78,8 @@ window.fypTranslation = (function () {
         const data = await response.json();
         const translated = data.texts || [];
 
-        for (let i = 0; i < textNodes.length && i < translated.length; i++) {
-            textNodes[i].nodeValue = translated[i];
+        for (let i = 0; i < nodes.length && i < translated.length; i++) {
+            nodes[i].nodeValue = translated[i];
         }
 
         currentLang = lang;
