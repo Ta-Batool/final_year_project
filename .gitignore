@@ -15,3 +15,12 @@ obj/
 # Logs
 *.log
 EOF
+
+
+API/appsettings.json
+API/appsettings.Development.json
+API/appsettings.Production.json
+
+BlazorApp1/appsettings.json
+BlazorApp1/appsettings.Development.json
+BlazorApp1/appsettings.Production.json
