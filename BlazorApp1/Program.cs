@@ -7,8 +7,13 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.AspNetCore.Localization;
+using System.Globalization;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// 🌍 Localization (for culture switching EN/UR)
+builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
 
 // Razor / Blazor
 builder.Services.AddRazorPages()
@@ -64,7 +69,7 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
-// 🌐 API base URL (declare this BEFORE using it)
+// 🌐 API base URL (used by all typed HttpClients)
 var apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? "http://localhost:5092/";
 
 // 🧵 Register HttpClients per service
@@ -88,12 +93,13 @@ builder.Services.AddHttpClient<IAService, AService>(client =>
     client.BaseAddress = new Uri(apiBaseUrl);
 });
 
+// 📨 Messages service
 builder.Services.AddHttpClient<IMService, MService>(client =>
 {
     client.BaseAddress = new Uri(apiBaseUrl);
 });
 
-// 🥗 Meals service (NEW)
+// 🥗 Meals service
 builder.Services.AddHttpClient<IMealService, MealService>(client =>
 {
     client.BaseAddress = new Uri(apiBaseUrl);
@@ -107,10 +113,24 @@ builder.Services.AddScoped(sp => new HttpClient
 
 var app = builder.Build();
 
-// 🔁 Forwarded headers etc. (keep whatever you already had)
+// 🔁 Forwarded headers (for reverse proxies / Render / etc.)
 app.UseForwardedHeaders(new ForwardedHeadersOptions
 {
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+});
+
+// 🌍 Request localization (culture from cookie)
+var supportedCultures = new[]
+{
+    new CultureInfo("en-US"),
+    new CultureInfo("ur-PK")
+};
+
+app.UseRequestLocalization(new RequestLocalizationOptions
+{
+    DefaultRequestCulture = new RequestCulture("en-US"),
+    SupportedCultures = supportedCultures,
+    SupportedUICultures = supportedCultures
 });
 
 if (!app.Environment.IsDevelopment())
@@ -129,7 +149,7 @@ app.UseAuthorization();
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
 
-// OAuth endpoints (same as you had)
+// 🔐 Google login
 app.MapGet("/login-google", async (HttpContext context) =>
 {
     await context.ChallengeAsync(GoogleDefaults.AuthenticationScheme, new AuthenticationProperties
@@ -138,6 +158,7 @@ app.MapGet("/login-google", async (HttpContext context) =>
     });
 });
 
+// 🔐 Google register → after first login go to dashboard
 app.MapGet("/register-google", async (HttpContext httpContext) =>
 {
     await httpContext.ChallengeAsync(GoogleDefaults.AuthenticationScheme, new AuthenticationProperties
@@ -146,10 +167,34 @@ app.MapGet("/register-google", async (HttpContext httpContext) =>
     });
 });
 
+// 🚪 Logout: clear cookie + Google and redirect to home
 app.MapGet("/logout", async (HttpContext context) =>
 {
     await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    await context.SignOutAsync(GoogleDefaults.AuthenticationScheme);
+
     context.Response.Redirect("/");
+});
+
+// 🌍 Language switch: /set-language/en-US or /set-language/ur-PK
+app.MapGet("/set-language/{culture}", (string culture, HttpContext ctx) =>
+{
+    if (string.IsNullOrWhiteSpace(culture))
+        culture = "en-US";
+
+    var ci = new CultureInfo(culture);
+
+    ctx.Response.Cookies.Append(
+        CookieRequestCultureProvider.DefaultCookieName,
+        CookieRequestCultureProvider.MakeCookieValue(new RequestCulture(ci)),
+        new CookieOptions
+        {
+            Expires = DateTimeOffset.UtcNow.AddYears(1)
+        });
+
+    var referer = ctx.Request.Headers["Referer"].ToString();
+
+    return Results.Redirect(string.IsNullOrEmpty(referer) ? "/" : referer);
 });
 
 app.Run();

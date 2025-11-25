@@ -1,178 +1,147 @@
 ﻿@inherits LayoutComponentBase
+
+@using System.Security.Claims
+@using Model
+@inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
+@inject ICService CService
+@inject IUService UService
+@inject IDService DService
 
 <div class="layout">
     <!-- Sidebar -->
     <aside class="sidebar">
         <div class="profile-section">
-            <img src="https://via.placeholder.com/80" alt="Doctor Profile" class="profile-pic" />
-            <h4>Dr. Sarah Khan</h4>
-            <p class="specialization">Your Referring Doctor</p>
+            <img src="https://via.placeholder.com/80" alt="Profile" class="profile-pic" />
+
+            <h4>@displayName</h4>
+            <p class="specialization">@roleText</p>
         </div>
 
         <nav class="sidebar-nav">
-            <button class="side-btn" @onclick='() => Navigation.NavigateTo("/userprofile")'>
-                <i class="fas fa-user"></i>Edit Profile
+            <button class="side-btn" @onclick="GoToProfile">
+                <i class="fas fa-user"></i> @Text("Edit Profile", "پروفائل میں ترمیم کریں")
             </button>
+
             <button class="side-btn" @onclick='() => Navigation.NavigateTo("/userdashboard")'>
-                <i class="fas fa-home"></i> Home
+                <i class="fas fa-home"></i> @Text("Home", "ہوم")
             </button>
+
             <button class="side-btn" @onclick='() => Navigation.NavigateTo("/doctors")'>
-                <i class="fas fa-user-md"></i> Doctor
+                <i class="fas fa-user-md"></i> @Text("Doctor", "ڈاکٹر")
             </button>
+
             <button class="side-btn" @onclick='() => Navigation.NavigateTo("/userexercises")'>
-                <i class="fas fa-dumbbell"></i> Exercises
+                <i class="fas fa-dumbbell"></i> @Text("Exercises", "ورزش")
             </button>
+
             <button class="side-btn" @onclick='() => Navigation.NavigateTo("/usermessages")'>
-                <i class="fas fa-comments"></i> Messages
+                <i class="fas fa-comments"></i> @Text("Messages", "پیغامات")
             </button>
+
             <button class="side-btn" @onclick='() => Navigation.NavigateTo("/userappointments")'>
-                <i class="fas fa-calendar-check"></i> Appointments
+                <i class="fas fa-calendar-check"></i> @Text("Appointments", "اپائنٹمنٹس")
             </button>
         </nav>
 
-        <button class="logout-btn" @onclick="Logout">
-            <i class="fas fa-sign-out-alt"></i> Logout
-        </button>
+        <div class="bottom-section">
+            <button class="settings-btn" @onclick="ToggleLanguageMenu">
+                <i class="fas fa-gear"></i>
+            </button>
+
+            @if (showLangMenu)
+            {
+                <div class="language-menu">
+                    <button @onclick="() => ChangeLanguage("en-US")">English</button>
+                    <button @onclick="() => ChangeLanguage("ur-PK")">اردو</button>
+                </div>
+            }
+
+            <button class="logout-btn" @onclick="Logout">
+                <i class="fas fa-sign-out-alt"></i> @Text("Logout", "لاگ آؤٹ")
+            </button>
+        </div>
     </aside>
 
-    <!-- Main Content -->
     <div class="main-content">
-        <!-- Top Navbar -->
         <header class="top-navbar">
-            <h5>Doctor Dashboard</h5>
-            <div class="navbar-right">
-                <button class="icon-btn"><i class="fas fa-bell"></i></button>
-                <button class="icon-btn"><i class="fas fa-cog"></i></button>
-            </div>
+            <h5>@headerTitle</h5>
         </header>
 
-        <!-- Page body -->
         <div class="page-body">
             @Body
         </div>
     </div>
 </div>
 
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
 @code {
-    private void Logout()
+    private string displayName = "User";
+    private string roleText = "";
+    private string headerTitle = "";
+    private string? clientId;
+    private bool showLangMenu = false;
+
+    private string currentCulture =>
+        System.Globalization.CultureInfo.CurrentUICulture.Name;
+
+    protected override async Task OnInitializedAsync()
     {
-        Navigation.NavigateTo("/register", true);
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = auth.User;
+
+        if (!user.Identity?.IsAuthenticated ?? true)
+            return;
+
+        var email = user.FindFirst(ClaimTypes.Email)?.Value ?? user.FindFirst("email")?.Value;
+        if (email is null) return;
+
+        // Load Client
+        var client = await CService.GetClientByEmailAsync(email);
+        if (client == null) return;
+
+        clientId = client.Id;
+        string role = client.Role?.ToLower() ?? "user";
+
+        if (role == "doctor")
+        {
+            var doc = await DService.GetDoctorByClientIdAsync(client.Id);
+            displayName = doc?.Name != null ? $"Dr. {doc.Name}" : "Doctor";
+            roleText = Text("Doctor", "ڈاکٹر");
+            headerTitle = Text("Doctor Dashboard", "ڈاکٹر ڈیش بورڈ");
+        }
+        else
+        {
+            var usr = await UService.GetUserByClientIdAsync(client.Id);
+            displayName = usr?.Name ?? client.Name ?? "User";
+            roleText = Text("Patient", "مریض");
+            headerTitle = Text("Patient Dashboard", "مریض ڈیش بورڈ");
+        }
+    }
+
+    void GoToProfile()
+    {
+        if (clientId != null)
+            Navigation.NavigateTo($"/userprofile/{clientId}");
+    }
+
+    void Logout()
+    {
+        Navigation.NavigateTo("/logout", true);
+    }
+
+    void ToggleLanguageMenu()
+    {
+        showLangMenu = !showLangMenu;
+    }
+
+    void ChangeLanguage(string lang)
+    {
+        Navigation.NavigateTo($"/set-language/{lang}", true);
+    }
+
+    string Text(string en, string ur)
+    {
+        return currentCulture.StartsWith("ur") ? ur : en;
     }
 }
-
-<style>
-    .layout {
-        display: flex;
-        height: 100vh;
-        font-family: Arial, sans-serif;
-    }
-
-    /* Sidebar */
-    .sidebar {
-        width: 250px;
-        background: #2c3e50;
-        color: white;
-        display: flex;
-        flex-direction: column;
-        padding: 20px;
-    }
-
-    .profile-section {
-        text-align: center;
-        margin-bottom: 20px;
-    }
-
-    .profile-pic {
-        width: 80px;
-        height: 80px;
-        border-radius: 50%;
-        margin-bottom: 10px;
-        border: 3px solid white;
-    }
-
-    .specialization {
-        font-size: 14px;
-        color: #ddd;
-    }
-
-    .sidebar-nav {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        margin-top: 20px;
-    }
-
-    .side-btn {
-        background: transparent;
-        color: white;
-        border: none;
-        text-align: left;
-        padding: 10px;
-        font-size: 16px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        border-radius: 5px;
-        transition: background 0.2s;
-    }
-    .side-btn:hover {
-        background: rgba(255,255,255,0.2);
-    }
-
-    .logout-btn {
-        margin-top: auto;
-        padding: 10px;
-        background: #ff4d4d;
-        border: none;
-        border-radius: 5px;
-        color: white;
-        font-weight: bold;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-    .logout-btn:hover {
-        background: #e60000;
-    }
-
-    /* Main Content */
-    .main-content {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        background: #f9f9f9;
-    }
-
-    /* Top Navbar */
-    .top-navbar {
-        height: 60px;
-        background: white;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0 20px;
-        border-bottom: 1px solid #ddd;
-    }
-    .icon-btn {
-        background: none;
-        border: none;
-        font-size: 18px;
-        color: #3b3bbf;
-        margin-left: 15px;
-        cursor: pointer;
-    }
-    .icon-btn:hover {
-        color: #2e2e9e;
-    }
-
-    /* Page Body */
-    .page-body {
-        padding: 20px;
-        overflow-y: auto;
-    }
-</style>
