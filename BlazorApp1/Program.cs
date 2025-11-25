@@ -16,12 +16,6 @@ builder.Services.AddRazorPages()
 
 builder.Services.AddServerSideBlazor();
 
-builder.Services.AddHttpClient<IMealService, MealHttpService>(client =>
-{
-    client.BaseAddress = new Uri(apiBaseUrl);
-});
-
-
 // 🔐 Authentication + Google OAuth
 builder.Services
     .AddAuthentication(options =>
@@ -34,16 +28,13 @@ builder.Services
         options.LoginPath = "/login-google";
         options.LogoutPath = "/logout";
 
-        // ⚠️ Important for Google OAuth on hosted (Render)
         if (builder.Environment.IsDevelopment())
         {
-            // Local dev – allow HTTP
             options.Cookie.SameSite = SameSiteMode.Lax;
             options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
         }
         else
         {
-            // Production (Render) – required for external login
             options.Cookie.SameSite = SameSiteMode.None;
             options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
         }
@@ -54,15 +45,11 @@ builder.Services
     {
         options.ClientId = builder.Configuration["Authentication:Google:ClientId"] ?? "";
         options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"] ?? "";
-
-        // 🔁 This must match your Google Console redirect URI
-        // e.g. https://fyp-blazor.onrender.com/google-callback
         options.CallbackPath = "/google-callback";
 
         options.SaveTokens = true;
         options.ClaimActions.MapJsonKey("urn:google:picture", "picture", "url");
 
-        // Correlation cookie: also adjust SameSite / Secure
         if (builder.Environment.IsDevelopment())
         {
             options.CorrelationCookie.SameSite = SameSiteMode.Lax;
@@ -77,10 +64,10 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
-// 🌐 API base URL (env var on Render, localhost fallback)
+// 🌐 API base URL (declare this BEFORE using it)
 var apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? "http://localhost:5092/";
 
-// Register HttpClients per service
+// 🧵 Register HttpClients per service
 builder.Services.AddHttpClient<IDService, DService>(client =>
 {
     client.BaseAddress = new Uri(apiBaseUrl);
@@ -106,12 +93,13 @@ builder.Services.AddHttpClient<IMService, MService>(client =>
     client.BaseAddress = new Uri(apiBaseUrl);
 });
 
-builder.Services.AddHttpClient<MessageClientService>(client =>
+// 🥗 Meals service (NEW)
+builder.Services.AddHttpClient<IMealService, MealService>(client =>
 {
     client.BaseAddress = new Uri(apiBaseUrl);
 });
 
-// Fallback HttpClient
+// Fallback HttpClient (if something injects plain HttpClient)
 builder.Services.AddScoped(sp => new HttpClient
 {
     BaseAddress = new Uri(apiBaseUrl)
@@ -119,7 +107,7 @@ builder.Services.AddScoped(sp => new HttpClient
 
 var app = builder.Build();
 
-// 🔁 Forwarded headers (Render sits behind a reverse proxy)
+// 🔁 Forwarded headers etc. (keep whatever you already had)
 app.UseForwardedHeaders(new ForwardedHeadersOptions
 {
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
@@ -131,9 +119,7 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-// You can keep this – with forwarded headers it will see HTTPS correctly
 app.UseHttpsRedirection();
-
 app.UseStaticFiles();
 app.UseRouting();
 
@@ -143,19 +129,15 @@ app.UseAuthorization();
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
 
-// 🔐 OAuth endpoints
-
-// Login with Google (login button)
+// OAuth endpoints (same as you had)
 app.MapGet("/login-google", async (HttpContext context) =>
 {
     await context.ChallengeAsync(GoogleDefaults.AuthenticationScheme, new AuthenticationProperties
     {
-        // After successful sign-in, go to this page/component
         RedirectUri = "/google-callback"
     });
 });
 
-// Optional: separate register-google flow
 app.MapGet("/register-google", async (HttpContext httpContext) =>
 {
     await httpContext.ChallengeAsync(GoogleDefaults.AuthenticationScheme, new AuthenticationProperties
@@ -164,7 +146,6 @@ app.MapGet("/register-google", async (HttpContext httpContext) =>
     });
 });
 
-// Logout
 app.MapGet("/logout", async (HttpContext context) =>
 {
     await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
