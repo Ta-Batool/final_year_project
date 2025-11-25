@@ -2,71 +2,55 @@
 
 @using System.Security.Claims
 @using Model
-@using Microsoft.AspNetCore.Components.Authorization
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject ICService CService
 @inject IUService UService
 @inject IDService DService
+@inject IJSRuntime JS
 
 <div class="layout">
     <!-- Sidebar -->
     <aside class="sidebar">
         <div class="profile-section">
             <img src="https://via.placeholder.com/80" alt="Profile" class="profile-pic" />
-
             <h4>@displayName</h4>
             <p class="specialization">@roleText</p>
         </div>
 
         <nav class="sidebar-nav">
             <button class="side-btn" @onclick="GoToProfile">
-                <i class="fas fa-user"></i> @Text("Edit Profile", "پروفائل میں ترمیم کریں")
+                <i class="fas fa-user"></i> Edit Profile
             </button>
-
             <button class="side-btn" @onclick='() => Navigation.NavigateTo("/userdashboard")'>
-                <i class="fas fa-home"></i> @Text("Home", "ہوم")
+                <i class="fas fa-home"></i> Home
             </button>
-
             <button class="side-btn" @onclick='() => Navigation.NavigateTo("/doctors")'>
-                <i class="fas fa-user-md"></i> @Text("Doctor", "ڈاکٹر")
+                <i class="fas fa-user-md"></i> Doctor
             </button>
-
             <button class="side-btn" @onclick='() => Navigation.NavigateTo("/userexercises")'>
-                <i class="fas fa-dumbbell"></i> @Text("Exercises", "ورزش")
+                <i class="fas fa-dumbbell"></i> Exercises
             </button>
-
             <button class="side-btn" @onclick='() => Navigation.NavigateTo("/usermessages")'>
-                <i class="fas fa-comments"></i> @Text("Messages", "پیغامات")
+                <i class="fas fa-comments"></i> Messages
             </button>
-
             <button class="side-btn" @onclick='() => Navigation.NavigateTo("/userappointments")'>
-                <i class="fas fa-calendar-check"></i> @Text("Appointments", "اپائنٹمنٹس")
+                <i class="fas fa-calendar-check"></i> Appointments
             </button>
         </nav>
 
         <div class="bottom-section">
-            <!-- Language / settings -->
-            <button class="settings-btn" @onclick="ToggleLanguageMenu">
-                <i class="fas fa-gear"></i>
-            </button>
+            <div class="language-menu">
+                <button @onclick="SetEnglish">English</button>
+                <button @onclick="SetUrdu">اردو</button>
+            </div>
 
-            @if (showLangMenu)
-            {
-                <div class="language-menu">
-                    <button @onclick='() => ChangeLanguage("en-US")'>English</button>
-                    <button @onclick='() => ChangeLanguage("ur-PK")'>اردو</button>
-                </div>
-            }
-
-            <!-- Logout -->
             <button class="logout-btn" @onclick="Logout">
-                <i class="fas fa-sign-out-alt"></i> @Text("Logout", "لاگ آؤٹ")
+                <i class="fas fa-sign-out-alt"></i> Logout
             </button>
         </div>
     </aside>
 
-    <!-- Main content -->
     <div class="main-content">
         <header class="top-navbar">
             <h5>@headerTitle</h5>
@@ -78,18 +62,11 @@
     </div>
 </div>
 
-<link rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
-
 @code {
     private string displayName = "User";
     private string roleText = "";
     private string headerTitle = "";
     private string? clientId;
-    private bool showLangMenu = false;
-
-    private string currentCulture =>
-        System.Globalization.CultureInfo.CurrentUICulture.Name;
 
     protected override async Task OnInitializedAsync()
     {
@@ -99,68 +76,51 @@
         if (!user.Identity?.IsAuthenticated ?? true)
             return;
 
-        var email = user.FindFirst(ClaimTypes.Email)?.Value
-                    ?? user.FindFirst("email")?.Value;
+        var email = user.FindFirst(ClaimTypes.Email)?.Value ?? user.FindFirst("email")?.Value;
+        if (email is null) return;
 
-        if (email is null)
-            return;
-
-        // Load Client
         var client = await CService.GetClientByEmailAsync(email);
-        if (client == null)
-            return;
+        if (client == null) return;
 
         clientId = client.Id;
-        var role = client.Role?.ToLower() ?? "user";
+        string role = client.Role?.ToLower() ?? "user";
 
         if (role == "doctor")
         {
             var doc = await DService.GetDoctorByClientIdAsync(client.Id);
             displayName = doc?.Name != null ? $"Dr. {doc.Name}" : "Doctor";
-            roleText = Text("Doctor", "ڈاکٹر");
-            headerTitle = Text("Doctor Dashboard", "ڈاکٹر ڈیش بورڈ");
+            roleText = "Doctor";
+            headerTitle = "Doctor Dashboard";
         }
         else
         {
             var usr = await UService.GetUserByClientIdAsync(client.Id);
             displayName = usr?.Name ?? client.Name ?? "User";
-            roleText = Text("Patient", "مریض");
-            headerTitle = Text("Patient Dashboard", "مریض ڈیش بورڈ");
+            roleText = "Patient";
+            headerTitle = "Patient Dashboard";
         }
     }
 
     void GoToProfile()
     {
         if (clientId != null)
-        {
             Navigation.NavigateTo($"/userprofile/{clientId}");
-        }
     }
 
     void Logout()
     {
-        // Hits /logout in Program.cs which clears cookie and redirects
         Navigation.NavigateTo("/logout", true);
     }
 
-    void ToggleLanguageMenu()
-    {
-        showLangMenu = !showLangMenu;
-    }
+    async Task SetEnglish() => await ChangeLanguage("en");
+    async Task SetUrdu() => await ChangeLanguage("ur");
 
-    void ChangeLanguage(string lang)
+    async Task ChangeLanguage(string lang)
     {
-        // This expects your backend to have `/set-language/{lang}` that sets culture cookie
-        Navigation.NavigateTo($"/set-language/{lang}", true);
-    }
-
-    string Text(string en, string ur)
-    {
-        return currentCulture.StartsWith("ur")
-            ? ur
-            : en;
+        await JS.InvokeVoidAsync("fypTranslation.setLanguage", lang);
     }
 }
+
 
 <style>
     .layout {

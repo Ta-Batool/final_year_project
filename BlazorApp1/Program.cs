@@ -7,13 +7,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.AspNetCore.Localization;
-using System.Globalization;
 
 var builder = WebApplication.CreateBuilder(args);
-
-// 🌍 Localization (for culture switching EN/UR)
-builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
 
 // Razor / Blazor
 builder.Services.AddRazorPages()
@@ -69,43 +64,21 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
-// 🌐 API base URL (used by all typed HttpClients)
+// 🌐 API base URL
 var apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? "http://localhost:5092/";
 
-// 🧵 Register HttpClients per service
-builder.Services.AddHttpClient<IDService, DService>(client =>
-{
-    client.BaseAddress = new Uri(apiBaseUrl);
-});
+// Domain services
+builder.Services.AddHttpClient<IDService, DService>(c => c.BaseAddress = new Uri(apiBaseUrl));
+builder.Services.AddHttpClient<IUService, UService>(c => c.BaseAddress = new Uri(apiBaseUrl));
+builder.Services.AddHttpClient<ICService, CService>(c => c.BaseAddress = new Uri(apiBaseUrl));
+builder.Services.AddHttpClient<IAService, AService>(c => c.BaseAddress = new Uri(apiBaseUrl));
+builder.Services.AddHttpClient<IMService, MService>(c => c.BaseAddress = new Uri(apiBaseUrl));
+builder.Services.AddHttpClient<IMealService, MealService>(c => c.BaseAddress = new Uri(apiBaseUrl));
 
-builder.Services.AddHttpClient<IUService, UService>(client =>
-{
-    client.BaseAddress = new Uri(apiBaseUrl);
-});
+// 🔁 TRANSLATION SERVICE (Google Cloud)
+builder.Services.AddHttpClient<ITranslationService, TranslationService>();
 
-builder.Services.AddHttpClient<ICService, CService>(client =>
-{
-    client.BaseAddress = new Uri(apiBaseUrl);
-});
-
-builder.Services.AddHttpClient<IAService, AService>(client =>
-{
-    client.BaseAddress = new Uri(apiBaseUrl);
-});
-
-// 📨 Messages service
-builder.Services.AddHttpClient<IMService, MService>(client =>
-{
-    client.BaseAddress = new Uri(apiBaseUrl);
-});
-
-// 🥗 Meals service
-builder.Services.AddHttpClient<IMealService, MealService>(client =>
-{
-    client.BaseAddress = new Uri(apiBaseUrl);
-});
-
-// Fallback HttpClient (if something injects plain HttpClient)
+// Fallback HttpClient
 builder.Services.AddScoped(sp => new HttpClient
 {
     BaseAddress = new Uri(apiBaseUrl)
@@ -113,24 +86,10 @@ builder.Services.AddScoped(sp => new HttpClient
 
 var app = builder.Build();
 
-// 🔁 Forwarded headers (for reverse proxies / Render / etc.)
+// Forwarded headers (Render)
 app.UseForwardedHeaders(new ForwardedHeadersOptions
 {
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
-});
-
-// 🌍 Request localization (culture from cookie)
-var supportedCultures = new[]
-{
-    new CultureInfo("en-US"),
-    new CultureInfo("ur-PK")
-};
-
-app.UseRequestLocalization(new RequestLocalizationOptions
-{
-    DefaultRequestCulture = new RequestCulture("en-US"),
-    SupportedCultures = supportedCultures,
-    SupportedUICultures = supportedCultures
 });
 
 if (!app.Environment.IsDevelopment())
@@ -147,9 +106,17 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapBlazorHub();
+
+// 🔁 TRANSLATION API ENDPOINT
+app.MapPost("/api/translate", async (TranslateRequest req, ITranslationService translator) =>
+{
+    var translated = await translator.TranslateAsync(req.TargetLanguage, req.Texts.ToArray());
+    return Results.Ok(new { texts = translated });
+});
+
 app.MapFallbackToPage("/_Host");
 
-// 🔐 Google login
+// OAuth endpoints
 app.MapGet("/login-google", async (HttpContext context) =>
 {
     await context.ChallengeAsync(GoogleDefaults.AuthenticationScheme, new AuthenticationProperties
@@ -158,7 +125,6 @@ app.MapGet("/login-google", async (HttpContext context) =>
     });
 });
 
-// 🔐 Google register → after first login go to dashboard
 app.MapGet("/register-google", async (HttpContext httpContext) =>
 {
     await httpContext.ChallengeAsync(GoogleDefaults.AuthenticationScheme, new AuthenticationProperties
@@ -167,34 +133,16 @@ app.MapGet("/register-google", async (HttpContext httpContext) =>
     });
 });
 
-// 🚪 Logout: clear cookie + Google and redirect to home
 app.MapGet("/logout", async (HttpContext context) =>
 {
     await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-    await context.SignOutAsync(GoogleDefaults.AuthenticationScheme);
-
     context.Response.Redirect("/");
 });
 
-// 🌍 Language switch: /set-language/en-US or /set-language/ur-PK
-app.MapGet("/set-language/{culture}", (string culture, HttpContext ctx) =>
-{
-    if (string.IsNullOrWhiteSpace(culture))
-        culture = "en-US";
-
-    var ci = new CultureInfo(culture);
-
-    ctx.Response.Cookies.Append(
-        CookieRequestCultureProvider.DefaultCookieName,
-        CookieRequestCultureProvider.MakeCookieValue(new RequestCulture(ci)),
-        new CookieOptions
-        {
-            Expires = DateTimeOffset.UtcNow.AddYears(1)
-        });
-
-    var referer = ctx.Request.Headers["Referer"].ToString();
-
-    return Results.Redirect(string.IsNullOrEmpty(referer) ? "/" : referer);
-});
-
 app.Run();
+
+public class TranslateRequest
+{
+    public string TargetLanguage { get; set; } = "ur";
+    public List<string> Texts { get; set; } = new();
+}
