@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 
 namespace BlazorApp1.Service
 {
-    public interface IMService
+    public interface IMealService
     {
         Task<List<Meal>> GetTodayMealsAsync(string clientId);
         Task AddMealAsync(Meal meal);

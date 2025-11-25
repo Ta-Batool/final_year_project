@@ -6,7 +6,7 @@ using Model;
 
 namespace BlazorApp1.Service
 {
-    public class MService : IMService
+    public class MService : IMealService
     {
         private readonly HttpClient _http;
 
