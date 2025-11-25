@@ -4,12 +4,15 @@
 @using System.Security.Claims
 @using Model
 @using Microsoft.AspNetCore.Authorization
+@layout UserDashboardLayout
 
 @inject AuthenticationStateProvider AuthStateProvider
 @inject ICService CService
 @inject IUService UService
 @inject IDService DService
+@inject IMealService MealService
 @inject NavigationManager Navigation
+
 
 @if (isLoading)
 {
@@ -48,39 +51,67 @@ else
             </div>
 
             <h3>Meals today</h3>
-            <div class="meals-grid">
-                <div class="meal-card">
-                    <img src="https://cdn-icons-png.flaticon.com/512/8775/8775285.png" alt="Carrot Juice" />
-                    <div>
-                        <h4>Carrot juice</h4>
-                        <p>41kcal · 100g</p>
-                    </div>
+
+            <!-- Add meal form -->
+            <div class="add-meal-card">
+                <div class="field">
+                    <label>Meal type</label>
+                    <select class="input" @bind="newMealType">
+                        <option>Breakfast</option>
+                        <option>Lunch</option>
+                        <option>Lunch</option>
+                        <option>Dinner</option>
+                        <option>Snack</option>
+                    </select>
                 </div>
 
-                <div class="meal-card">
-                    <img src="https://img.freepik.com/premium-vector/paratha-food-vector-traditional_578838-41.jpg" alt="Biryani" />
-                    <div>
-                        <h4>Biryani</h4>
-                        <p>180kcal · 200g</p>
-                    </div>
+                <div class="field">
+                    <label>Food items</label>
+                    <input class="input"
+                           @bind="newMealFoods"
+                           placeholder="e.g. 2 eggs, toast, tea" />
                 </div>
 
-                <div class="meal-card">
-                    <img src="https://img.freepik.com/premium-vector/paratha-food-vector-traditional_578838-41.jpg" alt="Pharata" />
-                    <div>
-                        <h4>Pharata</h4>
-                        <p>63kcal · 300g</p>
-                    </div>
+                <div class="field">
+                    <label>Calories (optional)</label>
+                    <input class="input"
+                           @bind="newMealCalories"
+                           placeholder="e.g. 350" />
                 </div>
 
-                <div class="meal-card">
-                    <img src="https://cdn-icons-png.flaticon.com/512/3595/3595455.png" alt="Pizza" />
-                    <div>
-                        <h4>Pizza</h4>
-                        <p>17kcal · 100g</p>
-                    </div>
-                </div>
+                <button type="button" class="save-btn" @onclick="AddMealAsync">
+                    Add meal
+                </button>
             </div>
+
+            @if (meals.Count == 0)
+            {
+                <p class="no-meals">No meals added yet for today.</p>
+            }
+            else
+            {
+                <div class="meals-grid">
+                    @foreach (var meal in meals)
+                    {
+                        <div class="meal-card">
+                            <div>
+                                <h4>@meal.Type</h4>
+                                <p>@meal.Foods</p>
+
+                                @if (meal.Calories.HasValue)
+                                {
+                                    <span class="meal-cal">@meal.Calories.Value kcal</span>
+                                }
+                            </div>
+
+                            <button class="delete-meal-btn"
+                                    @onclick="() => DeleteMealAsync(meal.Id)">
+                                ✕
+                            </button>
+                        </div>
+                    }
+                </div>
+            }
         </div>
 
         <div class="right-panel">
@@ -107,13 +138,20 @@ else
             <div class="report">
                 <h3>Today report</h3>
 
+                <div class="report-item">
+                    <b>Total meals:</b> @meals.Count
+                </div>
+                <div class="report-item">
+                    <b>Total calories:</b> @totalCalories kcal
+                </div>
+
                 @if (currentDoctor is not null)
                 {
                     <div class="report-item">
-                        <b>Specialization:</b> @currentDoctor.Specialization
+                        <b>Email:</b> @clientEmail
                     </div>
                     <div class="report-item">
-                        <b>Email:</b> @clientEmail
+                        <b>Specialization:</b> @currentDoctor.Specialization
                     </div>
                     <div class="report-item">
                         <b>Gender:</b> @currentDoctor.Gender
@@ -144,6 +182,15 @@ else
     private Client? currentClient;
     private Doctor? currentDoctor;
     private User? currentUser;
+
+    // Meals state
+    private List<Meal> meals = new();
+    private string newMealType = "Breakfast";
+    private string newMealFoods = string.Empty;
+    private string? newMealCalories;
+
+    private int totalCalories =>
+        meals.Where(m => m.Calories.HasValue).Sum(m => m.Calories!.Value);
 
     protected override async Task OnInitializedAsync()
     {
@@ -193,6 +240,9 @@ else
                 if (currentUser is null)
                     errorMessage = "Patient profile not found. Please complete registration.";
             }
+
+            // 3) load today's meals
+            meals = await MealService.GetTodayMealsAsync(currentClient.Id);
         }
         catch (Exception ex)
         {
@@ -204,9 +254,48 @@ else
         }
     }
 
+    private async Task AddMealAsync()
+    {
+        if (currentClient == null)
+            return;
+
+        if (string.IsNullOrWhiteSpace(newMealFoods))
+            return;
+
+        int? calories = null;
+        if (int.TryParse(newMealCalories, out var c))
+        {
+            calories = c;
+        }
+
+        var meal = new Meal
+        {
+            ClientId = currentClient.Id!,
+            Type = newMealType,
+            Foods = newMealFoods.Trim(),
+            Calories = calories
+        };
+
+        await MealService.AddMealAsync(meal);
+        meals = await MealService.GetTodayMealsAsync(currentClient.Id);
+
+        // reset form
+        newMealFoods = string.Empty;
+        newMealCalories = string.Empty;
+        newMealType = "Breakfast";
+    }
+
+    private async Task DeleteMealAsync(string? mealId)
+    {
+        if (string.IsNullOrEmpty(mealId) || currentClient == null)
+            return;
+
+        await MealService.DeleteMealAsync(mealId);
+        meals = await MealService.GetTodayMealsAsync(currentClient.Id);
+    }
+
     private void Logout()
     {
-        // hit the /logout endpoint we mapped in Program.cs
         Navigation.NavigateTo("/logout", true);
     }
 }
@@ -237,6 +326,36 @@ else
         margin-bottom: 20px;
     }
 
+    .add-meal-card {
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+        padding: 12px 14px;
+        margin-bottom: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .field label {
+        font-size: 13px;
+        font-weight: 600;
+        color: #444;
+    }
+
+    .input {
+        border-radius: 8px;
+        border: 1px solid #ddd;
+        padding: 6px 8px;
+        font-size: 14px;
+    }
+
+    .no-meals {
+        margin-top: 8px;
+        color: #777;
+        font-size: 14px;
+    }
+
     .meals-grid {
         display: grid;
         grid-template-columns: repeat(2, 1fr);
@@ -245,6 +364,7 @@ else
 
     .meal-card {
         display: flex;
+        justify-content: space-between;
         align-items: center;
         background: #fff;
         padding: 10px;
@@ -253,9 +373,19 @@ else
         gap: 10px;
     }
 
-    .meal-card img {
-        width: 40px;
-        height: 40px;
+    .meal-cal {
+        display: inline-block;
+        margin-top: 4px;
+        font-size: 12px;
+        color: #555;
+    }
+
+    .delete-meal-btn {
+        border: none;
+        background: transparent;
+        cursor: pointer;
+        font-size: 16px;
+        color: #b00020;
     }
 
     .right-panel {
@@ -310,7 +440,19 @@ else
         font-size: 14px;
     }
 
-    .breakfast { color: #ff9800; }
-    .lunch { color: #e64a19; }
-    .dinner { color: #9c27b0; }
+    .save-btn {
+        align-self: flex-end;
+        border: none;
+        border-radius: 8px;
+        background: #5b2dfc;
+        color: #fff;
+        padding: 6px 14px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .save-btn:hover {
+        background: #4720c8;
+    }
 </style>

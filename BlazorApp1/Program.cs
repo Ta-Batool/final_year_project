@@ -16,6 +16,12 @@ builder.Services.AddRazorPages()
 
 builder.Services.AddServerSideBlazor();
 
+builder.Services.AddHttpClient<IMealService, MealHttpService>(client =>
+{
+    client.BaseAddress = new Uri(apiBaseUrl);
+});
+
+
 // 🔐 Authentication + Google OAuth
 builder.Services
     .AddAuthentication(options =>
