@@ -2,6 +2,7 @@
 
 @using System.Security.Claims
 @using Model
+@using Microsoft.AspNetCore.Components.Authorization
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject ICService CService
@@ -45,6 +46,7 @@
         </nav>
 
         <div class="bottom-section">
+            <!-- Language / settings -->
             <button class="settings-btn" @onclick="ToggleLanguageMenu">
                 <i class="fas fa-gear"></i>
             </button>
@@ -52,17 +54,19 @@
             @if (showLangMenu)
             {
                 <div class="language-menu">
-                    <button @onclick="() => ChangeLanguage("en-US")">English</button>
-                    <button @onclick="() => ChangeLanguage("ur-PK")">اردو</button>
+                    <button @onclick='() => ChangeLanguage("en-US")'>English</button>
+                    <button @onclick='() => ChangeLanguage("ur-PK")'>اردو</button>
                 </div>
             }
 
+            <!-- Logout -->
             <button class="logout-btn" @onclick="Logout">
                 <i class="fas fa-sign-out-alt"></i> @Text("Logout", "لاگ آؤٹ")
             </button>
         </div>
     </aside>
 
+    <!-- Main content -->
     <div class="main-content">
         <header class="top-navbar">
             <h5>@headerTitle</h5>
@@ -74,6 +78,8 @@
     </div>
 </div>
 
+<link rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
 
 @code {
     private string displayName = "User";
@@ -93,15 +99,19 @@
         if (!user.Identity?.IsAuthenticated ?? true)
             return;
 
-        var email = user.FindFirst(ClaimTypes.Email)?.Value ?? user.FindFirst("email")?.Value;
-        if (email is null) return;
+        var email = user.FindFirst(ClaimTypes.Email)?.Value
+                    ?? user.FindFirst("email")?.Value;
+
+        if (email is null)
+            return;
 
         // Load Client
         var client = await CService.GetClientByEmailAsync(email);
-        if (client == null) return;
+        if (client == null)
+            return;
 
         clientId = client.Id;
-        string role = client.Role?.ToLower() ?? "user";
+        var role = client.Role?.ToLower() ?? "user";
 
         if (role == "doctor")
         {
@@ -122,11 +132,14 @@
     void GoToProfile()
     {
         if (clientId != null)
+        {
             Navigation.NavigateTo($"/userprofile/{clientId}");
+        }
     }
 
     void Logout()
     {
+        // Hits /logout in Program.cs which clears cookie and redirects
         Navigation.NavigateTo("/logout", true);
     }
 
@@ -137,11 +150,154 @@
 
     void ChangeLanguage(string lang)
     {
+        // This expects your backend to have `/set-language/{lang}` that sets culture cookie
         Navigation.NavigateTo($"/set-language/{lang}", true);
     }
 
     string Text(string en, string ur)
     {
-        return currentCulture.StartsWith("ur") ? ur : en;
+        return currentCulture.StartsWith("ur")
+            ? ur
+            : en;
     }
 }
+
+<style>
+    .layout {
+        display: flex;
+        height: 100vh;
+        font-family: Arial, sans-serif;
+    }
+
+    .sidebar {
+        width: 250px;
+        background: #2c3e50;
+        color: white;
+        display: flex;
+        flex-direction: column;
+        padding: 20px;
+    }
+
+    .profile-section {
+        text-align: center;
+        margin-bottom: 20px;
+    }
+
+    .profile-pic {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        margin-bottom: 10px;
+        border: 3px solid white;
+    }
+
+    .specialization {
+        font-size: 14px;
+        color: #ddd;
+    }
+
+    .sidebar-nav {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-top: 20px;
+    }
+
+    .side-btn {
+        background: transparent;
+        color: white;
+        border: none;
+        text-align: left;
+        padding: 10px;
+        font-size: 16px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        border-radius: 5px;
+        transition: background 0.2s;
+    }
+
+    .side-btn:hover {
+        background: rgba(255,255,255,0.2);
+    }
+
+    .bottom-section {
+        margin-top: auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+    }
+
+    .settings-btn {
+        background: transparent;
+        border: none;
+        color: white;
+        font-size: 18px;
+        cursor: pointer;
+    }
+
+    .language-menu {
+        position: absolute;
+        bottom: 70px;
+        left: 20px;
+        background: #fff;
+        color: #333;
+        border-radius: 6px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        padding: 6px 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        z-index: 10;
+    }
+
+    .language-menu button {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        text-align: left;
+        padding: 4px 6px;
+        font-size: 13px;
+    }
+
+    .logout-btn {
+        padding: 10px;
+        background: #ff4d4d;
+        border: none;
+        border-radius: 5px;
+        color: white;
+        font-weight: bold;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .logout-btn:hover {
+        background: #e60000;
+    }
+
+    .main-content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        background: #f9f9f9;
+    }
+
+    .top-navbar {
+        height: 60px;
+        background: white;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0 20px;
+        border-bottom: 1px solid #ddd;
+    }
+
+    .page-body {
+        padding: 20px;
+        overflow-y: auto;
+    }
+</style>
