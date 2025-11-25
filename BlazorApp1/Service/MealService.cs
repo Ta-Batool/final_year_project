@@ -10,7 +10,7 @@ namespace BlazorApp1.Service
     {
         private readonly HttpClient _http;
 
-        public MService(HttpClient http)
+        public MealService(HttpClient http)
         {
             _http = http;
         }
