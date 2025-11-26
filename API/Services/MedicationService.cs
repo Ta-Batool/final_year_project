@@ -1,7 +1,6 @@
 using API.MongoModel;
 using Microsoft.Extensions.Options;
 using Model;
-using MongoDB.Bson;
 using MongoDB.Driver;
 
 namespace API.Services
@@ -11,73 +10,95 @@ namespace API.Services
         private readonly IMongoCollection<MedicationPlan> _plans;
         private readonly IMongoCollection<MedicationLog> _logs;
 
-        public MedicationService(IOptions<MongoDBSettings> dbOptions)
+        public MedicationService(IOptions<MongoDBSettings> mongoOptions)
         {
-            var settings = dbOptions.Value ?? throw new ArgumentNullException(nameof(dbOptions));
+            var settings = mongoOptions.Value;
 
             var client = new MongoClient(settings.ConnectionString);
-            var database = client.GetDatabase(settings.DatabaseName);
+            var db = client.GetDatabase(settings.DatabaseName);
 
-            _plans = database.GetCollection<MedicationPlan>("MedicationPlans");
-            _logs  = database.GetCollection<MedicationLog>("MedicationLogs");
+            // You can change collection names if you like
+            _plans = db.GetCollection<MedicationPlan>("MedicationPlans");
+            _logs  = db.GetCollection<MedicationLog>("MedicationLogs");
         }
 
         public async Task<List<MedicationPlan>> GetPlansAsync(string userId)
         {
-            var filter = Builders<MedicationPlan>.Filter.Eq(p => p.UserId, userId);
-            return await _plans.Find(filter).ToListAsync();
+            return await _plans.Find(p => p.UserId == userId).ToListAsync();
         }
 
         public async Task AddPlanAsync(MedicationPlan plan)
         {
             if (string.IsNullOrWhiteSpace(plan.UserId))
-                throw new ArgumentException("UserId is required for MedicationPlan.");
+                throw new ArgumentException("UserId is required", nameof(plan));
 
-            plan.Id ??= ObjectId.GenerateNewId().ToString();
             plan.StartDate = plan.StartDate.Date;
+            if (plan.EndDate.HasValue)
+                plan.EndDate = plan.EndDate.Value.Date;
 
             await _plans.InsertOneAsync(plan);
 
-            // Also create log for today as "Upcoming"
-            var todayLog = new MedicationLog
+            var today = DateTime.UtcNow.Date;
+            if (today >= plan.StartDate && (!plan.EndDate.HasValue || today <= plan.EndDate.Value))
             {
-                PlanId = plan.Id,
-                UserId = plan.UserId,
-                Date = DateTime.UtcNow.Date,
-                Status = MedicationStatus.Upcoming
-            };
+                var log = new MedicationLog
+                {
+                    PlanId = plan.Id!,
+                    UserId = plan.UserId,
+                    Date = today,
+                    Status = MedicationStatus.Pending
+                };
 
-            await _logs.InsertOneAsync(todayLog);
+                await _logs.InsertOneAsync(log);
+            }
         }
 
         public async Task DeletePlanAsync(string id)
         {
-            var filter = Builders<MedicationPlan>.Filter.Eq(p => p.Id, id);
-            await _plans.DeleteOneAsync(filter);
-
-            var logsFilter = Builders<MedicationLog>.Filter.Eq(l => l.PlanId, id);
-            await _logs.DeleteManyAsync(logsFilter);
+            await _plans.DeleteOneAsync(p => p.Id == id);
+            await _logs.DeleteManyAsync(l => l.PlanId == id);
         }
 
         public async Task<List<MedicationLog>> GetTodayLogsAsync(string userId)
         {
             var today = DateTime.UtcNow.Date;
 
-            var filter = Builders<MedicationLog>.Filter.And(
-                Builders<MedicationLog>.Filter.Eq(l => l.UserId, userId),
-                Builders<MedicationLog>.Filter.Gte(l => l.Date, today),
-                Builders<MedicationLog>.Filter.Lt(l => l.Date, today.AddDays(1))
-            );
+            var filterUser = Builders<MedicationLog>.Filter.Eq(l => l.UserId, userId);
+            var filterDate = Builders<MedicationLog>.Filter.Eq(l => l.Date, today);
 
-            return await _logs.Find(filter).ToListAsync();
+            var logs = await _logs.Find(filterUser & filterDate).ToListAsync();
+
+            // If no logs exist for today, create them for all active plans
+            if (logs.Count == 0)
+            {
+                var plans = await _plans.Find(p =>
+                    p.UserId == userId &&
+                    p.StartDate <= today &&
+                    (p.EndDate == null || p.EndDate >= today)
+                ).ToListAsync();
+
+                if (plans.Any())
+                {
+                    var newLogs = plans.Select(p => new MedicationLog
+                    {
+                        PlanId = p.Id!,
+                        UserId = p.UserId,
+                        Date = today,
+                        Status = MedicationStatus.Pending
+                    }).ToList();
+
+                    await _logs.InsertManyAsync(newLogs);
+                    logs = newLogs;
+                }
+            }
+
+            return logs;
         }
 
         public async Task UpdateLogStatusAsync(string logId, MedicationStatus status)
         {
-            var filter = Builders<MedicationLog>.Filter.Eq(l => l.Id, logId);
             var update = Builders<MedicationLog>.Update.Set(l => l.Status, status);
-
-            await _logs.UpdateOneAsync(filter, update);
+            await _logs.UpdateOneAsync(l => l.Id == logId, update);
         }
     }
 }

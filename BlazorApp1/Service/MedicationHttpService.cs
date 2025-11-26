@@ -1,8 +1,4 @@
-using System;
-using System.Collections.Generic;
-using System.Net.Http;
 using System.Net.Http.Json;
-using System.Threading.Tasks;
 using Model;
 
 namespace BlazorApp1.Service
@@ -16,49 +12,38 @@ namespace BlazorApp1.Service
             _http = http;
         }
 
-        // GET /api/medications/user/{userId}
         public async Task<List<MedicationPlan>?> GetPlansAsync(string userId)
         {
-            var result = await _http.GetFromJsonAsync<List<MedicationPlan>>(
-                $"/api/medications/user/{userId}");
-
-            return result ?? new List<MedicationPlan>();
+            return await _http.GetFromJsonAsync<List<MedicationPlan>>(
+                $"api/medications/user/{userId}");
         }
 
-        // POST /api/medications
         public async Task<MedicationPlan?> CreatePlanAsync(MedicationPlan plan)
         {
-            var resp = await _http.PostAsJsonAsync("/api/medications", plan);
-            resp.EnsureSuccessStatusCode();
-
-            var created = await resp.Content.ReadFromJsonAsync<MedicationPlan>();
-            return created;
+            var response = await _http.PostAsJsonAsync("api/medications", plan);
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadFromJsonAsync<MedicationPlan>();
         }
 
-        // DELETE /api/medications/{id}
-        public async Task DeletePlanAsync(string id)
+        public async Task DeletePlanAsync(string planId)
         {
-            var resp = await _http.DeleteAsync($"/api/medications/{id}");
-            resp.EnsureSuccessStatusCode();
+            var response = await _http.DeleteAsync($"api/medications/{planId}");
+            response.EnsureSuccessStatusCode();
         }
 
-        // GET /api/medications/logs/today/{userId}
-        public async Task<List<MedicationLogDto>?> GetTodayLogsAsync(string userId)
+        public async Task<List<MedicationLog>?> GetTodayLogsAsync(string userId)
         {
-            var result = await _http.GetFromJsonAsync<List<MedicationLogDto>>(
-                $"/api/medications/logs/today/{userId}");
-
-            return result ?? new List<MedicationLogDto>();
+            return await _http.GetFromJsonAsync<List<MedicationLog>>(
+                $"api/medications/logs/today/{userId}");
         }
 
-        // POST /api/medications/logs/{logId}/status/{status}
-        public async Task UpdateLogStatusAsync(string logId, string status)
+        public async Task UpdateLogStatusAsync(string logId, MedicationStatus status)
         {
-            var resp = await _http.PostAsync(
-                $"/api/medications/logs/{logId}/status/{status}",
-                content: null);
+            var response = await _http.PostAsync(
+                $"api/medications/logs/{logId}/status/{status}",
+                null);
 
-            resp.EnsureSuccessStatusCode();
+            response.EnsureSuccessStatusCode();
         }
     }
 }

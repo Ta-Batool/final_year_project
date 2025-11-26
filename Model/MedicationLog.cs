@@ -1,13 +1,15 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using System.Text.Json.Serialization;
 
 namespace Model
 {
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public enum MedicationStatus
     {
-        Upcoming,
-        Taken,
-        Missed
+        Pending = 0,
+        Taken = 1,
+        Skipped = 2
     }
 
     public class MedicationLog
@@ -22,8 +24,11 @@ namespace Model
         [BsonRepresentation(BsonType.ObjectId)]
         public string UserId { get; set; } = string.Empty;
 
-        public DateTime Date { get; set; } = DateTime.UtcNow.Date;
+        /// <summary>UTC date-only (no time)</summary>
+        public DateTime Date { get; set; }
 
-        public MedicationStatus Status { get; set; } = MedicationStatus.Upcoming;
+        public MedicationStatus Status { get; set; } = MedicationStatus.Pending;
+
+        public string? Notes { get; set; }
     }
 }
