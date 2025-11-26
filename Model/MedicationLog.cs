@@ -17,12 +17,12 @@ namespace Model
         public string? Id { get; set; }
 
         [BsonRepresentation(BsonType.ObjectId)]
-        public string UserId { get; set; } = string.Empty;
+        public string PlanId { get; set; } = string.Empty;
 
         [BsonRepresentation(BsonType.ObjectId)]
-        public string MedicationPlanId { get; set; } = string.Empty;
+        public string UserId { get; set; } = string.Empty;
 
-        public DateTime ScheduledAt { get; set; }
+        public DateTime Date { get; set; } = DateTime.UtcNow.Date;
 
         public MedicationStatus Status { get; set; } = MedicationStatus.Upcoming;
     }

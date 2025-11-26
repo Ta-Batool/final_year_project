@@ -1,4 +1,3 @@
-using System.Net.Http;
 using System.Net.Http.Json;
 using Model;
 
@@ -15,16 +14,10 @@ namespace BlazorApp1.Service
 
         public async Task<List<MedicationPlan>> GetPlansAsync(string userId)
         {
-            return await _http.GetFromJsonAsync<List<MedicationPlan>>(
-                $"api/medications/user/{userId}"
-            ) ?? new List<MedicationPlan>();
-        }
+            var result = await _http.GetFromJsonAsync<List<MedicationPlan>>(
+                $"api/medications/user/{userId}");
 
-        public async Task<List<MedicationLog>> GetTodayLogsAsync(string userId)
-        {
-            return await _http.GetFromJsonAsync<List<MedicationLog>>(
-                $"api/medications/logs/today/{userId}"
-            ) ?? new List<MedicationLog>();
+            return result ?? new List<MedicationPlan>();
         }
 
         public async Task AddPlanAsync(MedicationPlan plan)
@@ -39,13 +32,20 @@ namespace BlazorApp1.Service
             response.EnsureSuccessStatusCode();
         }
 
+        public async Task<List<MedicationLog>> GetTodayLogsAsync(string userId)
+        {
+            var result = await _http.GetFromJsonAsync<List<MedicationLog>>(
+                $"api/medications/logs/today/{userId}");
+
+            return result ?? new List<MedicationLog>();
+        }
+
         public async Task UpdateLogStatusAsync(string logId, MedicationStatus status)
         {
-            // POST with empty body is fine
             var response = await _http.PostAsync(
                 $"api/medications/logs/{logId}/status/{status}",
-                null
-            );
+                null);
+
             response.EnsureSuccessStatusCode();
         }
     }

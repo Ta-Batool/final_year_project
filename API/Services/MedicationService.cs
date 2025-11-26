@@ -6,55 +6,57 @@ using MongoDB.Driver;
 
 namespace API.Services
 {
-    public interface IMedicationService
-    {
-        Task<List<MedicationPlan>> GetPlansAsync(string userId);
-        Task<MedicationPlan> AddPlanAsync(MedicationPlan plan);
-        Task DeletePlanAsync(string id);
-        Task<List<MedicationLog>> GetTodayLogsAsync(string userId);
-        Task UpdateLogStatusAsync(string logId, MedicationStatus status);
-    }
-
     public class MedicationService : IMedicationService
     {
         private readonly IMongoCollection<MedicationPlan> _plans;
         private readonly IMongoCollection<MedicationLog> _logs;
 
-        public MedicationService(IMongoClient client, IOptions<MongoDbSettings> options)
+        public MedicationService(IOptions<MongoDBSettings> dbOptions)
         {
-            var db = client.GetDatabase(options.Value.DatabaseName);
+            var settings = dbOptions.Value ?? throw new ArgumentNullException(nameof(dbOptions));
 
-            _plans = db.GetCollection<MedicationPlan>("MedicationPlans");
-            _logs  = db.GetCollection<MedicationLog>("MedicationLogs");
+            var client = new MongoClient(settings.ConnectionString);
+            var database = client.GetDatabase(settings.DatabaseName);
+
+            _plans = database.GetCollection<MedicationPlan>("MedicationPlans");
+            _logs  = database.GetCollection<MedicationLog>("MedicationLogs");
         }
 
         public async Task<List<MedicationPlan>> GetPlansAsync(string userId)
         {
-            return await _plans
-                .Find(p => p.UserId == userId)
-                .SortBy(p => p.TimeOfDay)
-                .ToListAsync();
+            var filter = Builders<MedicationPlan>.Filter.Eq(p => p.UserId, userId);
+            return await _plans.Find(filter).ToListAsync();
         }
 
-        public async Task<MedicationPlan> AddPlanAsync(MedicationPlan plan)
+        public async Task AddPlanAsync(MedicationPlan plan)
         {
-            // Ensure Id is null so Mongo generates a new ObjectId
-            plan.Id = null;
+            if (string.IsNullOrWhiteSpace(plan.UserId))
+                throw new ArgumentException("UserId is required for MedicationPlan.");
+
+            plan.Id ??= ObjectId.GenerateNewId().ToString();
+            plan.StartDate = plan.StartDate.Date;
 
             await _plans.InsertOneAsync(plan);
 
-            // When you create a plan you can also pre-create “today” log if you like.
-            // For now we’ll keep logs separate and generated when needed.
+            // Also create log for today as "Upcoming"
+            var todayLog = new MedicationLog
+            {
+                PlanId = plan.Id,
+                UserId = plan.UserId,
+                Date = DateTime.UtcNow.Date,
+                Status = MedicationStatus.Upcoming
+            };
 
-            return plan;
+            await _logs.InsertOneAsync(todayLog);
         }
 
         public async Task DeletePlanAsync(string id)
         {
-            if (!ObjectId.TryParse(id, out _)) return;
+            var filter = Builders<MedicationPlan>.Filter.Eq(p => p.Id, id);
+            await _plans.DeleteOneAsync(filter);
 
-            await _plans.DeleteOneAsync(p => p.Id == id);
-            await _logs.DeleteManyAsync(l => l.PlanId == id);
+            var logsFilter = Builders<MedicationLog>.Filter.Eq(l => l.PlanId, id);
+            await _logs.DeleteManyAsync(logsFilter);
         }
 
         public async Task<List<MedicationLog>> GetTodayLogsAsync(string userId)
@@ -67,20 +69,15 @@ namespace API.Services
                 Builders<MedicationLog>.Filter.Lt(l => l.Date, today.AddDays(1))
             );
 
-            return await _logs.Find(filter)
-                              .SortBy(l => l.ScheduledTime)
-                              .ToListAsync();
+            return await _logs.Find(filter).ToListAsync();
         }
 
         public async Task UpdateLogStatusAsync(string logId, MedicationStatus status)
         {
-            if (!ObjectId.TryParse(logId, out _)) return;
+            var filter = Builders<MedicationLog>.Filter.Eq(l => l.Id, logId);
+            var update = Builders<MedicationLog>.Update.Set(l => l.Status, status);
 
-            var update = Builders<MedicationLog>.Update
-                .Set(l => l.Status, status)
-                .Set(l => l.UpdatedAt, DateTime.UtcNow);
-
-            await _logs.UpdateOneAsync(l => l.Id == logId, update);
+            await _logs.UpdateOneAsync(filter, update);
         }
     }
 }
