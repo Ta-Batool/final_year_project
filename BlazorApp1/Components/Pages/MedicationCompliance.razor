@@ -1,22 +1,24 @@
 @page "/medication-compliance"
 @attribute [Authorize]
 
-@using System.Security.Claims
-@using Model
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using Model
 @using BlazorApp1.Components.Layout
-
+@using BlazorApp1.Service
+@inject IMedicationHttpService MedicationService
+@inject IJSRuntime JS
 @layout UserDashboardLayout
 
+<h2>Medication Compliance</h2>
 
-@inject AuthenticationStateProvider AuthStateProvider
-@inject ICService CService
-@inject IUService UService
-@inject IMedicationService MedService
+<p class="subtitle">
+    Track your prescribed medicines and mark today’s doses as taken.
+</p>
 
 @if (isLoading)
 {
-    <p>Loading medication data...</p>
+    <p>Loading your medications...</p>
 }
 else if (!string.IsNullOrEmpty(errorMessage))
 {
@@ -24,177 +26,168 @@ else if (!string.IsNullOrEmpty(errorMessage))
 }
 else
 {
-    <div class="med-page">
-        <h2>Medication reminders</h2>
-        <p>Set reminders with time and dosage, and track if you took them or missed them.</p>
+    <div class="medication-grid">
+        <!-- LEFT: Add Medication Plan -->
+        <div class="card">
+            <h3>Add Medication</h3>
 
-        <!-- Add new plan -->
-        <div class="card add-plan">
-            <h3>Add medication</h3>
+            <EditForm Model="@newPlan" OnValidSubmit="AddMedication">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
 
-            <div class="form-row">
-                <label>Medicine name</label>
-                <input class="form-control" @bind="newPlan.MedicineName" placeholder="e.g. Panadol" />
-            </div>
+                <div class="form-group">
+                    <label>Medicine Name</label>
+                    <InputText @bind-Value="newPlan.Name" class="form-control" />
+                </div>
 
-            <div class="form-row">
-                <label>Dosage</label>
-                <input class="form-control" @bind="newPlan.Dosage" placeholder="e.g. 1 tablet" />
-            </div>
+                <div class="form-group">
+                    <label>Dosage (e.g. 500 mg after breakfast)</label>
+                    <InputText @bind-Value="newPlan.Dosage" class="form-control" />
+                </div>
 
-            <div class="form-row">
-                <label>Time of day</label>
-                <input class="form-control" type="time" @bind="newPlan.TimeOfDay" />
-            </div>
+                <div class="form-group">
+                    <label>Time of day (HH:MM)</label>
+                    <InputText @bind-Value="newPlan.TimeOfDay" class="form-control" />
+                    <small>Example: 08:00, 20:00</small>
+                </div>
 
-            <div class="form-row">
-                <label>Notes (optional)</label>
-                <input class="form-control" @bind="newPlan.Notes" placeholder="With food, before sleep etc." />
-            </div>
+                <div class="form-group">
+                    <label>Start date</label>
+                    <InputDate @bind-Value="newPlan.StartDate" class="form-control" />
+                </div>
 
-            <button class="btn btn-primary" @onclick="AddPlan" disabled="@isSaving">
-                @(isSaving ? "Saving..." : "Save medication")
-            </button>
+                <div class="form-group">
+                    <label>End date (optional)</label>
+                    <InputDate @bind-Value="newPlan.EndDate" class="form-control" />
+                </div>
+
+                <div class="form-group">
+                    <label>Notes</label>
+                    <InputTextArea @bind-Value="newPlan.Notes" class="form-control" />
+                </div>
+
+                <button type="submit" class="btn-primary" disabled="@isSaving">
+                    @(isSaving ? "Saving..." : "Save Medication")
+                </button>
+            </EditForm>
         </div>
 
-        <!-- Today schedule -->
-        <div class="card logs">
-            <h3>Today’s medication schedule</h3>
+        <!-- RIGHT: Today’s meds with compliance -->
+        <div class="card">
+            <h3>Today’s Medications</h3>
 
-            @if (todayLogs.Count == 0)
-            {
-                <p>No medication reminders for today yet.</p>
-            }
-            else
-            {
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Time</th>
-                            <th>Medicine</th>
-                            <th>Dosage</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    @foreach (var log in todayLogs)
-                    {
-                        var plan = plans.FirstOrDefault(p => p.Id == log.MedicationPlanId);
-
-                        <tr>
-                            <td>@log.ScheduledAt.ToLocalTime().ToString("hh\\:mm tt")</td>
-                            <td>@(plan?.MedicineName ?? "Medication")</td>
-                            <td>@(plan?.Dosage ?? "-")</td>
-                            <td>
-                                <span class="status @log.Status.ToString().ToLower()">
-                                    @log.Status
-                                </span>
-                            </td>
-                            <td>
-                                <button class="btn btn-sm btn-success"
-                                        @onclick="() => SetStatus(log.Id!, MedicationStatus.Taken)">
-                                    Taken
-                                </button>
-                                <button class="btn btn-sm btn-danger"
-                                        @onclick="() => SetStatus(log.Id!, MedicationStatus.Missed)">
-                                    Missed
-                                </button>
-                            </td>
-                        </tr>
-                    }
-                    </tbody>
-                </table>
-            }
-        </div>
-
-        <!-- All plans list -->
-        <div class="card plans">
-            <h3>All medications</h3>
-
-            @if (plans.Count == 0)
+            @if (!planRows.Any())
             {
                 <p>No medications added yet.</p>
             }
             else
             {
-                <ul class="plan-list">
-                    @foreach (var plan in plans)
+                <ul class="med-list">
+                    @foreach (var row in planRows)
                     {
-                        <li>
-                            <div>
-                                <strong>@plan.MedicineName</strong> – @plan.Dosage
-                                <span class="time-tag">@plan.TimeOfDay</span>
+                        <li class="med-item">
+                            <div class="med-main">
+                                <strong>@row.Plan.Name</strong>
+                                <span class="dose">@row.Plan.Dosage</span>
+                                <span class="time">@row.Plan.TimeOfDay</span>
                             </div>
-                            <button class="btn btn-sm btn-outline-danger"
-                                    @onclick="() => DeletePlan(plan.Id!)">
-                                Delete
-                            </button>
+
+                            <div class="med-meta">
+                                <span>Start: @row.Plan.StartDate.ToShortDateString()</span>
+                                @if (row.Plan.EndDate.HasValue)
+                                {
+                                    <span>End: @row.Plan.EndDate.Value.ToShortDateString()</span>
+                                }
+                            </div>
+
+                            <div class="med-actions">
+                                <label>
+                                    <input type="checkbox"
+                                           @bind="row.IsTakenToday"
+                                           @bind:after="() => OnTakenChanged(row)" />
+                                    Taken today
+                                </label>
+
+                                <button class="btn-danger" @onclick="() => DeleteMedication(row)" disabled="@row.IsDeleting">
+                                    @(row.IsDeleting ? "Removing..." : "Remove")
+                                </button>
+                            </div>
                         </li>
                     }
                 </ul>
             }
         </div>
     </div>
+
+    <!-- SUMMARY -->
+    <div class="card summary-card">
+        <h3>Today’s Summary</h3>
+        <p>
+            Total medicines: <strong>@planRows.Count</strong> |
+            Taken today: <strong>@planRows.Count(r => r.IsTakenToday)</strong>
+        </p>
+    </div>
 }
 
 @code {
+    // One row in the UI
+    public class MedicationPlanRow
+    {
+        public MedicationPlan Plan { get; set; } = new MedicationPlan();
+        public string? LogId { get; set; }
+        public bool IsTakenToday { get; set; }
+        public bool IsDeleting { get; set; }
+    }
+
+    private string? userId;
     private bool isLoading = true;
     private bool isSaving = false;
     private string? errorMessage;
 
-    private string? userId;
-    private List<MedicationPlan> plans = new();
-    private List<MedicationLog> todayLogs = new();
-
-    private MedicationPlan newPlan = new()
+    private MedicationPlan newPlan = new MedicationPlan
     {
-        Frequency = "Daily",
-        TimeOfDay = "09:00"
+        StartDate = DateTime.UtcNow.Date
     };
+
+    private List<MedicationPlanRow> planRows = new();
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            var auth = await AuthStateProvider.GetAuthenticationStateAsync();
-            var principal = auth.User;
+            // We stored userId in localStorage in GoogleCallBack.razor
+            userId = await JS.InvokeAsync<string?>("localStorage.getItem", "userId");
 
-            if (!(principal.Identity?.IsAuthenticated ?? false))
+            if (string.IsNullOrEmpty(userId))
             {
-                errorMessage = "You must be logged in.";
+                errorMessage = "User ID not found. Please login again.";
                 return;
             }
 
-            var email = principal.FindFirst(ClaimTypes.Email)?.Value
-                        ?? principal.FindFirst("email")?.Value;
+            // 1) Load all plans
+            var plans = await MedicationService.GetPlansAsync(userId) ?? new List<MedicationPlan>();
 
-            if (string.IsNullOrWhiteSpace(email))
+            // 2) Load today logs
+            var logs = await MedicationService.GetTodayLogsAsync(userId) ?? new List<MedicationLogDto>();
+
+            // 3) Create UI rows and map logs -> rows
+            planRows = plans.Select(p =>
             {
-                errorMessage = "No email found for this account.";
-                return;
-            }
+                var row = new MedicationPlanRow { Plan = p };
 
-            var client = await CService.GetClientByEmailAsync(email);
-            if (client is null)
-            {
-                errorMessage = "Client profile not found.";
-                return;
-            }
+                var log = logs.FirstOrDefault(l => l.PlanId == p.Id);
+                if (log != null)
+                {
+                    row.LogId = log.Id;
+                    row.IsTakenToday = string.Equals(log.Status, "Taken", StringComparison.OrdinalIgnoreCase);
+                }
 
-            var user = await UService.GetUserByClientIdAsync(client.Id!);
-            if (user is null)
-            {
-                errorMessage = "User profile not found.";
-                return;
-            }
-
-            userId = user.Id;
-            await LoadData();
+                return row;
+            }).ToList();
         }
         catch (Exception ex)
         {
-            errorMessage = $"Failed to load medication data: {ex.Message}";
+            errorMessage = $"Failed to load medications: {ex.Message}";
         }
         finally
         {
@@ -202,42 +195,36 @@ else
         }
     }
 
-    private async Task LoadData()
+    private async Task AddMedication()
     {
-        if (userId is null) return;
-
-        plans = await MedService.GetPlansAsync(userId);
-        todayLogs = await MedService.GetTodayLogsAsync(userId);
-    }
-
-    private async Task AddPlan()
-    {
-        if (userId is null) return;
-
-        if (string.IsNullOrWhiteSpace(newPlan.MedicineName) ||
-            string.IsNullOrWhiteSpace(newPlan.Dosage) ||
-            string.IsNullOrWhiteSpace(newPlan.TimeOfDay))
+        if (string.IsNullOrEmpty(userId))
         {
-            errorMessage = "Please fill all required fields.";
+            errorMessage = "User ID is missing.";
             return;
         }
 
+        isSaving = true;
+        errorMessage = null;
+
         try
         {
-            isSaving = true;
             newPlan.UserId = userId;
 
-            await MedService.AddPlanAsync(newPlan);
+            var created = await MedicationService.CreatePlanAsync(newPlan);
+            if (created != null)
+            {
+                planRows.Add(new MedicationPlanRow
+                {
+                    Plan = created,
+                    IsTakenToday = false
+                });
+            }
 
             // reset form
             newPlan = new MedicationPlan
             {
-                UserId = userId,
-                Frequency = "Daily",
-                TimeOfDay = "09:00"
+                StartDate = DateTime.UtcNow.Date
             };
-
-            await LoadData();
         }
         catch (Exception ex)
         {
@@ -249,25 +236,44 @@ else
         }
     }
 
-    private async Task DeletePlan(string id)
+    private async Task DeleteMedication(MedicationPlanRow row)
     {
+        if (row.Plan.Id == null)
+        {
+            planRows.Remove(row);
+            return;
+        }
+
+        row.IsDeleting = true;
+        errorMessage = null;
+
         try
         {
-            await MedService.DeletePlanAsync(id);
-            await LoadData();
+            await MedicationService.DeletePlanAsync(row.Plan.Id);
+            planRows.Remove(row);
         }
         catch (Exception ex)
         {
-            errorMessage = $"Failed to delete: {ex.Message}";
+            errorMessage = $"Failed to delete medication: {ex.Message}";
+            row.IsDeleting = false;
         }
     }
 
-    private async Task SetStatus(string logId, MedicationStatus status)
+    private async Task OnTakenChanged(MedicationPlanRow row)
     {
+        // If API did not create a log for today, we can’t update status
+        if (string.IsNullOrEmpty(row.LogId))
+        {
+            // revert checkbox and show message
+            row.IsTakenToday = !row.IsTakenToday;
+            errorMessage = "No log entry found for today’s dose. Backend must create logs first.";
+            return;
+        }
+
         try
         {
-            await MedService.UpdateLogStatusAsync(logId, status);
-            await LoadData();
+            var newStatus = row.IsTakenToday ? "Taken" : "Pending";
+            await MedicationService.UpdateLogStatusAsync(row.LogId, newStatus);
         }
         catch (Exception ex)
         {
@@ -277,101 +283,106 @@ else
 }
 
 <style>
-    .med-page {
-        max-width: 1000px;
-        margin: 0 auto;
-        display: flex;
-        flex-direction: column;
+    .subtitle {
+        color: #777;
+        margin-bottom: 20px;
+    }
+
+    .medication-grid {
+        display: grid;
+        grid-template-columns: 1.2fr 1.5fr;
         gap: 20px;
+        margin-bottom: 20px;
     }
 
     .card {
         background: #fff;
-        padding: 20px;
+        padding: 16px;
         border-radius: 12px;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+        box-shadow: 0 2px 6px rgba(0,0,0,0.08);
     }
 
-    .form-row {
+    .form-group {
         margin-bottom: 10px;
-        display: flex;
-        flex-direction: column;
-    }
-
-    .form-row label {
-        font-weight: 600;
-        margin-bottom: 4px;
     }
 
     .form-control {
-        padding: 8px 10px;
-        border-radius: 6px;
-        border: 1px solid #ddd;
-    }
-
-    .btn {
-        border-radius: 6px;
-        padding: 6px 12px;
-        border: none;
-        cursor: pointer;
-    }
-
-    .btn-primary {
-        background: #5b3cff;
-        color: #fff;
-    }
-
-    .btn-sm {
-        font-size: 13px;
-        padding: 4px 8px;
-        margin-right: 4px;
-    }
-
-    .btn-success { background: #4caf50; color: #fff; }
-    .btn-danger { background: #f44336; color: #fff; }
-    .btn-outline-danger {
-        background: transparent;
-        border: 1px solid #f44336;
-        color: #f44336;
-    }
-
-    .table {
         width: 100%;
-        border-collapse: collapse;
+        padding: 6px 8px;
+        border-radius: 6px;
+        border: 1px solid #ccc;
         font-size: 14px;
     }
 
-    .table th, .table td {
-        padding: 8px;
-        border-bottom: 1px solid #eee;
+    .btn-primary {
+        background: #3b3bbf;
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+        padding: 8px 14px;
+        cursor: pointer;
+        font-size: 14px;
     }
 
-    .plan-list {
+    .btn-primary[disabled] {
+        opacity: 0.6;
+        cursor: default;
+    }
+
+    .med-list {
         list-style: none;
         padding: 0;
         margin: 0;
     }
 
-    .plan-list li {
+    .med-item {
+        padding: 10px 8px;
+        border-bottom: 1px solid #eee;
+    }
+
+    .med-main {
+        display: flex;
+        gap: 12px;
+        align-items: baseline;
+    }
+
+    .med-main .dose {
+        color: #555;
+        font-size: 13px;
+    }
+
+    .med-main .time {
+        font-size: 12px;
+        color: #888;
+    }
+
+    .med-meta {
+        margin-top: 4px;
+        font-size: 12px;
+        color: #777;
+        display: flex;
+        gap: 12px;
+    }
+
+    .med-actions {
+        margin-top: 6px;
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 8px 0;
-        border-bottom: 1px solid #f1f1f1;
+        font-size: 13px;
     }
 
-    .time-tag {
-        margin-left: 8px;
-        font-size: 12px;
-        color: #666;
+    .btn-danger {
+        background: #ff4d4d;
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+        padding: 4px 10px;
+        cursor: pointer;
+        font-size: 13px;
     }
 
-    .status {
-        padding: 3px 6px;
-        border-radius: 10px;
-        font-size: 12px;
+    .summary-card {
+        margin-top: 10px;
     }
-    .status.upcoming { background: #fff3cd; color: #856404; }
-    .status.taken    { background: #d4edda; color: #155724; }
-    .status.missed   { background: #f8d7da; color: #721c24; }
 </style>

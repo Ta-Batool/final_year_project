@@ -75,6 +75,12 @@ builder.Services.AddHttpClient<IAService, AService>(c => c.BaseAddress = new Uri
 builder.Services.AddHttpClient<IMService, MService>(c => c.BaseAddress = new Uri(apiBaseUrl));
 builder.Services.AddHttpClient<IMealService, MealService>(c => c.BaseAddress = new Uri(apiBaseUrl));
 
+builder.Services.AddHttpClient<IMedicationHttpService, MedicationHttpService>(c =>
+{
+    c.BaseAddress = new Uri(apiBaseUrl);
+});
+
+
 // ⬇️ NEW: Medication API client
 builder.Services.AddHttpClient<IMedicationService, MedicationService>(c =>
 {
