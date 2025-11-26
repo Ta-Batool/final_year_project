@@ -1,9 +1,14 @@
-@page "/medications"
+@page "/medication-compliance"
 @attribute [Authorize]
-@layout UserDashboardLayout
 
 @using System.Security.Claims
 @using Model
+@using Microsoft.AspNetCore.Authorization
+@using BlazorApp1.Components.Layout
+
+@layout UserDashboardLayout
+
+
 @inject AuthenticationStateProvider AuthStateProvider
 @inject ICService CService
 @inject IUService UService
