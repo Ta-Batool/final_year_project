@@ -18,6 +18,8 @@ builder.Services.AddScoped<IClientService, ClientService>();
 builder.Services.AddScoped<IAppointmentService, AppointmentService>();
 builder.Services.AddScoped<IMessageService, MessageService>();
 builder.Services.AddScoped<IMealService, MealService>();
+builder.Services.AddSingleton<IMedicationService, MedicationService>();
+
 
 
 var app = builder.Build();

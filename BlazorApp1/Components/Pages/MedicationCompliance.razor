@@ -1,0 +1,372 @@
+@page "/medications"
+@attribute [Authorize]
+@layout UserDashboardLayout
+
+@using System.Security.Claims
+@using Model
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ICService CService
+@inject IUService UService
+@inject IMedicationService MedService
+
+@if (isLoading)
+{
+    <p>Loading medication data...</p>
+}
+else if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+else
+{
+    <div class="med-page">
+        <h2>Medication reminders</h2>
+        <p>Set reminders with time and dosage, and track if you took them or missed them.</p>
+
+        <!-- Add new plan -->
+        <div class="card add-plan">
+            <h3>Add medication</h3>
+
+            <div class="form-row">
+                <label>Medicine name</label>
+                <input class="form-control" @bind="newPlan.MedicineName" placeholder="e.g. Panadol" />
+            </div>
+
+            <div class="form-row">
+                <label>Dosage</label>
+                <input class="form-control" @bind="newPlan.Dosage" placeholder="e.g. 1 tablet" />
+            </div>
+
+            <div class="form-row">
+                <label>Time of day</label>
+                <input class="form-control" type="time" @bind="newPlan.TimeOfDay" />
+            </div>
+
+            <div class="form-row">
+                <label>Notes (optional)</label>
+                <input class="form-control" @bind="newPlan.Notes" placeholder="With food, before sleep etc." />
+            </div>
+
+            <button class="btn btn-primary" @onclick="AddPlan" disabled="@isSaving">
+                @(isSaving ? "Saving..." : "Save medication")
+            </button>
+        </div>
+
+        <!-- Today schedule -->
+        <div class="card logs">
+            <h3>Today’s medication schedule</h3>
+
+            @if (todayLogs.Count == 0)
+            {
+                <p>No medication reminders for today yet.</p>
+            }
+            else
+            {
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Medicine</th>
+                            <th>Dosage</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var log in todayLogs)
+                    {
+                        var plan = plans.FirstOrDefault(p => p.Id == log.MedicationPlanId);
+
+                        <tr>
+                            <td>@log.ScheduledAt.ToLocalTime().ToString("hh\\:mm tt")</td>
+                            <td>@(plan?.MedicineName ?? "Medication")</td>
+                            <td>@(plan?.Dosage ?? "-")</td>
+                            <td>
+                                <span class="status @log.Status.ToString().ToLower()">
+                                    @log.Status
+                                </span>
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-success"
+                                        @onclick="() => SetStatus(log.Id!, MedicationStatus.Taken)">
+                                    Taken
+                                </button>
+                                <button class="btn btn-sm btn-danger"
+                                        @onclick="() => SetStatus(log.Id!, MedicationStatus.Missed)">
+                                    Missed
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
+        </div>
+
+        <!-- All plans list -->
+        <div class="card plans">
+            <h3>All medications</h3>
+
+            @if (plans.Count == 0)
+            {
+                <p>No medications added yet.</p>
+            }
+            else
+            {
+                <ul class="plan-list">
+                    @foreach (var plan in plans)
+                    {
+                        <li>
+                            <div>
+                                <strong>@plan.MedicineName</strong> – @plan.Dosage
+                                <span class="time-tag">@plan.TimeOfDay</span>
+                            </div>
+                            <button class="btn btn-sm btn-outline-danger"
+                                    @onclick="() => DeletePlan(plan.Id!)">
+                                Delete
+                            </button>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private bool isLoading = true;
+    private bool isSaving = false;
+    private string? errorMessage;
+
+    private string? userId;
+    private List<MedicationPlan> plans = new();
+    private List<MedicationLog> todayLogs = new();
+
+    private MedicationPlan newPlan = new()
+    {
+        Frequency = "Daily",
+        TimeOfDay = "09:00"
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+            var principal = auth.User;
+
+            if (!(principal.Identity?.IsAuthenticated ?? false))
+            {
+                errorMessage = "You must be logged in.";
+                return;
+            }
+
+            var email = principal.FindFirst(ClaimTypes.Email)?.Value
+                        ?? principal.FindFirst("email")?.Value;
+
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                errorMessage = "No email found for this account.";
+                return;
+            }
+
+            var client = await CService.GetClientByEmailAsync(email);
+            if (client is null)
+            {
+                errorMessage = "Client profile not found.";
+                return;
+            }
+
+            var user = await UService.GetUserByClientIdAsync(client.Id!);
+            if (user is null)
+            {
+                errorMessage = "User profile not found.";
+                return;
+            }
+
+            userId = user.Id;
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load medication data: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadData()
+    {
+        if (userId is null) return;
+
+        plans = await MedService.GetPlansAsync(userId);
+        todayLogs = await MedService.GetTodayLogsAsync(userId);
+    }
+
+    private async Task AddPlan()
+    {
+        if (userId is null) return;
+
+        if (string.IsNullOrWhiteSpace(newPlan.MedicineName) ||
+            string.IsNullOrWhiteSpace(newPlan.Dosage) ||
+            string.IsNullOrWhiteSpace(newPlan.TimeOfDay))
+        {
+            errorMessage = "Please fill all required fields.";
+            return;
+        }
+
+        try
+        {
+            isSaving = true;
+            newPlan.UserId = userId;
+
+            await MedService.AddPlanAsync(newPlan);
+
+            // reset form
+            newPlan = new MedicationPlan
+            {
+                UserId = userId,
+                Frequency = "Daily",
+                TimeOfDay = "09:00"
+            };
+
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to save medication: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task DeletePlan(string id)
+    {
+        try
+        {
+            await MedService.DeletePlanAsync(id);
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to delete: {ex.Message}";
+        }
+    }
+
+    private async Task SetStatus(string logId, MedicationStatus status)
+    {
+        try
+        {
+            await MedService.UpdateLogStatusAsync(logId, status);
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to update status: {ex.Message}";
+        }
+    }
+}
+
+<style>
+    .med-page {
+        max-width: 1000px;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .card {
+        background: #fff;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    }
+
+    .form-row {
+        margin-bottom: 10px;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .form-row label {
+        font-weight: 600;
+        margin-bottom: 4px;
+    }
+
+    .form-control {
+        padding: 8px 10px;
+        border-radius: 6px;
+        border: 1px solid #ddd;
+    }
+
+    .btn {
+        border-radius: 6px;
+        padding: 6px 12px;
+        border: none;
+        cursor: pointer;
+    }
+
+    .btn-primary {
+        background: #5b3cff;
+        color: #fff;
+    }
+
+    .btn-sm {
+        font-size: 13px;
+        padding: 4px 8px;
+        margin-right: 4px;
+    }
+
+    .btn-success { background: #4caf50; color: #fff; }
+    .btn-danger { background: #f44336; color: #fff; }
+    .btn-outline-danger {
+        background: transparent;
+        border: 1px solid #f44336;
+        color: #f44336;
+    }
+
+    .table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+    }
+
+    .table th, .table td {
+        padding: 8px;
+        border-bottom: 1px solid #eee;
+    }
+
+    .plan-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    .plan-list li {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 0;
+        border-bottom: 1px solid #f1f1f1;
+    }
+
+    .time-tag {
+        margin-left: 8px;
+        font-size: 12px;
+        color: #666;
+    }
+
+    .status {
+        padding: 3px 6px;
+        border-radius: 10px;
+        font-size: 12px;
+    }
+    .status.upcoming { background: #fff3cd; color: #856404; }
+    .status.taken    { background: #d4edda; color: #155724; }
+    .status.missed   { background: #f8d7da; color: #721c24; }
+</style>
