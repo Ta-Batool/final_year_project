@@ -24,7 +24,6 @@ namespace Model
         [BsonRepresentation(BsonType.ObjectId)]
         public string UserId { get; set; } = string.Empty;
 
-        /// <summary>UTC date-only (no time)</summary>
         public DateTime Date { get; set; }
 
         public MedicationStatus Status { get; set; } = MedicationStatus.Pending;

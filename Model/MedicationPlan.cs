@@ -9,6 +9,7 @@ namespace Model
         [BsonRepresentation(BsonType.ObjectId)]
         public string? Id { get; set; }
 
+        // Link to your existing User document
         [BsonRepresentation(BsonType.ObjectId)]
         public string UserId { get; set; } = string.Empty;
 
@@ -18,7 +19,8 @@ namespace Model
         // e.g. "500 mg after breakfast"
         public string Dosage { get; set; } = string.Empty;
 
-        // e.g. "08:00", "20:00"
+        // When in the day this should be taken (simplified: one time per plan)
+        // Example: "08:00", "20:00"
         public string TimeOfDay { get; set; } = string.Empty;
 
         public DateTime StartDate { get; set; } = DateTime.UtcNow.Date;
