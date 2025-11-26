@@ -1,5 +1,8 @@
 using API.MongoModel;
 using API.Services;
+using Microsoft.Extensions.Options;
+using MongoDB.Driver;
+
 
 var builder = WebApplication.CreateBuilder(args);
 
