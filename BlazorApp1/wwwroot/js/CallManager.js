@@ -1,116 +1,66 @@
-window.callManager = (function () {
-    let connection = null;      // SignalR connection
-    let peer = null;            // RTCPeerConnection
-    let localStream = null;
-    let remoteAudio = null;
-    let conversationId = null;
-    let isCaller = false;
-    let myClientId = null;
+let peer = null;
+let currentCall = null;
+let localStream = null;
+let remoteStream = null;
 
-    async function init(hubUrl, convId, isInitiator, clientId, remoteAudioElementId) {
-        conversationId = convId;
-        isCaller = isInitiator;
-        myClientId = clientId;
-        remoteAudio = document.getElementById(remoteAudioElementId);
+// Initialize SignalR connection
+const connection = new signalR.HubConnectionBuilder()
+    .withUrl("/callHub")
+    .build();
 
-        // build SignalR connection
-        connection = new signalR.HubConnectionBuilder()
-            .withUrl(hubUrl)
-            .withAutomaticReconnect()
-            .build();
+connection.start().then(() => {
+    console.log("SignalR connection established!");
+}).catch(err => {
+    console.error("SignalR connection failed:", err);
+});
 
-        registerHandlers();
+// Function to start a call
+function startCall(remotePeerId) {
+    localStream = getLocalStream();
 
-        await connection.start();
-        await connection.invoke("JoinConversation", conversationId);
+    // Create a PeerJS connection
+    peer = new Peer(undefined, {
+        host: 'your-peer-server.com', 
+        port: 9000, 
+        path: '/peerjs'
+    });
 
-        await setupPeer();
+    peer.on('open', (id) => {
+        console.log('Peer connected: ', id);
 
-        if (isCaller) {
-            await startOffer();
-        }
-    }
+        // Send the peer ID via SignalR
+        connection.invoke("SendPeerId", id);
+    });
 
-    function registerHandlers() {
-        connection.on("ReceiveOffer", async (fromClientId, sdp) => {
-            await peer.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp }));
-            const answer = await peer.createAnswer();
-            await peer.setLocalDescription(answer);
-            await connection.invoke("SendAnswer", conversationId, myClientId, answer.sdp);
+    // Make the call
+    peer.on('call', (call) => {
+        console.log('Receiving call from ' + call.peer);
+        // Answer the call with the local stream
+        call.answer(localStream);
+        call.on('stream', (remoteStream) => {
+            // Set the remote stream to the video element
+            document.getElementById('remoteAudio').srcObject = remoteStream;
         });
+    });
 
-        connection.on("ReceiveAnswer", async (fromClientId, sdp) => {
-            await peer.setRemoteDescription(new RTCSessionDescription({ type: "answer", sdp }));
+    // Call the peer
+    peer.call(remotePeerId, localStream);
+}
+
+// Function to get local media stream (audio/video)
+function getLocalStream() {
+    navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+        .then((stream) => {
+            document.getElementById('localAudio').srcObject = stream;
+            return stream;
+        }).catch((err) => {
+            console.log("Failed to get local stream: ", err);
         });
+}
 
-        connection.on("ReceiveIceCandidate", async (fromClientId, candidate) => {
-            try {
-                await peer.addIceCandidate(new RTCIceCandidate(JSON.parse(candidate)));
-            } catch (e) {
-                console.error("Error adding ICE candidate", e);
-            }
-        });
+// End the call
+function endCall() {
+    if (currentCall) {
+        currentCall.close();
     }
-
-    async function setupPeer() {
-        // audio only
-        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-
-        peer = new RTCPeerConnection({
-            iceServers: [
-                { urls: "stun:stun.l.google.com:19302" }
-            ]
-        });
-
-        localStream.getTracks().forEach(t => peer.addTrack(t, localStream));
-
-        peer.onicecandidate = e => {
-            if (e.candidate) {
-                connection.invoke(
-                    "SendIceCandidate",
-                    conversationId,
-                    myClientId,
-                    JSON.stringify(e.candidate)
-                );
-            }
-        };
-
-        peer.ontrack = e => {
-            const [stream] = e.streams;
-            if (remoteAudio) {
-                remoteAudio.srcObject = stream;
-                remoteAudio.play().catch(() => { });
-            }
-        };
-    }
-
-    async function startOffer() {
-        const offer = await peer.createOffer();
-        await peer.setLocalDescription(offer);
-        await connection.invoke("SendOffer", conversationId, myClientId, offer.sdp);
-    }
-
-    async function endCall() {
-        try {
-            if (peer) {
-                peer.close();
-                peer = null;
-            }
-            if (localStream) {
-                localStream.getTracks().forEach(t => t.stop());
-                localStream = null;
-            }
-            if (connection) {
-                await connection.stop();
-                connection = null;
-            }
-        } catch (e) {
-            console.error("Error ending call", e);
-        }
-    }
-
-    return {
-        init,
-        endCall
-    };
-})();
+}

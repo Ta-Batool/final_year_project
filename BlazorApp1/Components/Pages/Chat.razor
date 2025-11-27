@@ -133,8 +133,8 @@
 </div>
 
 @code {
-    [Parameter] public string doctorClientId { get; set; } = string.Empty;
-    [Parameter] public string userClientId { get; set; } = string.Empty;
+    [Parameter] public string doctorClientId { get; set; } = "";
+    [Parameter] public string userClientId { get; set; } = "";
 
     private string doctorName = "Doctor";
     private string userName = "You";
@@ -250,13 +250,11 @@
             {
                 using var content = new MultipartFormDataContent();
 
-                // file
                 var stream = selectedFile.OpenReadStream(maxUploadSize);
                 var fileContent = new StreamContent(stream);
                 fileContent.Headers.ContentType = new MediaTypeHeaderValue(selectedFile.ContentType);
                 content.Add(fileContent, "file", selectedFile.Name);
 
-                // metadata fields expected by API
                 content.Add(new StringContent(senderId), "senderId");
                 content.Add(new StringContent(senderName), "senderName");
                 content.Add(new StringContent(receiverId), "receiverId");
@@ -264,10 +262,9 @@
                 content.Add(new StringContent(userClientId), "userClientId");
                 content.Add(new StringContent(doctorClientId), "doctorClientId");
                 content.Add(new StringContent(newMessageText ?? string.Empty), "text");
-                content.Add(new StringContent("false"), "isVoice"); // normal attachment
+                content.Add(new StringContent("false"), "isVoice");
 
                 saved = await MessageService.SendAttachmentAsync(content);
-
                 selectedFile = null;
             }
             else
@@ -296,7 +293,6 @@
         }
     }
 
-    // 🎙 Start recording via JS (voice note)
     private async Task StartRecording()
     {
         try
@@ -311,7 +307,6 @@
         }
     }
 
-    // 🎙 Stop recording, get audio data, send as voice note
     private async Task StopRecordingAndSend()
     {
         try
@@ -325,7 +320,6 @@
                 return;
             }
 
-            // dataUrl = "data:audio/webm;codecs=opus;base64,AAAA..."
             var parts = dataUrl.Split(',');
             if (parts.Length != 2)
             {
@@ -386,7 +380,6 @@
         return $"{apiBaseUrl.TrimEnd('/')}/api/message/{m.Id}/attachment";
     }
 
-    // 📞 Web call handler (calls JS callManager)
     private async Task OnVoiceCall()
     {
         if (string.IsNullOrWhiteSpace(doctorClientId) ||
@@ -408,7 +401,7 @@
                     "callManager.init",
                     hubUrl,
                     conversationId,
-                    true,                // this side is initiator
+                    true,
                     currentClientId,
                     "remoteAudio"
                 );
@@ -427,12 +420,6 @@
         {
             recordingStatus = $"Call error: {ex.Message}";
         }
-    }
-
-    private void OnVideoCall()
-    {
-        // Future enhancement – WebRTC video
-        Console.WriteLine("Video call clicked");
     }
 }
 
@@ -586,4 +573,4 @@
         color: #555;
         margin-top: 4px;
     }
-</style>
+</style> 

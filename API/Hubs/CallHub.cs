@@ -4,28 +4,18 @@ namespace API.Hubs
 {
     public class CallHub : Hub
     {
-        // conversationId could be doctorId_userId string
-        public async Task JoinConversation(string conversationId)
+        // Clients can send their peer ID to this method
+        public async Task SendPeerId(string peerId)
         {
-            await Groups.AddToGroupAsync(Context.ConnectionId, conversationId);
+            // Send peer ID to the other client
+            await Clients.Others.SendAsync("ReceivePeerId", peerId);
         }
 
-        public async Task SendOffer(string conversationId, string fromClientId, string sdp)
+        // Broadcast the signaling data to connected clients (offer, answer, ICE candidates)
+        public async Task SendSignal(string peerId, string signalData)
         {
-            await Clients.OthersInGroup(conversationId)
-                .SendAsync("ReceiveOffer", fromClientId, sdp);
-        }
-
-        public async Task SendAnswer(string conversationId, string fromClientId, string sdp)
-        {
-            await Clients.OthersInGroup(conversationId)
-                .SendAsync("ReceiveAnswer", fromClientId, sdp);
-        }
-
-        public async Task SendIceCandidate(string conversationId, string fromClientId, string candidate)
-        {
-            await Clients.OthersInGroup(conversationId)
-                .SendAsync("ReceiveIceCandidate", fromClientId, candidate);
+            // Send the signaling data to the specific peer
+            await Clients.Client(peerId).SendAsync("ReceiveSignal", signalData);
         }
     }
 }

@@ -1,6 +1,7 @@
-@page "/user-chat/{doctorClientId}/{userClientId}"
+@page "/messages/{doctorClientId}/{userClientId}"
+@page "/chat/{doctorClientId}/{userClientId}"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
-@layout BlazorApp1.Components.Layout.UserDashboardLayout
+@layout BlazorApp1.Components.Layout.DashboardLayout
 
 @using System
 @using System.Collections.Generic
@@ -26,130 +27,136 @@
     <div>
         <h3>Chat with @(isDoctorView ? userName : doctorName)</h3>
         <p class="chat-subtitle">
-            @if (isDoctorView)
-            {
-                <span>You are logged in as doctor.</span>
-            }
-            else
-            {
-                <span>You are logged in as patient.</span>
-            }
+            @(isDoctorView ? doctorName : userName)
         </p>
     </div>
 
     <div class="chat-actions">
-        <button class="icon-btn" title="Voice call" @onclick="OnVoiceCall">
-            <i class="fa-solid fa-phone"></i>
+        <button class="icon-btn" title="Voice Call" @onclick="OnVoiceCall">
+            @(inCall ? "🔴" : "📞")
         </button>
-        <button class="icon-btn" title="Voice note" @onclick="StartRecording" disabled="@isRecording">
-            <i class="fa-solid fa-microphone"></i>
-        </button>
-        <audio id="remoteAudio" autoplay hidden></audio>
+        <button class="icon-btn" title="Video Call" @onclick="OnVideoCall">🎥</button>
     </div>
 </div>
 
 <div class="chat-container">
-    @if (isLoading)
+    @* 🔊 remote audio from WebRTC *@
+    <audio id="remoteAudio" autoplay hidden></audio>
+
+    @if (string.IsNullOrWhiteSpace(doctorClientId) || string.IsNullOrWhiteSpace(userClientId))
     {
-        <p>Loading conversation...</p>
-    }
-    else if (messages.Count == 0)
-    {
-        <p class="empty">No messages yet. Say hello!</p>
+        <p class="empty">No conversation selected. Go to <b>Messages</b> and choose a conversation.</p>
     }
     else
     {
-        @foreach (var m in messages)
+        <div class="messages">
+            @if (isLoading)
+            {
+                <p>Loading conversation...</p>
+            }
+            else if (messages.Count == 0)
+            {
+                <p class="empty">No messages yet. Say hello!</p>
+            }
+            else
+            {
+                @foreach (var m in messages)
+                {
+                    var mine = !string.IsNullOrWhiteSpace(currentClientId) && m.SenderId == currentClientId;
+                    <div class="message @(mine ? "mine" : "theirs")">
+                        <div class="meta">
+                            <span class="name">@m.SenderName</span>
+                            <span class="time">@m.SentAt.ToLocalTime().ToString("HH:mm")</span>
+                        </div>
+                        <div class="text">
+                            @if (!string.IsNullOrWhiteSpace(m.Text))
+                            {
+                                <div>@m.Text</div>
+                            }
+
+                            @if (!string.IsNullOrEmpty(m.AttachmentFileName) && !string.IsNullOrEmpty(m.Id))
+                            {
+                                var isImage = m.AttachmentContentType?.StartsWith("image") == true;
+                                var isAudio = m.AttachmentContentType?.StartsWith("audio") == true || m.IsVoiceMessage;
+                                var url = GetAttachmentUrl(m);
+
+                                if (isImage)
+                                {
+                                    <img src="@url" class="chat-image" />
+                                }
+                                else if (isAudio)
+                                {
+                                    <audio controls src="@url" class="chat-audio"></audio>
+                                }
+                                else
+                                {
+                                    <a href="@url" target="_blank">
+                                        Download @m.AttachmentFileName
+                                    </a>
+                                }
+                            }
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+
+        <div class="composer">
+            <InputFile OnChange="OnFileSelected" />
+
+            <input @bind="newMessageText"
+                   @bind:event="oninput"
+                   placeholder="Type a message..." />
+
+            @* 🎙 Voice note buttons *@
+            @if (!isRecording)
+            {
+                <button type="button" class="btn-secondary" @onclick="StartRecording">
+                    🎙
+                </button>
+            }
+            else
+            {
+                <button type="button" class="btn-secondary recording" @onclick="StopRecordingAndSend">
+                    ⏹
+                </button>
+            }
+
+            <button @onclick="SendMessage">Send</button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(recordingStatus))
         {
-            var mine = !string.IsNullOrWhiteSpace(currentClientId) && m.SenderId == currentClientId;
-            <div class="message @(mine ? "mine" : "theirs")">
-                <div class="meta">
-                    <span class="name">@m.SenderName</span>
-                    <span class="time">@m.SentAt.ToLocalTime().ToString("HH:mm")</span>
-
-                </div>
-                <div class="bubble">
-                    @if (!string.IsNullOrWhiteSpace(m.Text))
-                    {
-                        <p>@m.Text</p>
-                    }
-
-                    @if (m.AttachmentData != null && !string.IsNullOrEmpty(m.AttachmentFileName))
-                    {
-                        var isImage = !string.IsNullOrEmpty(m.AttachmentContentType) &&
-                                      m.AttachmentContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
-                        var isAudio = !string.IsNullOrEmpty(m.AttachmentContentType) &&
-                                      m.AttachmentContentType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase);
-
-                        var url = GetAttachmentUrl(m);
-
-                        if (isImage)
-                        {
-                            <img src="@url" class="chat-image" />
-                        }
-                        else if (isAudio)
-                        {
-                            <audio controls src="@url" class="chat-audio"></audio>
-                        }
-                        else
-                        {
-                            <a href="@url" target="_blank">
-                                Download @m.AttachmentFileName
-                            </a>
-                        }
-                    }
-                </div>
-            </div>
+            <p class="recording-status">@recordingStatus</p>
         }
     }
 </div>
-
-<div class="composer">
-    <InputFile OnChange="OnFileSelected" />
-
-    <input @bind="newMessageText"
-           @bind:event="oninput"
-           placeholder="Type a message..." />
-
-    @if (!isRecording)
-    {
-        <button type="button" class="btn-secondary" @onclick="StartRecording">
-            🎙
-        </button>
-    }
-    else
-    {
-        <button type="button" class="btn-secondary recording" @onclick="StopRecordingAndSend">
-            ⏹
-        </button>
-    }
-
-    <button @onclick="SendMessage">Send</button>
-</div>
-
-@if (!string.IsNullOrEmpty(recordingStatus))
-{
-    <p class="recording-status">@recordingStatus</p>
-}
 
 @code {
     [Parameter] public string doctorClientId { get; set; } = "";
     [Parameter] public string userClientId { get; set; } = "";
 
+    private string doctorName = "Doctor";
+    private string userName = "You";
+
     private List<Message> messages = new();
-    private string doctorName = "";
-    private string userName = "";
+    private string newMessageText = "";
+    private bool isLoading = true;
+
+    // who is logged in
     private string? currentClientId;
     private bool isDoctorView = false;
 
-    private bool isLoading = true;
-    private string newMessageText = "";
+    // ⭐ attachments (file picker)
     private IBrowserFile? selectedFile;
     private const long maxUploadSize = 10 * 1024 * 1024; // 10 MB
     private string apiBaseUrl = "";
 
+    // 🎙 voice recording (offline voice notes)
     private bool isRecording = false;
     private string recordingStatus = "";
+
+    // 📞 web call state
     private bool inCall = false;
 
     protected override async Task OnInitializedAsync()
@@ -159,6 +166,7 @@
 
         try
         {
+            // Load doctor name
             if (!string.IsNullOrWhiteSpace(doctorClientId))
             {
                 var doctor = await DoctorService.GetDoctorByClientIdAsync(doctorClientId);
@@ -166,6 +174,7 @@
                     doctorName = $"Dr. {doctor.Name}";
             }
 
+            // Load user name
             if (!string.IsNullOrWhiteSpace(userClientId))
             {
                 var user = await UserService.GetUserByClientIdAsync(userClientId);
@@ -173,6 +182,7 @@
                     userName = user.Name;
             }
 
+            // Determine who is currently logged in (doctor or patient)
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             var principal = authState.User;
 
@@ -193,9 +203,11 @@
                 }
             }
 
+            // Fallback: if we couldn't detect current client, assume patient
             if (string.IsNullOrWhiteSpace(currentClientId))
                 currentClientId = userClientId;
 
+            // Load conversation
             if (!string.IsNullOrWhiteSpace(userClientId) &&
                 !string.IsNullOrWhiteSpace(doctorClientId))
             {
@@ -410,3 +422,155 @@
         }
     }
 }
+
+<style>
+    .chat-header {
+        max-width: 700px;
+        margin: 20px auto 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .chat-subtitle {
+        margin: 0;
+        font-size: 13px;
+        color: #666;
+    }
+
+    .chat-actions {
+        display: flex;
+        gap: 8px;
+    }
+
+    .icon-btn {
+        border: none;
+        background: #3b3bbf;
+        color: #fff;
+        border-radius: 50%;
+        width: 32px;
+        height: 32px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+    }
+
+    .icon-btn:hover {
+        opacity: 0.9;
+    }
+
+    .chat-container {
+        max-width: 700px;
+        margin: 10px auto 20px;
+        background: #ffffff;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .messages {
+        max-height: 400px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding-right: 4px;
+    }
+
+    .message {
+        max-width: 70%;
+        padding: 8px 10px;
+        border-radius: 10px;
+        background: #f1f2f6;
+        font-size: 14px;
+    }
+
+    .message.mine {
+        margin-left: auto;
+        background: #d1e7ff;
+    }
+
+    .message.theirs {
+        margin-right: auto;
+    }
+
+    .meta {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: #555;
+        margin-bottom: 2px;
+    }
+
+    .text {
+        font-size: 14px;
+    }
+
+    .composer {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+        align-items: center;
+    }
+
+    .composer input[type="file"],
+    .composer ::deep input[type="file"] {
+        max-width: 180px;
+        font-size: 12px;
+    }
+
+    .composer input:not([type="file"]) {
+        flex: 1;
+        padding: 8px;
+        border-radius: 8px;
+        border: 1px solid #ccc;
+    }
+
+    .composer button {
+        padding: 8px 14px;
+        border: none;
+        background: #3b3bbf;
+        color: #fff;
+        cursor: pointer;
+        border-radius: 8px;
+    }
+
+    .composer .btn-secondary {
+        background: #6c757d;
+    }
+
+    .composer .btn-secondary.recording {
+        background: #dc3545;
+    }
+
+    .composer button:hover {
+        opacity: 0.9;
+    }
+
+    .empty {
+        color: #777;
+        font-style: italic;
+    }
+
+    .chat-image {
+        max-width: 200px;
+        border-radius: 8px;
+        margin-top: 4px;
+    }
+
+    .chat-audio {
+        width: 220px;
+        margin-top: 4px;
+    }
+
+    .recording-status {
+        font-size: 13px;
+        color: #555;
+        margin-top: 4px;
+    }
+</style> 
