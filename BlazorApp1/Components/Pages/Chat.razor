@@ -4,6 +4,7 @@
 @using System
 @using System.Collections.Generic
 @using System.Threading.Tasks
+@using System.Security.Claims
 @using Microsoft.AspNetCore.Components
 @using Model
 @using BlazorApp1.Service
@@ -11,13 +12,15 @@
 @inject MessageClientService MessageService
 @inject IDService DoctorService
 @inject IUService UserService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ICService CService
 
-<h3>Chat with @doctorName</h3>
+<h3>Chat with @(isDoctorView ? userName : doctorName)</h3>
 
 <div class="chat-container">
     @if (string.IsNullOrWhiteSpace(doctorClientId) || string.IsNullOrWhiteSpace(userClientId))
     {
-        <p class="empty">No conversation selected. Go to <b>Messages</b> and choose a doctor.</p>
+        <p class="empty">No conversation selected. Go to <b>Messages</b> and choose a conversation.</p>
     }
     else
     {
@@ -34,7 +37,7 @@
             {
                 @foreach (var m in messages)
                 {
-                    var mine = m.SenderId == userClientId;
+                    var mine = !string.IsNullOrWhiteSpace(currentClientId) && m.SenderId == currentClientId;
                     <div class="message @(mine ? "mine" : "theirs")">
                         <div class="meta">
                             <span class="name">@m.SenderName</span>
@@ -61,21 +64,30 @@
 
     private string doctorName = "Doctor";
     private string userName = "You";
+
     private List<Message> messages = new();
     private string newMessageText = "";
     private bool isLoading = true;
 
+    // who is logged in
+    private string? currentClientId;
+    private bool isDoctorView = false;
+
     protected override async Task OnInitializedAsync()
     {
+        isLoading = true;
+
         try
         {
+            // Load doctor name
             if (!string.IsNullOrWhiteSpace(doctorClientId))
             {
                 var doctor = await DoctorService.GetDoctorByClientIdAsync(doctorClientId);
                 if (doctor != null && !string.IsNullOrWhiteSpace(doctor.Name))
-                    doctorName = doctor.Name;
+                    doctorName = $"Dr. {doctor.Name}";
             }
 
+            // Load user name
             if (!string.IsNullOrWhiteSpace(userClientId))
             {
                 var user = await UserService.GetUserByClientIdAsync(userClientId);
@@ -83,6 +95,32 @@
                     userName = user.Name;
             }
 
+            // Determine who is currently logged in (doctor or patient)
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var principal = authState.User;
+
+            if (principal?.Identity != null && principal.Identity.IsAuthenticated)
+            {
+                var email = principal.FindFirst(ClaimTypes.Email)?.Value
+                            ?? principal.FindFirst("email")?.Value;
+
+                if (!string.IsNullOrWhiteSpace(email))
+                {
+                    var client = await CService.GetClientByEmailAsync(email);
+                    if (client != null)
+                    {
+                        currentClientId = client.Id;
+                        isDoctorView = string.Equals(client.Role, "Doctor", StringComparison.OrdinalIgnoreCase)
+                                       && client.Id == doctorClientId;
+                    }
+                }
+            }
+
+            // Fallback: if we couldn't detect current client, assume patient
+            if (string.IsNullOrWhiteSpace(currentClientId))
+                currentClientId = userClientId;
+
+            // Load conversation
             if (!string.IsNullOrWhiteSpace(userClientId) &&
                 !string.IsNullOrWhiteSpace(doctorClientId))
             {
@@ -107,12 +145,17 @@
         if (string.IsNullOrWhiteSpace(doctorClientId) || string.IsNullOrWhiteSpace(userClientId))
             return;
 
+        var senderId = currentClientId ?? userClientId;
+        var senderName = isDoctorView ? doctorName : userName;
+        var receiverId = isDoctorView ? userClientId : doctorClientId;
+        var receiverName = isDoctorView ? userName : doctorName;
+
         var msg = new Message
         {
-            SenderId = userClientId,
-            SenderName = userName,
-            ReceiverId = doctorClientId,
-            ReceiverName = doctorName,
+            SenderId = senderId,
+            SenderName = senderName,
+            ReceiverId = receiverId,
+            ReceiverName = receiverName,
             UserClientId = userClientId,
             DoctorClientId = doctorClientId,
             Text = newMessageText,

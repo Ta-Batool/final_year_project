@@ -1,0 +1,285 @@
+@page "/patientdetail/{userClientId}"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@layout BlazorApp1.Components.Layout.DashboardLayout
+
+@using System.Linq
+@using Model
+@using BlazorApp1.Service
+
+@inject IUService UserService
+@inject IAService AppointmentService
+@inject IMealService MealService
+@inject IMedicationHttpService MedicationService
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<h2>Patient Details</h2>
+
+@if (isLoading)
+{
+    <p>Loading patient details...</p>
+}
+else if (!string.IsNullOrEmpty(errorMessage))
+{
+    <p style="color:red">@errorMessage</p>
+}
+else if (patient == null)
+{
+    <p>Patient not found.</p>
+}
+else
+{
+    <div class="patient-detail-grid">
+
+        <!-- Left: Basic info -->
+        <section class="card">
+            <h3>@patient.Name</h3>
+            <p><b>Reason:</b> @patient.Reason</p>
+            <p><b>Gender:</b> @patient.Sex</p>
+            <p><b>DOB:</b> @patient.DOB.ToShortDateString()</p>
+            <p><b>Weight:</b> @patient.Weight</p>
+            <p><b>Height:</b> @patient.Height</p>
+            <p><b>Phone:</b> @patient.Phone</p>
+            <p><b>Address:</b> @patient.Address</p>
+            <p><b>Registered since:</b> @patient.RegisterDate.ToShortDateString()</p>
+
+            @if (patient.Tags != null && patient.Tags.Count > 0)
+            {
+                <p><b>Tags:</b></p>
+                <div class="tags">
+                    @foreach (var t in patient.Tags)
+                    {
+                        <span class="tag">@t</span>
+                    }
+                </div>
+            }
+        </section>
+
+        <!-- Right: Appointments with this doctor -->
+        <section class="card">
+            <h3>Appointments with you</h3>
+
+            @if (appointments.Count == 0)
+            {
+                <p>No appointments found for this patient with you.</p>
+            }
+            else
+            {
+                <table class="simple-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Time</th>
+                            <th>Status</th>
+                            <th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var a in appointments)
+                        {
+                            <tr>
+                                <td>@a.Start.ToShortDateString()</td>
+                                <td>@a.Start.ToShortTimeString()</td>
+                                <td>@a.Status</td>
+                                <td>@a.Notes</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </section>
+    </div>
+
+    <div class="patient-detail-grid">
+
+        <!-- Meals today -->
+        <section class="card">
+            <h3>Today’s Meals</h3>
+            @if (mealsToday.Count == 0)
+            {
+                <p>No meals logged for today.</p>
+            }
+            else
+            {
+                <ul>
+                    @foreach (var m in mealsToday)
+                    {
+                        <li>
+                            <b>@m.Type</b> – @m.Foods
+                            @if (m.Calories.HasValue)
+                            {
+                                <span> (@m.Calories.Value kcal)</span>
+                            }
+                        </li>
+                    }
+                </ul>
+            }
+        </section>
+
+        <!-- Medication today -->
+        <section class="card">
+            <h3>Medication Status (Today)</h3>
+
+            @if (todayLogs.Count == 0)
+            {
+                <p>No medication logs for today.</p>
+            }
+            else
+            {
+                <p><b>Total doses:</b> @totalDoses</p>
+                <p><b>Taken:</b> @takenDoses</p>
+                <p><b>Skipped:</b> @skippedDoses</p>
+                <p><b>Pending:</b> @pendingDoses</p>
+            }
+        </section>
+    </div>
+
+    <button class="btn back-btn" @onclick="GoBack">⬅ Back to Patients</button>
+}
+
+@code {
+    [Parameter] public string userClientId { get; set; } = string.Empty;
+
+    private User? patient;
+    private List<Appointment> appointments = new();
+    private List<Meal> mealsToday = new();
+    private List<MedicationLog> todayLogs = new();
+
+    private int totalDoses;
+    private int takenDoses;
+    private int skippedDoses;
+    private int pendingDoses;
+
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        isLoading = true;
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(userClientId))
+            {
+                errorMessage = "No patient specified.";
+                return;
+            }
+
+            // Logged-in doctor id from localStorage
+            var doctorId = await JS.InvokeAsync<string>("localStorage.getItem", "doctorId");
+
+            // 1) Load patient profile
+            patient = await UserService.GetUserByClientIdAsync(userClientId);
+
+            if (patient == null)
+            {
+                errorMessage = "Patient not found.";
+                return;
+            }
+
+            // 2) Load appointments for this user (filter to this doctor)
+            var allAppts = await AppointmentService.GetAppointmentsByUserAsync(userClientId)
+                           ?? new List<Appointment>();
+
+            if (!string.IsNullOrWhiteSpace(doctorId))
+            {
+                allAppts = allAppts
+                    .Where(a => a.DoctorId == doctorId)
+                    .ToList();
+            }
+
+            appointments = allAppts
+                .OrderByDescending(a => a.Start)
+                .Take(10)
+                .ToList();
+
+            // 3) Today meals
+            mealsToday = await MealService.GetTodayMealsAsync(userClientId) ?? new List<Meal>();
+
+            // 4) Today medication logs
+            todayLogs = await MedicationService.GetTodayLogsAsync(userClientId) ?? new List<MedicationLog>();
+
+            totalDoses = todayLogs.Count;
+            takenDoses = todayLogs.Count(l => l.Status == MedicationStatus.Taken);
+            skippedDoses = todayLogs.Count(l => l.Status == MedicationStatus.Skipped);
+            pendingDoses = todayLogs.Count(l => l.Status == MedicationStatus.Pending);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading patient details: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void GoBack()
+    {
+        Nav.NavigateTo("/patients");
+    }
+}
+
+<style>
+    .patient-detail-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+
+    .card {
+        background: #ffffff;
+        border-radius: 10px;
+        padding: 15px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.08);
+    }
+
+    .card h3 {
+        margin-top: 0;
+        margin-bottom: 10px;
+        color: #3b3bbf;
+    }
+
+    .simple-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .simple-table th, .simple-table td {
+        border-bottom: 1px solid #eee;
+        padding: 6px 8px;
+        font-size: 0.9rem;
+    }
+
+    .simple-table th {
+        text-align: left;
+        background: #f5f5ff;
+    }
+
+    .tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-top: 4px;
+    }
+
+    .tag {
+        background: #e5e7ff;
+        padding: 2px 6px;
+        border-radius: 6px;
+        font-size: 0.75rem;
+    }
+
+    .btn.back-btn {
+        border: none;
+        background: #e0e0e0;
+        padding: 8px 14px;
+        border-radius: 6px;
+        cursor: pointer;
+    }
+
+    .btn.back-btn:hover {
+        background: #cccccc;
+    }
+</style>

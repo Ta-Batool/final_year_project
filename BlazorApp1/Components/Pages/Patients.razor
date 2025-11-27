@@ -63,11 +63,15 @@
                                 }
                             </div>
 
-                            <div class="patient-actions">
+                           <div class="patient-actions">
                                 <button class="btn-call">📞 @p.Phone</button>
                                 <button class="btn">Documents</button>
                                 <button class="btn" @onclick="() => OpenChat(p)">Chat</button>
+                                <button class="btn" @onclick="() => Nav.NavigateTo($"/patientdetail/{p.UserClientId}")">
+                                    Details
+                                </button>
                             </div>
+
                         </div>
                     }
                 </li>

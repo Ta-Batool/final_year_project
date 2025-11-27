@@ -55,11 +55,12 @@
                         </td>
                         <td>@a.Notes</td>
                         <td>
-                            <button class="btn"
-                                    @onclick="() => OpenChat(a)">
-                                Chat
+                            <button class="btn" @onclick="() => OpenChat(a)">Chat</button>
+                            <button class="btn" @onclick="() => Nav.NavigateTo($"/patientdetail/{a.UserClientId}")">
+                                Details
                             </button>
                         </td>
+
                     </tr>
                 }
             </tbody>
