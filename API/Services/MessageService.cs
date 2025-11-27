@@ -46,7 +46,7 @@ namespace API.Services
             await _messages.DeleteOneAsync(m => m.Id == id);
         }
 
-        // 🔹 All messages between a single user and doctor
+        // 🔹 All messages between a single user and doctor (1-1 chat)
         public async Task<List<Message>> GetConversationAsync(string userClientId, string doctorClientId)
         {
             var filter = Builders<Message>.Filter.And(
@@ -60,30 +60,32 @@ namespace API.Services
                 .ToListAsync();
         }
 
+        // ⭐ NEW: all messages in a group conversation
+        public async Task<List<Message>> GetByConversationIdAsync(string conversationId)
+        {
+            var filter = Builders.Message>.Filter.Eq(m => m.ConversationId, conversationId);
+
+            return await _messages
+                .Find(filter)
+                .SortBy(m => m.SentAt)
+                .ToListAsync();
+        }
+
         // 🔹 Distinct users that have messaged this doctor
-        // 🔹 Distinct users that have messaged this doctor
-public async Task<List<string>> GetDistinctUserIdsForDoctorAsync(string doctorClientId)
-{
-    var filter = Builders<Message>.Filter.Eq(m => m.DoctorClientId, doctorClientId);
+        public async Task<List<string>> GetDistinctUserIdsForDoctorAsync(string doctorClientId)
+        {
+            var filter = Builders<Message>.Filter.Eq(m => m.DoctorClientId, doctorClientId);
 
-    // OLD (doesn't work with your driver):
-    // return await _messages.Distinct<string>(m => m.UserClientId, filter).ToListAsync();
+            // use field name string with your Mongo driver version
+            return await _messages.Distinct<string>("UserClientId", filter).ToListAsync();
+        }
 
-    // ✅ NEW: use field name string with your Mongo driver version
-    return await _messages.Distinct<string>("UserClientId", filter).ToListAsync();
-}
+        // 🔹 Distinct doctors that this user has messaged
+        public async Task<List<string>> GetDistinctDoctorIdsForUserAsync(string userClientId)
+        {
+            var filter = Builders<Message>.Filter.Eq(m => m.UserClientId, userClientId);
 
-// 🔹 Distinct doctors that this user has messaged
-public async Task<List<string>> GetDistinctDoctorIdsForUserAsync(string userClientId)
-{
-    var filter = Builders<Message>.Filter.Eq(m => m.UserClientId, userClientId);
-
-    // OLD (doesn't work with your driver):
-    // return await _messages.Distinct<string>(m => m.DoctorClientId, filter).ToListAsync();
-
-    // ✅ NEW
-    return await _messages.Distinct<string>("DoctorClientId", filter).ToListAsync();
-}
-
+            return await _messages.Distinct<string>("DoctorClientId", filter).ToListAsync();
+        }
     }
 }

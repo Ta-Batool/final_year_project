@@ -1,7 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Json;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Model;
 
@@ -16,41 +16,53 @@ namespace BlazorApp1.Service
             _http = http;
         }
 
-        // 📨 Get full conversation between a user + doctor
+        // ✅ 1-1 conversation (user–doctor) by their client IDs
         public async Task<List<Message>> GetConversationAsync(string userClientId, string doctorClientId)
         {
-            var url = $"api/message/conversation?userClientId={Uri.EscapeDataString(userClientId)}&doctorClientId={Uri.EscapeDataString(doctorClientId)}";
+            var url =
+                $"api/message/conversation?userClientId={Uri.EscapeDataString(userClientId)}" +
+                $"&doctorClientId={Uri.EscapeDataString(doctorClientId)}";
+
             var result = await _http.GetFromJsonAsync<List<Message>>(url);
             return result ?? new List<Message>();
         }
 
-        // 📨 Send a message
-        public async Task<Message> SendMessageAsync(Message message)
+        // ⭐ NEW: all messages in a group conversation
+        public async Task<List<Message>> GetByConversationAsync(string conversationId)
         {
-            var response = await _http.PostAsJsonAsync("api/message", message);
+            var result = await _http.GetFromJsonAsync<List<Message>>(
+                $"api/message/by-conversation/{Uri.EscapeDataString(conversationId)}");
+
+            return result ?? new List<Message>();
+        }
+
+        // 🔹 Send plain text message (1-1 or group – just set fields on Message)
+        public async Task<Message> SendMessageAsync(Message msg)
+        {
+            var response = await _http.PostAsJsonAsync("api/message", msg);
             response.EnsureSuccessStatusCode();
 
             var created = await response.Content.ReadFromJsonAsync<Message>();
             if (created == null)
-                throw new Exception("API returned empty message");
+                throw new InvalidOperationException("API did not return created message.");
 
             return created;
         }
 
-        // 👤 For USER: list of doctorClientIds this user has messaged
-        public async Task<List<string>> GetDoctorsForUserAsync(string userClientId)
+        // 🔹 Send message with attachment (image/file/audio)
+        //     Used by Chat.razor, and can be reused by group chat if you pass conversationId.
+        public async Task<Message> SendAttachmentAsync(MultipartFormDataContent content)
         {
-            var url = $"api/message/user/{Uri.EscapeDataString(userClientId)}/doctors";
-            var result = await _http.GetFromJsonAsync<List<string>>(url);
-            return result ?? new List<string>();
+            var response = await _http.PostAsync("api/message/with-attachment", content);
+            response.EnsureSuccessStatusCode();
+
+            var created = await response.Content.ReadFromJsonAsync<Message>();
+            if (created == null)
+                throw new InvalidOperationException("API did not return created message with attachment.");
+
+            return created;
         }
 
-        // 👨‍⚕️ For DOCTOR: list of userClientIds this doctor has messaged
-        public async Task<List<string>> GetUsersForDoctorAsync(string doctorClientId)
-        {
-            var url = $"api/message/doctor/{Uri.EscapeDataString(doctorClientId)}/users";
-            var result = await _http.GetFromJsonAsync<List<string>>(url);
-            return result ?? new List<string>();
-        }
+        public Uri? BaseAddress => _http.BaseAddress;
     }
 }

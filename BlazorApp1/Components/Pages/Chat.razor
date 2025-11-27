@@ -7,7 +7,11 @@
 @using System.Collections.Generic
 @using System.Threading.Tasks
 @using System.Security.Claims
+@using System.Net.Http
+@using System.Net.Http.Headers
 @using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.JSInterop
 @using Model
 @using BlazorApp1.Service
 
@@ -16,6 +20,8 @@
 @inject IUService UserService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject ICService CService
+@inject IConfiguration Configuration
+@inject IJSRuntime JS
 
 <h3>Chat with @(isDoctorView ? userName : doctorName)</h3>
 
@@ -45,18 +51,66 @@
                             <span class="name">@m.SenderName</span>
                             <span class="time">@m.SentAt.ToLocalTime().ToString("HH:mm")</span>
                         </div>
-                        <div class="text">@m.Text</div>
+                        <div class="text">
+                            @if (!string.IsNullOrWhiteSpace(m.Text))
+                            {
+                                <div>@m.Text</div>
+                            }
+
+                            @if (!string.IsNullOrEmpty(m.AttachmentFileName) && !string.IsNullOrEmpty(m.Id))
+                            {
+                                var isImage = m.AttachmentContentType?.StartsWith("image") == true;
+                                var isAudio = m.AttachmentContentType?.StartsWith("audio") == true || m.IsVoiceMessage;
+                                var url = GetAttachmentUrl(m);
+
+                                if (isImage)
+                                {
+                                    <img src="@url" class="chat-image" />
+                                }
+                                else if (isAudio)
+                                {
+                                    <audio controls src="@url" class="chat-audio"></audio>
+                                }
+                                else
+                                {
+                                    <a href="@url" target="_blank">
+                                        Download @m.AttachmentFileName
+                                    </a>
+                                }
+                            }
+                        </div>
                     </div>
                 }
             }
         </div>
 
         <div class="composer">
+            <InputFile OnChange="OnFileSelected" />
             <input @bind="newMessageText"
                    @bind:event="oninput"
                    placeholder="Type a message..." />
+
+            <!-- 🎙 Voice note buttons -->
+            @if (!isRecording)
+            {
+                <button type="button" class="btn-secondary" @onclick="StartRecording">
+                    🎙
+                </button>
+            }
+            else
+            {
+                <button type="button" class="btn-secondary recording" @onclick="StopRecordingAndSend">
+                    ⏹
+                </button>
+            }
+
             <button @onclick="SendMessage">Send</button>
         </div>
+
+        @if (!string.IsNullOrEmpty(recordingStatus))
+        {
+            <p class="recording-status">@recordingStatus</p>
+        }
     }
 </div>
 
@@ -75,9 +129,19 @@
     private string? currentClientId;
     private bool isDoctorView = false;
 
+    // ⭐ attachments (file picker)
+    private IBrowserFile? selectedFile;
+    private const long maxUploadSize = 10 * 1024 * 1024; // 10 MB
+    private string apiBaseUrl = "";
+
+    // 🎙 voice recording
+    private bool isRecording = false;
+    private string recordingStatus = "";
+
     protected override async Task OnInitializedAsync()
     {
         isLoading = true;
+        apiBaseUrl = Configuration["ApiBaseUrl"] ?? "http://localhost:5092/";
 
         try
         {
@@ -139,9 +203,14 @@
         }
     }
 
+    private void OnFileSelected(InputFileChangeEventArgs e)
+    {
+        selectedFile = e.File;
+    }
+
     private async Task SendMessage()
     {
-        if (string.IsNullOrWhiteSpace(newMessageText))
+        if (string.IsNullOrWhiteSpace(newMessageText) && selectedFile == null)
             return;
 
         if (string.IsNullOrWhiteSpace(doctorClientId) || string.IsNullOrWhiteSpace(userClientId))
@@ -152,21 +221,51 @@
         var receiverId = isDoctorView ? userClientId : doctorClientId;
         var receiverName = isDoctorView ? userName : doctorName;
 
-        var msg = new Message
-        {
-            SenderId = senderId,
-            SenderName = senderName,
-            ReceiverId = receiverId,
-            ReceiverName = receiverName,
-            UserClientId = userClientId,
-            DoctorClientId = doctorClientId,
-            Text = newMessageText,
-            SentAt = DateTime.UtcNow
-        };
-
         try
         {
-            var saved = await MessageService.SendMessageAsync(msg);
+            Message saved;
+
+            if (selectedFile != null)
+            {
+                using var content = new MultipartFormDataContent();
+
+                // file
+                var stream = selectedFile.OpenReadStream(maxUploadSize);
+                var fileContent = new StreamContent(stream);
+                fileContent.Headers.ContentType = new MediaTypeHeaderValue(selectedFile.ContentType);
+                content.Add(fileContent, "file", selectedFile.Name);
+
+                // metadata fields expected by API
+                content.Add(new StringContent(senderId), "senderId");
+                content.Add(new StringContent(senderName), "senderName");
+                content.Add(new StringContent(receiverId), "receiverId");
+                content.Add(new StringContent(receiverName), "receiverName");
+                content.Add(new StringContent(userClientId), "userClientId");
+                content.Add(new StringContent(doctorClientId), "doctorClientId");
+                content.Add(new StringContent(newMessageText ?? string.Empty), "text");
+                content.Add(new StringContent("false"), "isVoice"); // normal attachment
+
+                saved = await MessageService.SendAttachmentAsync(content);
+
+                selectedFile = null;
+            }
+            else
+            {
+                var msg = new Message
+                {
+                    SenderId = senderId,
+                    SenderName = senderName,
+                    ReceiverId = receiverId,
+                    ReceiverName = receiverName,
+                    UserClientId = userClientId,
+                    DoctorClientId = doctorClientId,
+                    Text = newMessageText,
+                    SentAt = DateTime.UtcNow
+                };
+
+                saved = await MessageService.SendMessageAsync(msg);
+            }
+
             messages.Add(saved);
             newMessageText = "";
         }
@@ -174,6 +273,96 @@
         {
             Console.WriteLine($"❌ Error sending message: {ex.Message}");
         }
+    }
+
+    // 🎙 Start recording via JS
+    private async Task StartRecording()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("voiceRecorder.start");
+            isRecording = true;
+            recordingStatus = "Recording...";
+        }
+        catch (Exception ex)
+        {
+            recordingStatus = $"Unable to start recording: {ex.Message}";
+        }
+    }
+
+    // 🎙 Stop recording, get audio data, send as voice note
+    private async Task StopRecordingAndSend()
+    {
+        try
+        {
+            var dataUrl = await JS.InvokeAsync<string>("voiceRecorder.stop");
+            isRecording = false;
+
+            if (string.IsNullOrEmpty(dataUrl))
+            {
+                recordingStatus = "No audio captured.";
+                return;
+            }
+
+            // dataUrl = "data:audio/webm;codecs=opus;base64,AAAA..."
+            var parts = dataUrl.Split(',');
+            if (parts.Length != 2)
+            {
+                recordingStatus = "Invalid audio data.";
+                return;
+            }
+
+            var meta = parts[0];
+            var base64 = parts[1];
+
+            var contentType = "audio/webm";
+            var ctStart = meta.IndexOf(':');
+            var ctEnd = meta.IndexOf(';');
+            if (ctStart >= 0 && ctEnd > ctStart)
+            {
+                contentType = meta.Substring(ctStart + 1, ctEnd - ctStart - 1);
+            }
+
+            var bytes = Convert.FromBase64String(base64);
+
+            var senderId = currentClientId ?? userClientId;
+            var senderName = isDoctorView ? doctorName : userName;
+            var receiverId = isDoctorView ? userClientId : doctorClientId;
+            var receiverName = isDoctorView ? userName : doctorName;
+
+            using var content = new MultipartFormDataContent();
+
+            var fileContent = new ByteArrayContent(bytes);
+            fileContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+            content.Add(fileContent, "file", "voice-message.webm");
+
+            content.Add(new StringContent(senderId), "senderId");
+            content.Add(new StringContent(senderName), "senderName");
+            content.Add(new StringContent(receiverId), "receiverId");
+            content.Add(new StringContent(receiverName), "receiverName");
+            content.Add(new StringContent(userClientId), "userClientId");
+            content.Add(new StringContent(doctorClientId), "doctorClientId");
+            content.Add(new StringContent("Voice message"), "text");
+            content.Add(new StringContent("true"), "isVoice");
+
+            var saved = await MessageService.SendAttachmentAsync(content);
+            messages.Add(saved);
+
+            recordingStatus = "Voice message sent.";
+        }
+        catch (Exception ex)
+        {
+            isRecording = false;
+            recordingStatus = $"Error recording audio: {ex.Message}";
+        }
+    }
+
+    private string GetAttachmentUrl(Message m)
+    {
+        if (string.IsNullOrEmpty(m.Id))
+            return "#";
+
+        return $"{apiBaseUrl.TrimEnd('/')}/api/message/{m.Id}/attachment";
     }
 }
 
@@ -232,9 +421,16 @@
         display: flex;
         gap: 8px;
         margin-top: 8px;
+        align-items: center;
     }
 
-    .composer input {
+    .composer input[type="file"],
+    .composer ::deep input[type="file"] {
+        max-width: 180px;
+        font-size: 12px;
+    }
+
+    .composer input:not([type="file"]) {
         flex: 1;
         padding: 8px;
         border-radius: 8px;
@@ -250,6 +446,14 @@
         border-radius: 8px;
     }
 
+    .composer .btn-secondary {
+        background: #6c757d;
+    }
+
+    .composer .btn-secondary.recording {
+        background: #dc3545;
+    }
+
     .composer button:hover {
         opacity: 0.9;
     }
@@ -257,5 +461,22 @@
     .empty {
         color: #777;
         font-style: italic;
+    }
+
+    .chat-image {
+        max-width: 200px;
+        border-radius: 8px;
+        margin-top: 4px;
+    }
+
+    .chat-audio {
+        width: 220px;
+        margin-top: 4px;
+    }
+
+    .recording-status {
+        font-size: 13px;
+        color: #555;
+        margin-top: 4px;
     }
 </style>

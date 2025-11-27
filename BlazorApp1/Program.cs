@@ -115,6 +115,7 @@ builder.Services.AddHttpClient<MessageClientService>(c =>
     c.BaseAddress = new Uri(apiBaseUrl);
 });
 
+
 // 🔁 TRANSLATION SERVICE (Google Cloud)
 builder.Services.AddHttpClient<ITranslationService, TranslationService>();
 
@@ -123,6 +124,13 @@ builder.Services.AddScoped(sp => new HttpClient
 {
     BaseAddress = new Uri(apiBaseUrl)
 });
+
+builder.Services.AddHttpClient<ConversationClientService>(c =>
+{
+    c.BaseAddress = new Uri(apiBaseUrl);
+});
+
+
 
 var app = builder.Build();
 

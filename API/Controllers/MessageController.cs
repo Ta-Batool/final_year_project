@@ -4,6 +4,7 @@ using Model;
 using System;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.IO;
 
 namespace API.Controllers
 {
@@ -42,7 +43,7 @@ namespace API.Controllers
             return Ok(message);
         }
 
-        // 🔹 Get conversation between one user and one doctor
+        // 🔹 1-1 conversation between one user and one doctor
         //     GET api/message/conversation?userClientId=...&doctorClientId=...
         [HttpGet("conversation")]
         public async Task<ActionResult<IEnumerable<Message>>> GetConversation(
@@ -59,12 +60,29 @@ namespace API.Controllers
             return Ok(messages);
         }
 
-        // 🔹 Create new message
+        // ⭐ NEW: all messages in a group conversation
+        //     GET api/message/by-conversation/{conversationId}
+        [HttpGet("by-conversation/{conversationId}")]
+        public async Task<ActionResult<IEnumerable<Message>>> GetByConversationId(string conversationId)
+        {
+            if (string.IsNullOrWhiteSpace(conversationId))
+                return BadRequest("conversationId is required.");
+
+            var messages = await _messageService.GetByConversationIdAsync(conversationId);
+            return Ok(messages);
+        }
+
+        // 🔹 Create new TEXT message (no attachment)
         [HttpPost]
         public async Task<ActionResult<Message>> Create([FromBody] Message message)
         {
-            if (message == null || string.IsNullOrWhiteSpace(message.Text))
-                return BadRequest("Message cannot be empty.");
+            // allow either text OR attachment (for safety),
+            // but this endpoint is intended for text-only
+            if (message == null ||
+                (string.IsNullOrWhiteSpace(message.Text) && message.AttachmentData == null))
+            {
+                return BadRequest("Message cannot be completely empty.");
+            }
 
             if (message.SentAt == default)
             {
@@ -77,6 +95,68 @@ namespace API.Controllers
             return CreatedAtAction(nameof(GetById), new { id = message.Id }, message);
         }
 
+        // 🔹 Create message WITH attachment (image/file/audio)
+        //     POST api/message/with-attachment (multipart/form-data)
+        [HttpPost("with-attachment")]
+        public async Task<ActionResult<Message>> CreateWithAttachment(
+            [FromForm] IFormFile file,
+            [FromForm] string senderId,
+            [FromForm] string senderName,
+            [FromForm] string receiverId,
+            [FromForm] string receiverName,
+            [FromForm] string userClientId,
+            [FromForm] string doctorClientId,
+            [FromForm] string? text,
+            [FromForm] bool isVoice = false,
+            [FromForm] string? conversationId = null)        // ⭐ NEW
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest("File is required.");
+
+            byte[] data;
+            using (var ms = new MemoryStream())
+            {
+                await file.CopyToAsync(ms);
+                data = ms.ToArray();
+            }
+
+            var message = new Message
+            {
+                SenderId = senderId,
+                SenderName = senderName,
+                ReceiverId = receiverId,
+                ReceiverName = receiverName,
+                UserClientId = userClientId,
+                DoctorClientId = doctorClientId,
+                Text = text ?? string.Empty,
+                SentAt = DateTime.UtcNow,
+                AttachmentFileName = file.FileName,
+                AttachmentContentType = file.ContentType,
+                AttachmentData = data,
+                IsVoiceMessage = isVoice,
+                ConversationId = conversationId     // ⭐ store group id if provided
+            };
+
+            await _messageService.CreateAsync(message);
+
+            return CreatedAtAction(nameof(GetById), new { id = message.Id }, message);
+        }
+
+        // 🔹 Download / stream attachment for a message
+        //     GET api/message/{id}/attachment
+        [HttpGet("{id}/attachment")]
+        public async Task<IActionResult> GetAttachment(string id)
+        {
+            var message = await _messageService.GetByIdAsync(id);
+            if (message == null || message.AttachmentData == null)
+                return NotFound();
+
+            var contentType = message.AttachmentContentType ?? "application/octet-stream";
+            var fileName = message.AttachmentFileName ?? "attachment";
+
+            return File(message.AttachmentData, contentType, fileName);
+        }
+
         // 🔹 Update
         [HttpPut("{id}")]
         public async Task<IActionResult> Update(string id, [FromBody] Message updatedMessage)
@@ -84,6 +164,7 @@ namespace API.Controllers
             var existing = await _messageService.GetByIdAsync(id);
             if (existing == null) return NotFound();
 
+            updatedMessage.Id = id;
             await _messageService.UpdateAsync(id, updatedMessage);
             return NoContent();
         }

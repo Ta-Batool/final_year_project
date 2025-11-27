@@ -1,0 +1,298 @@
+@page "/groupchat/{conversationId}"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@layout BlazorApp1.Components.Layout.DashboardLayout
+
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components
+@using Model
+@using BlazorApp1.Service
+
+@inject ConversationClientService ConversationService
+@inject MessageClientService MessageService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ICService CService
+@inject NavigationManager Nav
+
+<h3>@(conversation?.Name ?? "Group Chat")</h3>
+
+<div class="group-chat-header">
+    <button class="btn" @onclick="StartVideoCall">📹 Video Call</button>
+    <button class="btn" @onclick="StartAudioCall">📞 Audio Call</button>
+
+    <div class="add-member">
+        <input placeholder="Add participant ClientId..."
+               @bind="newParticipantId" />
+        <button class="btn-outline" @onclick="AddParticipant">Add</button>
+    </div>
+</div>
+
+<div class="chat-container">
+    @if (conversation == null)
+    {
+        <p>Loading conversation...</p>
+    }
+    else
+    {
+        <div class="messages">
+            @if (isLoading)
+            {
+                <p>Loading messages...</p>
+            }
+            else if (messages.Count == 0)
+            {
+                <p class="empty">No messages yet. Start the discussion!</p>
+            }
+            else
+            {
+                @foreach (var m in messages)
+                {
+                    var mine = !string.IsNullOrWhiteSpace(currentClientId) && m.SenderId == currentClientId;
+                    <div class="message @(mine ? "mine" : "theirs")">
+                        <div class="meta">
+                            <span class="name">@m.SenderName</span>
+                            <span class="time">@m.SentAt.ToLocalTime().ToString("HH:mm")</span>
+                        </div>
+                        <div class="text">
+                            @if (!string.IsNullOrWhiteSpace(m.Text))
+                            {
+                                <div>@m.Text</div>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+
+        <div class="composer">
+            <input @bind="newMessageText"
+                   @bind:event="oninput"
+                   placeholder="Type a message for the group..." />
+            <button class="btn" @onclick="SendMessage">Send</button>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string conversationId { get; set; } = string.Empty;
+
+    private Conversation? conversation;
+    private List<Message> messages = new();
+    private bool isLoading = true;
+
+    private string? currentClientId;
+    private string currentClientName = "You";
+    private string newMessageText = "";
+    private string newParticipantId = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCurrentClientAsync();
+        await LoadConversationAsync();
+        await LoadMessagesAsync();
+    }
+
+    private async Task LoadCurrentClientAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user?.Identity != null && user.Identity.IsAuthenticated)
+        {
+            var email = user.FindFirst(ClaimTypes.Email)?.Value
+                        ?? user.FindFirst("email")?.Value;
+
+            if (!string.IsNullOrWhiteSpace(email))
+            {
+                var client = await CService.GetClientByEmailAsync(email);
+                if (client != null)
+                {
+                    currentClientId = client.Id;
+                    currentClientName = string.IsNullOrWhiteSpace(client.Name)
+                        ? "You"
+                        : client.Name;
+                }
+            }
+        }
+    }
+
+    private async Task LoadConversationAsync()
+    {
+        if (string.IsNullOrWhiteSpace(conversationId))
+            return;
+
+        conversation = await ConversationService.GetByIdAsync(conversationId);
+    }
+
+    private async Task LoadMessagesAsync()
+    {
+        isLoading = true;
+
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(conversationId))
+            {
+                messages = await MessageService.GetByConversationAsync(conversationId);
+            }
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SendMessage()
+    {
+        if (string.IsNullOrWhiteSpace(newMessageText) ||
+            string.IsNullOrWhiteSpace(conversationId) ||
+            string.IsNullOrWhiteSpace(currentClientId))
+            return;
+
+        var msg = new Message
+        {
+            SenderId = currentClientId,
+            SenderName = currentClientName,
+            ConversationId = conversationId,
+            Text = newMessageText,
+            SentAt = DateTime.UtcNow,
+
+            // 1-1 fields not needed in group context
+            UserClientId = "",
+            DoctorClientId = ""
+        };
+
+        var created = await MessageService.SendMessageAsync(msg);
+        messages.Add(created);
+        newMessageText = "";
+    }
+
+    private async Task AddParticipant()
+    {
+        if (string.IsNullOrWhiteSpace(conversationId) || string.IsNullOrWhiteSpace(newParticipantId))
+            return;
+
+        await ConversationService.AddParticipantAsync(conversationId, newParticipantId);
+        newParticipantId = "";
+    }
+
+    private void StartVideoCall()
+    {
+        if (conversation == null || string.IsNullOrEmpty(conversation.Id))
+            return;
+
+        // Simple Jitsi room name – stable per conversation
+        var room = $"fyp-group-{conversation.Id}";
+        var url = $"https://meet.jit.si/{room}";
+        Nav.NavigateTo(url, forceLoad: true);
+    }
+
+    private void StartAudioCall()
+    {
+        // Same Jitsi room – user can mute video and do audio-only
+        StartVideoCall();
+    }
+}
+
+<style>
+    .group-chat-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 10px;
+    }
+
+    .add-member {
+        margin-left: auto;
+        display: flex;
+        gap: 6px;
+        align-items: center;
+    }
+
+    .add-member input {
+        padding: 4px 8px;
+        border-radius: 6px;
+        border: 1px solid #ccc;
+        font-size: 13px;
+    }
+
+    .chat-container {
+        max-width: 700px;
+        margin: 10px auto;
+        background: #ffffff;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .messages {
+        max-height: 400px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .message {
+        max-width: 70%;
+        padding: 8px 10px;
+        border-radius: 10px;
+        background: #f1f2f6;
+        font-size: 14px;
+    }
+
+    .message.mine {
+        margin-left: auto;
+        background: #d1e7ff;
+    }
+
+    .message.theirs {
+        margin-right: auto;
+    }
+
+    .meta {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: #555;
+        margin-bottom: 2px;
+    }
+
+    .composer {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+    }
+
+    .composer input {
+        flex: 1;
+        padding: 8px;
+        border-radius: 8px;
+        border: 1px solid #ccc;
+    }
+
+    .btn, .btn-outline {
+        padding: 6px 12px;
+        border-radius: 6px;
+        border: none;
+        cursor: pointer;
+        font-size: 13px;
+    }
+
+    .btn {
+        background: #3b3bbf;
+        color: #fff;
+    }
+
+    .btn-outline {
+        background: #fff;
+        color: #3b3bbf;
+        border: 1px solid #3b3bbf;
+    }
+
+    .empty {
+        color: #777;
+        font-style: italic;
+    }
+</style>
