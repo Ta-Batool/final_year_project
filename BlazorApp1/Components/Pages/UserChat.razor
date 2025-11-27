@@ -65,7 +65,8 @@
             <div class="message @(mine ? "mine" : "theirs")">
                 <div class="meta">
                     <span class="name">@m.SenderName</span>
-                    <span class="time">@m.SentAt?.ToLocalTime().ToString("HH:mm")</span>
+                    <span class="time">@m.SentAt.ToLocalTime().ToString("HH:mm")</span>
+
                 </div>
                 <div class="bubble">
                     @if (!string.IsNullOrWhiteSpace(m.Text))
