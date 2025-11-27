@@ -27,7 +27,7 @@ namespace BlazorApp1.Service
             return result ?? new List<Message>();
         }
 
-        // ⭐ NEW: all messages in a group conversation
+        // ⭐ Group chat: all messages in a conversation
         public async Task<List<Message>> GetByConversationAsync(string conversationId)
         {
             var result = await _http.GetFromJsonAsync<List<Message>>(
@@ -49,8 +49,7 @@ namespace BlazorApp1.Service
             return created;
         }
 
-        // 🔹 Send message with attachment (image/file/audio)
-        //     Used by Chat.razor, and can be reused by group chat if you pass conversationId.
+        // 🔹 Send message with attachment (image/file/audio/voice)
         public async Task<Message> SendAttachmentAsync(MultipartFormDataContent content)
         {
             var response = await _http.PostAsync("api/message/with-attachment", content);
@@ -61,6 +60,24 @@ namespace BlazorApp1.Service
                 throw new InvalidOperationException("API did not return created message with attachment.");
 
             return created;
+        }
+
+        // 🔹 For user: which doctor clientIds they have chats with
+        //     GET api/message/user/{userClientId}/doctors
+        public async Task<List<string>> GetDoctorsForUserAsync(string userClientId)
+        {
+            var url = $"api/message/user/{Uri.EscapeDataString(userClientId)}/doctors";
+            var result = await _http.GetFromJsonAsync<List<string>>(url);
+            return result ?? new List<string>();
+        }
+
+        // 🔹 For doctor: which user clientIds they have chats with
+        //     GET api/message/doctor/{doctorClientId}/users
+        public async Task<List<string>> GetUsersForDoctorAsync(string doctorClientId)
+        {
+            var url = $"api/message/doctor/{Uri.EscapeDataString(doctorClientId)}/users";
+            var result = await _http.GetFromJsonAsync<List<string>>(url);
+            return result ?? new List<string>();
         }
 
         public Uri? BaseAddress => _http.BaseAddress;
