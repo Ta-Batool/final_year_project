@@ -1,5 +1,7 @@
 @page "/messages/{doctorClientId}/{userClientId}"
 @page "/chat/{doctorClientId}/{userClientId}"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@layout BlazorApp1.Components.Layout.DashboardLayout
 
 @using System
 @using System.Collections.Generic
