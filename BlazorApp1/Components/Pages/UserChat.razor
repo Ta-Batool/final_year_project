@@ -1,5 +1,4 @@
-@page "/user-chat/{doctorClientId}/{userClientId}"
-
+@page "/user-chat/{doctorClientId}/{userClientId}"   <!-- Ensure this route is unique from Chat -->
 
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 @layout BlazorApp1.Components.Layout.DashboardLayout
@@ -132,6 +131,7 @@
         }
     }
 </div>
+
 @code {
     // Parameters passed to the component
     [Parameter] public string doctorClientId { get; set; } = "";

@@ -1,6 +1,5 @@
 @page "/chat/{doctorClientId}/{userClientId}"
 
-
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 @layout BlazorApp1.Components.Layout.DashboardLayout
 
@@ -41,7 +40,6 @@
 </div>
 
 <div class="chat-container">
-    @* 🔊 remote audio from WebRTC *@
     <audio id="remoteAudio" autoplay hidden></audio>
 
     @if (string.IsNullOrWhiteSpace(doctorClientId) || string.IsNullOrWhiteSpace(userClientId))
@@ -109,7 +107,6 @@
                    @bind:event="oninput"
                    placeholder="Type a message..." />
 
-            @* 🎙 Voice note buttons *@
             @if (!isRecording)
             {
                 <button type="button" class="btn-secondary" @onclick="StartRecording">
@@ -132,6 +129,7 @@
         }
     }
 </div>
+
 @code {
     // Parameters passed to the component
     [Parameter] public string doctorClientId { get; set; } = "";
@@ -144,20 +142,16 @@
     private string newMessageText = "";
     private bool isLoading = true;
 
-    // Identifies who is logged in (doctor or patient)
     private string? currentClientId;
     private bool isDoctorView = false;
 
-    // Attachments and file picker
     private IBrowserFile? selectedFile;
     private const long maxUploadSize = 10 * 1024 * 1024; // 10 MB
     private string apiBaseUrl = "";
 
-    // Voice recording (for voice notes)
     private bool isRecording = false;
     private string recordingStatus = "";
 
-    // Web call state
     private bool inCall = false;
 
     protected override async Task OnInitializedAsync()
@@ -167,7 +161,6 @@
 
         try
         {
-            // Load doctor name
             if (!string.IsNullOrWhiteSpace(doctorClientId))
             {
                 var doctor = await DoctorService.GetDoctorByClientIdAsync(doctorClientId);
@@ -175,7 +168,6 @@
                     doctorName = $"Dr. {doctor.Name}";
             }
 
-            // Load user name
             if (!string.IsNullOrWhiteSpace(userClientId))
             {
                 var user = await UserService.GetUserByClientIdAsync(userClientId);
@@ -183,14 +175,12 @@
                     userName = user.Name;
             }
 
-            // Determine who is logged in
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             var principal = authState.User;
 
             if (principal?.Identity != null && principal.Identity.IsAuthenticated)
             {
-                var email = principal.FindFirst(ClaimTypes.Email)?.Value
-                            ?? principal.FindFirst("email")?.Value;
+                var email = principal.FindFirst(ClaimTypes.Email)?.Value ?? principal.FindFirst("email")?.Value;
 
                 if (!string.IsNullOrWhiteSpace(email))
                 {
@@ -204,11 +194,9 @@
                 }
             }
 
-            // Fallback if current client is not detected
             if (string.IsNullOrWhiteSpace(currentClientId))
                 currentClientId = userClientId;
 
-            // Load conversation
             if (!string.IsNullOrWhiteSpace(userClientId) &&
                 !string.IsNullOrWhiteSpace(doctorClientId))
             {
@@ -225,13 +213,11 @@
         }
     }
 
-    // Handle file selection (for attachments)
     private void OnFileSelected(InputFileChangeEventArgs e)
     {
         selectedFile = e.File;
     }
 
-    // Handle sending a message
     private async Task SendMessage()
     {
         if (string.IsNullOrWhiteSpace(newMessageText) && selectedFile == null)
@@ -265,7 +251,7 @@
                 content.Add(new StringContent(userClientId), "userClientId");
                 content.Add(new StringContent(doctorClientId), "doctorClientId");
                 content.Add(new StringContent(newMessageText ?? string.Empty), "text");
-                content.Add(new StringContent("false"), "isVoice");  // Normal message, not a voice message
+                content.Add(new StringContent("false"), "isVoice");
 
                 saved = await MessageService.SendAttachmentAsync(content);
                 selectedFile = null;
@@ -296,7 +282,6 @@
         }
     }
 
-    // Handle starting voice recording
     private async Task StartRecording()
     {
         try
@@ -311,7 +296,6 @@
         }
     }
 
-    // Handle stopping and sending voice recording
     private async Task StopRecordingAndSend()
     {
         try
@@ -377,7 +361,6 @@
         }
     }
 
-    // Get attachment URL for the message
     private string GetAttachmentUrl(Message m)
     {
         if (string.IsNullOrEmpty(m.Id))
@@ -386,7 +369,6 @@
         return $"{apiBaseUrl.TrimEnd('/')}/api/message/{m.Id}/attachment";
     }
 
-    // Handle voice call logic
     private async Task OnVoiceCall()
     {
         if (string.IsNullOrWhiteSpace(doctorClientId) ||
@@ -404,7 +386,6 @@
         {
             if (!inCall)
             {
-                // Start the call (using WebRTC or a signaling system like SignalR)
                 await JS.InvokeVoidAsync("callManager.init", hubUrl, conversationId, true, currentClientId, "remoteAudio");
 
                 inCall = true;
@@ -423,7 +404,6 @@
         }
     }
 
-    // Handle video call logic (future integration)
     private async Task OnVideoCall()
     {
         if (string.IsNullOrWhiteSpace(doctorClientId) ||
@@ -441,7 +421,6 @@
         {
             if (!inCall)
             {
-                // Initiate video call (we can extend WebRTC for video later)
                 await JS.InvokeVoidAsync("callManager.init", hubUrl, conversationId, true, currentClientId, "remoteVideo");
 
                 inCall = true;
@@ -460,7 +439,6 @@
         }
     }
 }
-
 
 
 <style>
