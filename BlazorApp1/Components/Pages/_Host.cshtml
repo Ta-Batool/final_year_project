@@ -22,10 +22,16 @@
         <component type="typeof(BlazorApp1.Components.App)" render-mode="ServerPrerendered" />
     </app>
 
+    <!-- Blazor runtime -->
     <script src="_framework/blazor.server.js"></script>
+
+    <!-- ✅ ADD THIS: SignalR JS client (needed by CallManager.js) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.5/signalr.min.js"
+            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+    <!-- Your custom JS files -->
     <script src="js/translation.js"></script>
     <script src="js/VoiceRecorder.js"></script>
     <script src="js/CallManager.js"></script>
-
 </body>
 </html>
