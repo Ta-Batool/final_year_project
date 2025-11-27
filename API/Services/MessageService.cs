@@ -18,6 +18,10 @@ namespace API.Services
             _messages = database.GetCollection<Message>("Messages");
         }
 
+        // ─────────────────────────────
+        // Basic CRUD
+        // ─────────────────────────────
+
         public async Task<List<Message>> GetAllAsync()
         {
             return await _messages.Find(_ => true).ToListAsync();
@@ -37,7 +41,6 @@ namespace API.Services
 
         public async Task UpdateAsync(string id, Message updatedMessage)
         {
-            updatedMessage.Id = id;
             await _messages.ReplaceOneAsync(m => m.Id == id, updatedMessage);
         }
 
@@ -46,7 +49,10 @@ namespace API.Services
             await _messages.DeleteOneAsync(m => m.Id == id);
         }
 
-        // 🔹 All messages between a single user and doctor (1-1 chat)
+        // ─────────────────────────────
+        // 1-1 conversation (user–doctor)
+        // ─────────────────────────────
+
         public async Task<List<Message>> GetConversationAsync(string userClientId, string doctorClientId)
         {
             var filter = Builders<Message>.Filter.And(
@@ -54,33 +60,37 @@ namespace API.Services
                 Builders<Message>.Filter.Eq(m => m.DoctorClientId, doctorClientId)
             );
 
-            return await _messages
-                .Find(filter)
-                .SortBy(m => m.SentAt)
-                .ToListAsync();
+            var sort = Builders<Message>.Sort.Ascending(m => m.SentAt);
+
+            return await _messages.Find(filter).Sort(sort).ToListAsync();
         }
 
-        // ⭐ NEW: all messages in a group conversation
+        // ─────────────────────────────
+        // Group conversation (by ConversationId)
+        // ─────────────────────────────
+
         public async Task<List<Message>> GetByConversationIdAsync(string conversationId)
         {
             var filter = Builders.Message>.Filter.Eq(m => m.ConversationId, conversationId);
+            var sort = Builders<Message>.Sort.Ascending(m => m.SentAt);
 
-            return await _messages
-                .Find(filter)
-                .SortBy(m => m.SentAt)
-                .ToListAsync();
+            return await _messages.Find(filter).Sort(sort).ToListAsync();
         }
 
-        // 🔹 Distinct users that have messaged this doctor
+        // ─────────────────────────────
+        // Distinct IDs for doctor / user
+        // ─────────────────────────────
+
+        // All distinct users that have messaged this doctor
         public async Task<List<string>> GetDistinctUserIdsForDoctorAsync(string doctorClientId)
         {
             var filter = Builders<Message>.Filter.Eq(m => m.DoctorClientId, doctorClientId);
 
-            // use field name string with your Mongo driver version
+            // use field-name string so it works across driver versions
             return await _messages.Distinct<string>("UserClientId", filter).ToListAsync();
         }
 
-        // 🔹 Distinct doctors that this user has messaged
+        // All distinct doctors that this user has messaged
         public async Task<List<string>> GetDistinctDoctorIdsForUserAsync(string userClientId)
         {
             var filter = Builders<Message>.Filter.Eq(m => m.UserClientId, userClientId);
