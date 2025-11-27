@@ -4,17 +4,17 @@ namespace API.Hubs
 {
     public class CallHub : Hub
     {
-        // Clients can send their peer ID to this method
+        // This method sends the peer ID to the other client
         public async Task SendPeerId(string peerId)
         {
-            // Send peer ID to the other client
+            // Broadcast the peerId to other clients (peer-to-peer signaling)
             await Clients.Others.SendAsync("ReceivePeerId", peerId);
         }
 
-        // Broadcast the signaling data to connected clients (offer, answer, ICE candidates)
+        // This method handles signaling data (offer/answer/ICE candidates) from one client to another
         public async Task SendSignal(string peerId, string signalData)
         {
-            // Send the signaling data to the specific peer
+            // Send the signaling data to the specified peerId (other client)
             await Clients.Client(peerId).SendAsync("ReceiveSignal", signalData);
         }
     }
