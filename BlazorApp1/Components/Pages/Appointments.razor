@@ -1,1 +1,200 @@
-﻿
+﻿@page "/appointments"
+@layout BlazorApp1.Components.Layout.DashboardLayout
+@attribute [Authorize]
+
+@using Model
+@using BlazorApp1.Service
+@inject IAService AppointmentService
+@inject IUService UserService
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<div class="appointments-page">
+    <h2>📅 Your Appointments</h2>
+
+    @if (isLoading)
+    {
+        <p>Loading appointments...</p>
+    }
+    else if (!string.IsNullOrEmpty(loadError))
+    {
+        <p style="color:red">@loadError</p>
+    }
+    else if (appointments.Count == 0)
+    {
+        <p>No appointments found.</p>
+    }
+    else
+    {
+        <table class="appt-table">
+            <thead>
+                <tr>
+                    <th>Patient</th>
+                    <th>Date</th>
+                    <th>Time</th>
+                    <th>Status</th>
+                    <th>Notes</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var a in appointments)
+                {
+                    <tr>
+                        <td>@a.PatientName</td>
+                        <td>@a.Start.ToShortDateString()</td>
+                        <td>@a.Start.ToShortTimeString()</td>
+                        <td>
+                            <select @bind="a.Status" @onchange="(e) => ChangeStatus(a)">
+                                <option>Scheduled</option>
+                                <option>Completed</option>
+                                <option>Cancelled</option>
+                            </select>
+                        </td>
+                        <td>@a.Notes</td>
+                        <td>
+                            <button class="btn"
+                                    @onclick="() => OpenChat(a)">
+                                Chat
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private class DoctorAppointmentVm
+    {
+        public string Id { get; set; } = "";
+        public string? UserClientId { get; set; }
+        public string PatientName { get; set; } = "";
+        public DateTime Start { get; set; }
+        public DateTime End { get; set; }
+        public string Status { get; set; } = "Scheduled";
+        public string? Notes { get; set; }
+    }
+
+    private List<DoctorAppointmentVm> appointments = new();
+    private bool isLoading = true;
+    private string? loadError;
+    private string? doctorId;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        await LoadAppointmentsAsync();
+        StateHasChanged();
+    }
+
+    private async Task LoadAppointmentsAsync()
+    {
+        isLoading = true;
+        loadError = null;
+        appointments.Clear();
+
+        try
+        {
+            doctorId = await JS.InvokeAsync<string>("localStorage.getItem", "doctorId");
+            if (string.IsNullOrWhiteSpace(doctorId))
+            {
+                loadError = "Doctor ID not found. Please log in again.";
+                return;
+            }
+
+            var appts = await AppointmentService.GetAppointmentsByDoctorAsync(doctorId)
+                        ?? new List<Appointment>();
+
+            foreach (var appt in appts.OrderBy(a => a.Start))
+            {
+                string patientName = appt.PatientName ?? "Unknown";
+
+                if (!string.IsNullOrWhiteSpace(appt.UserId))
+                {
+                    var user = await UserService.GetUserByClientIdAsync(appt.UserId);
+                    if (user != null && !string.IsNullOrWhiteSpace(user.Name))
+                        patientName = user.Name;
+                }
+
+                appointments.Add(new DoctorAppointmentVm
+                {
+                    Id = appt.Id ?? "",
+                    UserClientId = appt.UserId,
+                    PatientName = patientName,
+                    Start = appt.Start,
+                    End = appt.End,
+                    Status = appt.Status ?? "Scheduled",
+                    Notes = appt.Notes
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = $"Error loading appointments: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task ChangeStatus(DoctorAppointmentVm appt)
+    {
+        if (string.IsNullOrEmpty(appt.Id)) return;
+
+        var ok = await AppointmentService.UpdateAppointmentStatusAsync(appt.Id, appt.Status);
+        if (!ok)
+        {
+            loadError = "Failed to update status.";
+        }
+    }
+
+    private void OpenChat(DoctorAppointmentVm appt)
+    {
+        if (string.IsNullOrEmpty(doctorId) || string.IsNullOrEmpty(appt.UserClientId))
+            return;
+
+        Nav.NavigateTo($"/chat/{doctorId}/{appt.UserClientId}", forceLoad: true);
+    }
+}
+
+<style>
+    .appointments-page {
+        max-width: 900px;
+        margin: 0 auto;
+    }
+
+    .appt-table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #fff;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+
+    .appt-table th, .appt-table td {
+        padding: 10px;
+        border-bottom: 1px solid #eee;
+    }
+
+    .appt-table th {
+        background: #3b3bbf;
+        color: #fff;
+        text-align: left;
+    }
+
+    .btn {
+        padding: 6px 10px;
+        border-radius: 4px;
+        border: none;
+        background: #3b3bbf;
+        color: #fff;
+        cursor: pointer;
+    }
+
+    .btn:hover {
+        background: #2c2c9b;
+    }
+</style>

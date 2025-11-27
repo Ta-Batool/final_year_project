@@ -1,93 +1,186 @@
 ﻿@page "/patients"
 @layout BlazorApp1.Components.Layout.DashboardLayout
+@attribute [Authorize]
+
+@using Model
+@using BlazorApp1.Service
+@inject IAService AppointmentService
+@inject IUService UserService
+@inject IJSRuntime JS
+@inject NavigationManager Nav
 
 <div class="patients-list">
     <h3>Today's Patients</h3>
-    <ul>
-        @foreach (var patient in patients)
-        {
-            <li class="patient-item">
-                <div class="patient-summary" @onclick="() => TogglePatient(patient)">
-                    <div>
-                        <strong>@patient["Name"]</strong><br />
-                        <span>@patient["Reason"]</span>
-                    </div>
-                    <div class="patient-time">@patient["Time"]</div>
-                </div>
 
-                @if (expandedPatient == patient)
-                {
-                    <div class="patient-details-expanded">
-                        <p><strong>Address:</strong> @patient["Address"]</p>
-                        <p><strong>D.O.B:</strong> @patient["DOB"]</p>
-                        <p><strong>Sex:</strong> @patient["Sex"]</p>
-                        <p><strong>Weight:</strong> @patient["Weight"]</p>
-                        <p><strong>Height:</strong> @patient["Height"]</p>
-                        <p><strong>Last Appointment:</strong> @patient["LastAppointment"]</p>
-                        <p><strong>Register Date:</strong> @patient["RegisterDate"]</p>
-
-                        <div class="patient-tags">
-                            @foreach (var tag in (List<string>)patient["Tags"])
-                            {
-                                <span class="tag">@tag</span>
-                            }
+    @if (isLoading)
+    {
+        <p>Loading patients...</p>
+    }
+    else if (!string.IsNullOrEmpty(loadError))
+    {
+        <p style="color:red">@loadError</p>
+    }
+    else if (patients.Count == 0)
+    {
+        <p>No patients scheduled for today.</p>
+    }
+    else
+    {
+        <ul>
+            @foreach (var p in patients)
+            {
+                <li class="patient-item">
+                    <div class="patient-summary" @onclick="() => TogglePatient(p)">
+                        <div>
+                            <strong>@p.Name</strong><br />
+                            <span>@p.Reason</span>
                         </div>
-
-                        <div class="patient-actions">
-                            <button class="btn-call">📞 @patient["Phone"]</button>
-                            <button class="btn">Documents</button>
-                            <button class="btn">Chat</button>
-                        </div>
+                        <div class="patient-time">@p.Time</div>
                     </div>
-                }
-            </li>
-        }
-    </ul>
 
+                    @if (p.IsExpanded)
+                    {
+                        <div class="patient-details-expanded">
+                            <div class="patient-info">
+                                <p><strong>Address:</strong> @p.Address</p>
+                                <p><strong>DOB:</strong> @p.DOB.ToShortDateString()</p>
+                                <p><strong>Sex:</strong> @p.Sex</p>
+                                <p><strong>Weight:</strong> @p.Weight</p>
+                                <p><strong>Height:</strong> @p.Height</p>
+                                <p><strong>Last Appointment:</strong> @p.LastAppointment.ToShortDateString()</p>
+                                <p><strong>Registered Since:</strong> @p.RegisterDate.ToShortDateString()</p>
+
+                                @if (p.Tags?.Count > 0)
+                                {
+                                    <p><strong>Tags:</strong></p>
+                                    <div class="tags">
+                                        @foreach (var tag in p.Tags)
+                                        {
+                                            <span class="tag">@tag</span>
+                                        }
+                                    </div>
+                                }
+                            </div>
+
+                            <div class="patient-actions">
+                                <button class="btn-call">📞 @p.Phone</button>
+                                <button class="btn">Documents</button>
+                                <button class="btn" @onclick="() => OpenChat(p)">Chat</button>
+                            </div>
+                        </div>
+                    }
+                </li>
+            }
+        </ul>
+    }
 </div>
 
 @code {
-    private List<Dictionary<string, object>> patients = new()
-{
-new()
-{
-{ "Name", "Tayyaba" }, { "Reason", "fever" }, { "Time", "11AM" },
-{ "Address", "islamabad" },
-{ "DOB", "15 February 2000" }, { "Sex", "Female" }, { "Weight", "56 kg" },
-{ "Height", "172 cm" }, { "LastAppointment", "02 Jan 2020" },
-{ "RegisterDate", "19 Dec 2018" }, { "Phone", "03445586946" },
-{ "Tags", new List<string>{ "Asthma", "Hypertension"} }
-},
-new()
-{
-{ "Name", "Ali" }, { "Reason", "Medical check up" }, { "Time", "12PM" },
-{ "Address", "Rawalpindi" }, { "DOB", "12 May 1988" }, { "Sex", "Male" },
-{ "Weight", "70 kg" }, { "Height", "180 cm" }, { "LastAppointment", "01 Sep 2023" },
-{ "RegisterDate", "05 Aug 2020" }, { "Phone", "12345" },
-{ "Tags", new List<string>{ "Diabetes" } }
-},
-new()
-{
-{ "Name", "Eman" }, { "Reason", "Medical checkup" }, { "Time", "2PM" },
-{ "Address", "Random St, LA" }, { "DOB", "15 March 1975" }, { "Sex", "Male" },
-{ "Weight", "80 kg" }, { "Height", "175 cm" }, { "LastAppointment", "10 Aug 2023" },
-{ "RegisterDate", "02 Feb 2019" }, { "Phone", "123" },
-{ "Tags", new List<string>{ "Asthma" } }
-}
-};
-
-    private Dictionary<string, object>? expandedPatient;
-
-    private void TogglePatient(Dictionary<string, object> patient)
+    private class PatientViewModel
     {
-        if (expandedPatient == patient)
-            expandedPatient = null;
-        else
-            expandedPatient = patient;
+        public string AppointmentId { get; set; } = "";
+        public string UserClientId { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string Reason { get; set; } = "";
+        public string Time { get; set; } = "";
+        public string Address { get; set; } = "";
+        public DateTime DOB { get; set; }
+        public string Sex { get; set; } = "";
+        public string Weight { get; set; } = "";
+        public string Height { get; set; } = "";
+        public DateTime LastAppointment { get; set; }
+        public DateTime RegisterDate { get; set; }
+        public string Phone { get; set; } = "";
+        public List<string> Tags { get; set; } = new();
+        public bool IsExpanded { get; set; }
     }
 
+    private List<PatientViewModel> patients = new();
+    private bool isLoading = true;
+    private string? loadError;
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        await LoadPatientsAsync();
+        StateHasChanged();
+    }
+
+    private async Task LoadPatientsAsync()
+    {
+        isLoading = true;
+        loadError = null;
+        patients.Clear();
+
+        try
+        {
+            var doctorId = await JS.InvokeAsync<string>("localStorage.getItem", "doctorId");
+            if (string.IsNullOrWhiteSpace(doctorId))
+            {
+                loadError = "Doctor ID not found. Please log in again.";
+                return;
+            }
+
+            var appts = await AppointmentService.GetAppointmentsByDoctorAsync(doctorId)
+                        ?? new List<Appointment>();
+
+            var today = DateTime.Today;
+            appts = appts.Where(a => a.Start.Date == today).ToList();
+
+            foreach (var appt in appts)
+            {
+                if (string.IsNullOrWhiteSpace(appt.UserId))
+                    continue;
+
+                var user = await UserService.GetUserByClientIdAsync(appt.UserId);
+                if (user == null) continue;
+
+                patients.Add(new PatientViewModel
+                {
+                    AppointmentId = appt.Id ?? "",
+                    UserClientId = appt.UserId,
+                    Name = !string.IsNullOrWhiteSpace(user.Name)
+                        ? user.Name
+                        : (appt.PatientName ?? "Unknown"),
+                    Reason = string.IsNullOrWhiteSpace(user.Reason) ? (appt.Notes ?? "") : user.Reason!,
+                    Time = appt.Start.ToShortTimeString(),
+                    Address = user.Address ?? "",
+                    DOB = user.DOB,
+                    Sex = user.Sex ?? "",
+                    Weight = user.Weight ?? "",
+                    Height = user.Height ?? "",
+                    LastAppointment = user.LastAppointment,
+                    RegisterDate = user.RegisterDate,
+                    Phone = user.Phone ?? "",
+                    Tags = user.Tags ?? new List<string>()
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = $"Error loading patients: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void TogglePatient(PatientViewModel p)
+    {
+        p.IsExpanded = !p.IsExpanded;
+    }
+
+    private void OpenChat(PatientViewModel p)
+    {
+        // doctorId is already stored; Chat page needs /chat/{doctorClientId}/{userClientId}
+        Nav.NavigateTo($"/chat/{p.UserClientId}/{p.UserClientId}", forceLoad: true);
+        // ^ if you prefer: use doctorId from localStorage; this is a simple stub.
+    }
 }
+
 
 <style>
     .patients-list {

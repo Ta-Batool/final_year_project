@@ -1,15 +1,25 @@
-﻿@using Model
-@inherits LayoutComponentBase
+﻿@inherits LayoutComponentBase
+
+@using System.Security.Claims
+@using Model
+@inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
+@inject ICService CService
+@inject IDService DService
+@inject IJSRuntime JS
 
 <div class="layout">
     <!-- Sidebar -->
     <aside class="sidebar">
         <div class="profile-section">
-            <img src="https://via.placeholder.com/80" alt="Doctor Profile" class="profile-pic" />
-            <h4>Dr. John Doe</h4>
-            <p class="specialization">Cardiologist</p>
-            <button class="edit-btn" @onclick='() => Navigation.NavigateTo($"/profile")'>Edit Profile</button>
+            <img src="@GetProfileImageUrl()" alt="Doctor Profile" class="profile-pic" />
+
+            <h4>@displayName</h4>
+            <p class="specialization">@specializationText</p>
+
+            <button class="edit-btn" @onclick="GoToProfile">
+                Edit Profile
+            </button>
         </div>
 
         <nav class="sidebar-nav">
@@ -37,6 +47,7 @@
         <!-- Top Navbar -->
         <header class="top-navbar">
             <h5>Doctor Dashboard</h5>
+
             <div class="navbar-right">
                 <button class="icon-btn"><i class="fas fa-bell"></i></button>
                 <button class="icon-btn"><i class="fas fa-cog"></i></button>
@@ -45,19 +56,123 @@
 
         <!-- Page body -->
         <div class="page-body">
-            @Body
+            @if (isLoading)
+            {
+                <p>Loading doctor profile...</p>
+            }
+            else if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <p style="color:red">@errorMessage</p>
+            }
+            else
+            {
+                @Body
+            }
         </div>
     </div>
 </div>
 
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-
 @code {
+    private Doctor? doctor;
+    private string? clientId;
+    private string displayName = "Doctor";
+    private string specializationText = "";
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        isLoading = true;
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user?.Identity == null || !user.Identity.IsAuthenticated)
+            {
+                Navigation.NavigateTo("/login");
+                return;
+            }
+
+            // Get email from claims
+            var email =
+                user.FindFirst(ClaimTypes.Email)?.Value ??
+                user.FindFirst("email")?.Value;
+
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                errorMessage = "No email found in your Google account.";
+                return;
+            }
+
+            // Get client by email
+            var client = await CService.GetClientByEmailAsync(email);
+            if (client == null)
+            {
+                errorMessage = "No client profile found. Please register first.";
+                return;
+            }
+
+            clientId = client.Id;
+
+            // Only load doctor info if this client is a doctor
+            if (!string.Equals(client.Role, "Doctor", StringComparison.OrdinalIgnoreCase))
+            {
+                errorMessage = "You are not registered as a doctor.";
+                return;
+            }
+
+            doctor = await DService.GetDoctorByClientIdAsync(client.Id);
+
+            if (doctor != null)
+            {
+                displayName = !string.IsNullOrWhiteSpace(doctor.Name)
+                    ? $"Dr. {doctor.Name}"
+                    : "Doctor";
+
+                specializationText = doctor.Specialization ?? "";
+            }
+
+            // ⭐ Make doctorId available to other pages (messages, appointments, patients)
+            if (!string.IsNullOrEmpty(client.Id))
+            {
+                await JS.InvokeVoidAsync("localStorage.setItem", "doctorId", client.Id);
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load doctor info: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private string GetProfileImageUrl()
+    {
+        if (doctor != null && !string.IsNullOrWhiteSpace(doctor.ProfileImageUrl))
+            return doctor.ProfileImageUrl;
+
+        return "https://via.placeholder.com/80";
+    }
+
+    private void GoToProfile()
+    {
+        if (!string.IsNullOrEmpty(clientId))
+            Navigation.NavigateTo($"/profile/{clientId}");
+        else
+            Navigation.NavigateTo("/profile");
+    }
+
     private void Logout()
     {
-        Navigation.NavigateTo("/login", true);
+        // This endpoint is already mapped in Program.cs
+        Navigation.NavigateTo("/logout", forceLoad: true);
     }
 }
+
 <style>
     .layout {
         display: flex;
