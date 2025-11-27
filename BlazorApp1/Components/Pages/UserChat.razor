@@ -5,76 +5,164 @@
 @using System
 @using System.Collections.Generic
 @using System.Threading.Tasks
+@using System.Security.Claims
+@using System.Net.Http
+@using System.Net.Http.Headers
 @using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.JSInterop
 @using Model
 @using BlazorApp1.Service
 
 @inject MessageClientService MessageService
 @inject IDService DoctorService
 @inject IUService UserService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ICService CService
+@inject IConfiguration Configuration
+@inject IJSRuntime JS
 
-<h3>Chat with @doctorName</h3>
-
-<div class="chat-container">
-    @if (string.IsNullOrWhiteSpace(doctorClientId) || string.IsNullOrWhiteSpace(userClientId))
-    {
-        <p class="empty">No conversation selected.</p>
-    }
-    else
-    {
-        <div class="messages">
-            @if (isLoading)
+<div class="chat-header">
+    <div>
+        <h3>Chat with @(isDoctorView ? userName : doctorName)</h3>
+        <p class="chat-subtitle">
+            @if (isDoctorView)
             {
-                <p>Loading conversation...</p>
-            }
-            else if (messages.Count == 0)
-            {
-                <p class="empty">No messages yet. Say hello!</p>
+                <span>You are logged in as doctor.</span>
             }
             else
             {
-                @foreach (var m in messages)
-                {
-                    var mine = m.SenderId == userClientId;
-                    <div class="message @(mine ? "mine" : "theirs")">
-                        <div class="meta">
-                            <span class="name">@m.SenderName</span>
-                            <span class="time">@m.SentAt.ToLocalTime().ToString("HH:mm")</span>
-                        </div>
-                        <div class="text">@m.Text</div>
-                    </div>
-                }
+                <span>You are logged in as patient.</span>
             }
-        </div>
+        </p>
+    </div>
 
-        <div class="composer">
-            <input @bind="newMessageText"
-                   @bind:event="oninput"
-                   placeholder="Type a message..." />
-            <button @onclick="SendMessage">Send</button>
-        </div>
+    <div class="chat-actions">
+        <button class="icon-btn" title="Voice call" @onclick="OnVoiceCall">
+            <i class="fa-solid fa-phone"></i>
+        </button>
+        <button class="icon-btn" title="Voice note" @onclick="StartRecording" disabled="@isRecording">
+            <i class="fa-solid fa-microphone"></i>
+        </button>
+        <audio id="remoteAudio" autoplay hidden></audio>
+    </div>
+</div>
+
+<div class="chat-container">
+    @if (isLoading)
+    {
+        <p>Loading conversation...</p>
+    }
+    else if (messages.Count == 0)
+    {
+        <p class="empty">No messages yet. Say hello!</p>
+    }
+    else
+    {
+        @foreach (var m in messages)
+        {
+            var mine = !string.IsNullOrWhiteSpace(currentClientId) && m.SenderId == currentClientId;
+            <div class="message @(mine ? "mine" : "theirs")">
+                <div class="meta">
+                    <span class="name">@m.SenderName</span>
+                    <span class="time">@m.SentAt?.ToLocalTime().ToString("HH:mm")</span>
+                </div>
+                <div class="bubble">
+                    @if (!string.IsNullOrWhiteSpace(m.Text))
+                    {
+                        <p>@m.Text</p>
+                    }
+
+                    @if (m.AttachmentData != null && !string.IsNullOrEmpty(m.AttachmentFileName))
+                    {
+                        var isImage = !string.IsNullOrEmpty(m.AttachmentContentType) &&
+                                      m.AttachmentContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+                        var isAudio = !string.IsNullOrEmpty(m.AttachmentContentType) &&
+                                      m.AttachmentContentType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase);
+
+                        var url = GetAttachmentUrl(m);
+
+                        if (isImage)
+                        {
+                            <img src="@url" class="chat-image" />
+                        }
+                        else if (isAudio)
+                        {
+                            <audio controls src="@url" class="chat-audio"></audio>
+                        }
+                        else
+                        {
+                            <a href="@url" target="_blank">
+                                Download @m.AttachmentFileName
+                            </a>
+                        }
+                    }
+                </div>
+            </div>
+        }
     }
 </div>
 
-@code {
-    [Parameter] public string doctorClientId { get; set; } = string.Empty;
-    [Parameter] public string userClientId { get; set; } = string.Empty;
+<div class="composer">
+    <InputFile OnChange="OnFileSelected" />
 
-    private string doctorName = "Doctor";
-    private string userName = "You";
+    <input @bind="newMessageText"
+           @bind:event="oninput"
+           placeholder="Type a message..." />
+
+    @if (!isRecording)
+    {
+        <button type="button" class="btn-secondary" @onclick="StartRecording">
+            🎙
+        </button>
+    }
+    else
+    {
+        <button type="button" class="btn-secondary recording" @onclick="StopRecordingAndSend">
+            ⏹
+        </button>
+    }
+
+    <button @onclick="SendMessage">Send</button>
+</div>
+
+@if (!string.IsNullOrEmpty(recordingStatus))
+{
+    <p class="recording-status">@recordingStatus</p>
+}
+
+@code {
+    [Parameter] public string doctorClientId { get; set; } = "";
+    [Parameter] public string userClientId { get; set; } = "";
+
     private List<Message> messages = new();
-    private string newMessageText = "";
+    private string doctorName = "";
+    private string userName = "";
+    private string? currentClientId;
+    private bool isDoctorView = false;
+
     private bool isLoading = true;
+    private string newMessageText = "";
+    private IBrowserFile? selectedFile;
+    private const long maxUploadSize = 10 * 1024 * 1024; // 10 MB
+    private string apiBaseUrl = "";
+
+    private bool isRecording = false;
+    private string recordingStatus = "";
+    private bool inCall = false;
 
     protected override async Task OnInitializedAsync()
     {
+        isLoading = true;
+        apiBaseUrl = Configuration["ApiBaseUrl"] ?? "http://localhost:5092/";
+
         try
         {
             if (!string.IsNullOrWhiteSpace(doctorClientId))
             {
                 var doctor = await DoctorService.GetDoctorByClientIdAsync(doctorClientId);
                 if (doctor != null && !string.IsNullOrWhiteSpace(doctor.Name))
-                    doctorName = doctor.Name;
+                    doctorName = $"Dr. {doctor.Name}";
             }
 
             if (!string.IsNullOrWhiteSpace(userClientId))
@@ -83,6 +171,29 @@
                 if (user != null && !string.IsNullOrWhiteSpace(user.Name))
                     userName = user.Name;
             }
+
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var principal = authState.User;
+
+            if (principal?.Identity != null && principal.Identity.IsAuthenticated)
+            {
+                var email = principal.FindFirst(ClaimTypes.Email)?.Value
+                            ?? principal.FindFirst("email")?.Value;
+
+                if (!string.IsNullOrWhiteSpace(email))
+                {
+                    var client = await CService.GetClientByEmailAsync(email);
+                    if (client != null)
+                    {
+                        currentClientId = client.Id;
+                        isDoctorView = string.Equals(client.Role, "Doctor", StringComparison.OrdinalIgnoreCase)
+                                       && client.Id == doctorClientId;
+                    }
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(currentClientId))
+                currentClientId = userClientId;
 
             if (!string.IsNullOrWhiteSpace(userClientId) &&
                 !string.IsNullOrWhiteSpace(doctorClientId))
@@ -100,29 +211,66 @@
         }
     }
 
+    private void OnFileSelected(InputFileChangeEventArgs e)
+    {
+        selectedFile = e.File;
+    }
+
     private async Task SendMessage()
     {
-        if (string.IsNullOrWhiteSpace(newMessageText))
+        if (string.IsNullOrWhiteSpace(newMessageText) && selectedFile == null)
             return;
 
         if (string.IsNullOrWhiteSpace(doctorClientId) || string.IsNullOrWhiteSpace(userClientId))
             return;
 
-        var msg = new Message
-        {
-            SenderId = userClientId,
-            SenderName = userName,
-            ReceiverId = doctorClientId,
-            ReceiverName = doctorName,
-            UserClientId = userClientId,
-            DoctorClientId = doctorClientId,
-            Text = newMessageText,
-            SentAt = DateTime.UtcNow
-        };
+        var senderId = currentClientId ?? userClientId;
+        var senderName = isDoctorView ? doctorName : userName;
+        var receiverId = isDoctorView ? userClientId : doctorClientId;
+        var receiverName = isDoctorView ? userName : doctorName;
 
         try
         {
-            var saved = await MessageService.SendMessageAsync(msg);
+            Message saved;
+
+            if (selectedFile != null)
+            {
+                using var content = new MultipartFormDataContent();
+
+                var stream = selectedFile.OpenReadStream(maxUploadSize);
+                var fileContent = new StreamContent(stream);
+                fileContent.Headers.ContentType = new MediaTypeHeaderValue(selectedFile.ContentType);
+                content.Add(fileContent, "file", selectedFile.Name);
+
+                content.Add(new StringContent(senderId), "senderId");
+                content.Add(new StringContent(senderName), "senderName");
+                content.Add(new StringContent(receiverId), "receiverId");
+                content.Add(new StringContent(receiverName), "receiverName");
+                content.Add(new StringContent(userClientId), "userClientId");
+                content.Add(new StringContent(doctorClientId), "doctorClientId");
+                content.Add(new StringContent(newMessageText ?? string.Empty), "text");
+                content.Add(new StringContent("false"), "isVoice");
+
+                saved = await MessageService.SendAttachmentAsync(content);
+                selectedFile = null;
+            }
+            else
+            {
+                var msg = new Message
+                {
+                    SenderId = senderId,
+                    SenderName = senderName,
+                    ReceiverId = receiverId,
+                    ReceiverName = receiverName,
+                    UserClientId = userClientId,
+                    DoctorClientId = doctorClientId,
+                    Text = newMessageText,
+                    SentAt = DateTime.UtcNow
+                };
+
+                saved = await MessageService.SendMessageAsync(msg);
+            }
+
             messages.Add(saved);
             newMessageText = "";
         }
@@ -131,87 +279,133 @@
             Console.WriteLine($"❌ Error sending message: {ex.Message}");
         }
     }
+
+    private async Task StartRecording()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("voiceRecorder.start");
+            isRecording = true;
+            recordingStatus = "Recording...";
+        }
+        catch (Exception ex)
+        {
+            recordingStatus = $"Unable to start recording: {ex.Message}";
+        }
+    }
+
+    private async Task StopRecordingAndSend()
+    {
+        try
+        {
+            var dataUrl = await JS.InvokeAsync<string>("voiceRecorder.stop");
+            isRecording = false;
+
+            if (string.IsNullOrEmpty(dataUrl))
+            {
+                recordingStatus = "No audio captured.";
+                return;
+            }
+
+            var parts = dataUrl.Split(',');
+            if (parts.Length != 2)
+            {
+                recordingStatus = "Invalid audio data.";
+                return;
+            }
+
+            var meta = parts[0];
+            var base64 = parts[1];
+
+            var contentType = "audio/webm";
+            var ctStart = meta.IndexOf(':');
+            var ctEnd = meta.IndexOf(';');
+            if (ctStart >= 0 && ctEnd > ctStart)
+            {
+                contentType = meta.Substring(ctStart + 1, ctEnd - ctStart - 1);
+            }
+
+            var bytes = Convert.FromBase64String(base64);
+
+            var senderId = currentClientId ?? userClientId;
+            var senderName = isDoctorView ? doctorName : userName;
+            var receiverId = isDoctorView ? userClientId : doctorClientId;
+            var receiverName = isDoctorView ? userName : doctorName;
+
+            using var content = new MultipartFormDataContent();
+
+            var fileContent = new ByteArrayContent(bytes);
+            fileContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+            content.Add(fileContent, "file", "voice-message.webm");
+
+            content.Add(new StringContent(senderId), "senderId");
+            content.Add(new StringContent(senderName), "senderName");
+            content.Add(new StringContent(receiverId), "receiverId");
+            content.Add(new StringContent(receiverName), "receiverName");
+            content.Add(new StringContent(userClientId), "userClientId");
+            content.Add(new StringContent(doctorClientId), "doctorClientId");
+            content.Add(new StringContent("Voice message"), "text");
+            content.Add(new StringContent("true"), "isVoice");
+
+            var saved = await MessageService.SendAttachmentAsync(content);
+            messages.Add(saved);
+
+            recordingStatus = "Voice message sent.";
+        }
+        catch (Exception ex)
+        {
+            isRecording = false;
+            recordingStatus = $"Error recording audio: {ex.Message}";
+        }
+    }
+
+    private string GetAttachmentUrl(Message m)
+    {
+        if (string.IsNullOrEmpty(m.Id))
+            return "#";
+
+        return $"{apiBaseUrl.TrimEnd('/')}/api/message/{m.Id}/attachment";
+    }
+
+    private async Task OnVoiceCall()
+    {
+        if (string.IsNullOrWhiteSpace(doctorClientId) ||
+            string.IsNullOrWhiteSpace(userClientId) ||
+            string.IsNullOrWhiteSpace(currentClientId))
+        {
+            recordingStatus = "Cannot start call: missing IDs.";
+            return;
+        }
+
+        var conversationId = $"{doctorClientId}_{userClientId}";
+        var hubUrl = $"{apiBaseUrl.TrimEnd('/')}/callHub";
+
+        try
+        {
+            if (!inCall)
+            {
+                await JS.InvokeVoidAsync(
+                    "callManager.init",
+                    hubUrl,
+                    conversationId,
+                    true,
+                    currentClientId,
+                    "remoteAudio"
+                );
+
+                inCall = true;
+                recordingStatus = "Calling...";
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("callManager.endCall");
+                inCall = false;
+                recordingStatus = "Call ended.";
+            }
+        }
+        catch (Exception ex)
+        {
+            recordingStatus = $"Call error: {ex.Message}";
+        }
+    }
 }
-
-<style>
-    .chat-container {
-        max-width: 700px;
-        margin: 20px auto;
-        background: #ffffff;
-        border-radius: 12px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        padding: 16px;
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-    }
-
-    .messages {
-        max-height: 400px;
-        overflow-y: auto;
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        padding-right: 4px;
-    }
-
-    .message {
-        max-width: 70%;
-        padding: 8px 10px;
-        border-radius: 10px;
-        background: #f1f2f6;
-        font-size: 14px;
-    }
-
-    .message.mine {
-        margin-left: auto;
-        background: #d1e7ff;
-    }
-
-    .message.theirs {
-        margin-right: auto;
-    }
-
-    .meta {
-        display: flex;
-        justify-content: space-between;
-        font-size: 12px;
-        color: #555;
-        margin-bottom: 2px;
-    }
-
-    .text {
-        font-size: 14px;
-    }
-
-    .composer {
-        display: flex;
-        gap: 8px;
-        margin-top: 8px;
-    }
-
-    .composer input {
-        flex: 1;
-        padding: 8px;
-        border-radius: 8px;
-        border: 1px solid #ccc;
-    }
-
-    .composer button {
-        padding: 8px 14px;
-        border: none;
-        background: #3b3bbf;
-        color: #fff;
-        cursor: pointer;
-        border-radius: 8px;
-    }
-
-    .composer button:hover {
-        opacity: 0.9;
-    }
-
-    .empty {
-        color: #777;
-        font-style: italic;
-    }
-</style>

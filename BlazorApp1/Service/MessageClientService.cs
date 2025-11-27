@@ -16,27 +16,7 @@ namespace BlazorApp1.Service
             _http = http;
         }
 
-        // ✅ 1-1 conversation (user–doctor) by their client IDs
-        public async Task<List<Message>> GetConversationAsync(string userClientId, string doctorClientId)
-        {
-            var url =
-                $"api/message/conversation?userClientId={Uri.EscapeDataString(userClientId)}" +
-                $"&doctorClientId={Uri.EscapeDataString(doctorClientId)}";
-
-            var result = await _http.GetFromJsonAsync<List<Message>>(url);
-            return result ?? new List<Message>();
-        }
-
-        // ⭐ Group chat: all messages in a conversation
-        public async Task<List<Message>> GetByConversationAsync(string conversationId)
-        {
-            var result = await _http.GetFromJsonAsync<List<Message>>(
-                $"api/message/by-conversation/{Uri.EscapeDataString(conversationId)}");
-
-            return result ?? new List<Message>();
-        }
-
-        // 🔹 Send plain text message (1-1 or group – just set fields on Message)
+        // Text-only message
         public async Task<Message> SendMessageAsync(Message msg)
         {
             var response = await _http.PostAsJsonAsync("api/message", msg);
@@ -44,12 +24,12 @@ namespace BlazorApp1.Service
 
             var created = await response.Content.ReadFromJsonAsync<Message>();
             if (created == null)
-                throw new InvalidOperationException("API did not return created message.");
+                throw new InvalidOperationException("API did not return a message.");
 
             return created;
         }
 
-        // 🔹 Send message with attachment (image/file/audio/voice)
+        // File / voice note attachment (multipart/form-data)
         public async Task<Message> SendAttachmentAsync(MultipartFormDataContent content)
         {
             var response = await _http.PostAsync("api/message/with-attachment", content);
@@ -57,13 +37,31 @@ namespace BlazorApp1.Service
 
             var created = await response.Content.ReadFromJsonAsync<Message>();
             if (created == null)
-                throw new InvalidOperationException("API did not return created message with attachment.");
+                throw new InvalidOperationException("API did not return a message.");
 
             return created;
         }
 
-        // 🔹 For user: which doctor clientIds they have chats with
-        //     GET api/message/user/{userClientId}/doctors
+        // 1–1 conversation between user + doctor
+        // GET api/message/conversation?userClientId=...&doctorClientId=...
+        public async Task<List<Message>> GetConversationAsync(string userClientId, string doctorClientId)
+        {
+            var url = $"api/message/conversation?userClientId={Uri.EscapeDataString(userClientId)}&doctorClientId={Uri.EscapeDataString(doctorClientId)}";
+            var result = await _http.GetFromJsonAsync<List<Message>>(url);
+            return result ?? new List<Message>();
+        }
+
+        // Group conversation
+        // GET api/message/by-conversation/{conversationId}
+        public async Task<List<Message>> GetByConversationAsync(string conversationId)
+        {
+            var url = $"api/message/by-conversation/{Uri.EscapeDataString(conversationId)}";
+            var result = await _http.GetFromJsonAsync<List<Message>>(url);
+            return result ?? new List<Message>();
+        }
+
+        // For user: which doctors they’ve chatted with
+        // GET api/message/user/{userClientId}/doctors
         public async Task<List<string>> GetDoctorsForUserAsync(string userClientId)
         {
             var url = $"api/message/user/{Uri.EscapeDataString(userClientId)}/doctors";
@@ -71,8 +69,8 @@ namespace BlazorApp1.Service
             return result ?? new List<string>();
         }
 
-        // 🔹 For doctor: which user clientIds they have chats with
-        //     GET api/message/doctor/{doctorClientId}/users
+        // For doctor: which users they’ve chatted with
+        // GET api/message/doctor/{doctorClientId}/users
         public async Task<List<string>> GetUsersForDoctorAsync(string doctorClientId)
         {
             var url = $"api/message/doctor/{Uri.EscapeDataString(doctorClientId)}/users";
