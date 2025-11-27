@@ -131,8 +131,8 @@
         }
     }
 </div>
-
 @code {
+    // Parameters passed to the component
     [Parameter] public string doctorClientId { get; set; } = "";
     [Parameter] public string userClientId { get; set; } = "";
 
@@ -143,21 +143,25 @@
     private string newMessageText = "";
     private bool isLoading = true;
 
-    // who is logged in
+    // Identifies who is logged in (doctor or patient)
     private string? currentClientId;
     private bool isDoctorView = false;
 
-    // ⭐ attachments (file picker)
+    // Attachments and file picker
     private IBrowserFile? selectedFile;
     private const long maxUploadSize = 10 * 1024 * 1024; // 10 MB
     private string apiBaseUrl = "";
 
-    // 🎙 voice recording (offline voice notes)
+    // Voice recording (for voice notes)
     private bool isRecording = false;
     private string recordingStatus = "";
 
-    // 📞 web call state
+    // Web call state
     private bool inCall = false;
+
+    // WebRTC setup (peer-to-peer connection management)
+    private string localPeerId = "";
+    private string remotePeerId = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -182,7 +186,7 @@
                     userName = user.Name;
             }
 
-            // Determine who is currently logged in (doctor or patient)
+            // Determine who is logged in
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             var principal = authState.User;
 
@@ -203,7 +207,7 @@
                 }
             }
 
-            // Fallback: if we couldn't detect current client, assume patient
+            // Fallback if current client is not detected
             if (string.IsNullOrWhiteSpace(currentClientId))
                 currentClientId = userClientId;
 
@@ -224,75 +228,79 @@
         }
     }
 
-    private void OnFileSelected(InputFileChangeEventArgs e)
+    private async Task OnVoiceCall()
     {
-        selectedFile = e.File;
-    }
-
-    private async Task SendMessage()
-    {
-        if (string.IsNullOrWhiteSpace(newMessageText) && selectedFile == null)
+        if (string.IsNullOrWhiteSpace(doctorClientId) ||
+            string.IsNullOrWhiteSpace(userClientId) ||
+            string.IsNullOrWhiteSpace(currentClientId))
+        {
+            recordingStatus = "Cannot start voice call: missing IDs.";
             return;
+        }
 
-        if (string.IsNullOrWhiteSpace(doctorClientId) || string.IsNullOrWhiteSpace(userClientId))
-            return;
-
-        var senderId = currentClientId ?? userClientId;
-        var senderName = isDoctorView ? doctorName : userName;
-        var receiverId = isDoctorView ? userClientId : doctorClientId;
-        var receiverName = isDoctorView ? userName : doctorName;
+        var conversationId = $"{doctorClientId}_{userClientId}";
+        var hubUrl = $"{apiBaseUrl.TrimEnd('/')}/callHub";
 
         try
         {
-            Message saved;
-
-            if (selectedFile != null)
+            if (!inCall)
             {
-                using var content = new MultipartFormDataContent();
+                // Initialize the call with WebRTC (this part should be handled by callManager.js)
+                await JS.InvokeVoidAsync("callManager.init", hubUrl, conversationId, true, currentClientId, "remoteAudio");
 
-                var stream = selectedFile.OpenReadStream(maxUploadSize);
-                var fileContent = new StreamContent(stream);
-                fileContent.Headers.ContentType = new MediaTypeHeaderValue(selectedFile.ContentType);
-                content.Add(fileContent, "file", selectedFile.Name);
-
-                content.Add(new StringContent(senderId), "senderId");
-                content.Add(new StringContent(senderName), "senderName");
-                content.Add(new StringContent(receiverId), "receiverId");
-                content.Add(new StringContent(receiverName), "receiverName");
-                content.Add(new StringContent(userClientId), "userClientId");
-                content.Add(new StringContent(doctorClientId), "doctorClientId");
-                content.Add(new StringContent(newMessageText ?? string.Empty), "text");
-                content.Add(new StringContent("false"), "isVoice");
-
-                saved = await MessageService.SendAttachmentAsync(content);
-                selectedFile = null;
+                inCall = true;
+                recordingStatus = "Calling...";
             }
             else
             {
-                var msg = new Message
-                {
-                    SenderId = senderId,
-                    SenderName = senderName,
-                    ReceiverId = receiverId,
-                    ReceiverName = receiverName,
-                    UserClientId = userClientId,
-                    DoctorClientId = doctorClientId,
-                    Text = newMessageText,
-                    SentAt = DateTime.UtcNow
-                };
-
-                saved = await MessageService.SendMessageAsync(msg);
+                await JS.InvokeVoidAsync("callManager.endCall");
+                inCall = false;
+                recordingStatus = "Call ended.";
             }
-
-            messages.Add(saved);
-            newMessageText = "";
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"❌ Error sending message: {ex.Message}");
+            recordingStatus = $"Call error: {ex.Message}";
         }
     }
 
+    private async Task OnVideoCall()
+    {
+        if (string.IsNullOrWhiteSpace(doctorClientId) ||
+            string.IsNullOrWhiteSpace(userClientId) ||
+            string.IsNullOrWhiteSpace(currentClientId))
+        {
+            recordingStatus = "Cannot start video call: missing IDs.";
+            return;
+        }
+
+        var conversationId = $"{doctorClientId}_{userClientId}";
+        var hubUrl = $"{apiBaseUrl.TrimEnd('/')}/callHub";
+
+        try
+        {
+            if (!inCall)
+            {
+                // Set up video call with WebRTC (we are assuming callManager handles this)
+                await JS.InvokeVoidAsync("callManager.init", hubUrl, conversationId, true, currentClientId, "remoteVideo");
+
+                inCall = true;
+                recordingStatus = "Video Calling...";
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("callManager.endCall");
+                inCall = false;
+                recordingStatus = "Call ended.";
+            }
+        }
+        catch (Exception ex)
+        {
+            recordingStatus = $"Video call error: {ex.Message}";
+        }
+    }
+
+    // Add other necessary methods for voice recording and message sending
     private async Task StartRecording()
     {
         try
@@ -379,49 +387,8 @@
 
         return $"{apiBaseUrl.TrimEnd('/')}/api/message/{m.Id}/attachment";
     }
-
-    private async Task OnVoiceCall()
-    {
-        if (string.IsNullOrWhiteSpace(doctorClientId) ||
-            string.IsNullOrWhiteSpace(userClientId) ||
-            string.IsNullOrWhiteSpace(currentClientId))
-        {
-            recordingStatus = "Cannot start call: missing IDs.";
-            return;
-        }
-
-        var conversationId = $"{doctorClientId}_{userClientId}";
-        var hubUrl = $"{apiBaseUrl.TrimEnd('/')}/callHub";
-
-        try
-        {
-            if (!inCall)
-            {
-                await JS.InvokeVoidAsync(
-                    "callManager.init",
-                    hubUrl,
-                    conversationId,
-                    true,
-                    currentClientId,
-                    "remoteAudio"
-                );
-
-                inCall = true;
-                recordingStatus = "Calling...";
-            }
-            else
-            {
-                await JS.InvokeVoidAsync("callManager.endCall");
-                inCall = false;
-                recordingStatus = "Call ended.";
-            }
-        }
-        catch (Exception ex)
-        {
-            recordingStatus = $"Call error: {ex.Message}";
-        }
-    }
 }
+
 
 <style>
     .chat-header {
