@@ -1,7 +1,6 @@
-@page "/user-chat/{doctorClientId}/{userClientId}"   <!-- Ensure this route is unique from Chat -->
-
+@page "/user-chat/{doctorClientId}/{userClientId}"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
-@layout BlazorApp1.Components.Layout.DashboardLayout
+@layout BlazorApp1.Components.Layout.UserDashboardLayout
 
 @using System
 @using System.Collections.Generic
@@ -27,137 +26,130 @@
     <div>
         <h3>Chat with @(isDoctorView ? userName : doctorName)</h3>
         <p class="chat-subtitle">
-            @(isDoctorView ? doctorName : userName)
+            @if (isDoctorView)
+            {
+                <span>You are logged in as doctor.</span>
+            }
+            else
+            {
+                <span>You are logged in as patient.</span>
+            }
         </p>
     </div>
 
     <div class="chat-actions">
-        <button class="icon-btn" title="Voice Call" @onclick="OnVoiceCall">
-            @(inCall ? "🔴" : "📞")
+        <button class="icon-btn" title="Voice call" @onclick="OnVoiceCall">
+            <i class="fa-solid fa-phone"></i>
         </button>
-        <button class="icon-btn" title="Video Call" @onclick="OnVideoCall">🎥</button>
+        <button class="icon-btn" title="Voice note" @onclick="StartRecording" disabled="@isRecording">
+            <i class="fa-solid fa-microphone"></i>
+        </button>
+        <audio id="remoteAudio" autoplay hidden></audio>
     </div>
 </div>
 
 <div class="chat-container">
-    @* 🔊 remote audio from WebRTC *@
-    <audio id="remoteAudio" autoplay hidden></audio>
-
-    @if (string.IsNullOrWhiteSpace(doctorClientId) || string.IsNullOrWhiteSpace(userClientId))
+    @if (isLoading)
     {
-        <p class="empty">No conversation selected. Go to <b>Messages</b> and choose a conversation.</p>
+        <p>Loading conversation...</p>
+    }
+    else if (messages.Count == 0)
+    {
+        <p class="empty">No messages yet. Say hello!</p>
     }
     else
     {
-        <div class="messages">
-            @if (isLoading)
-            {
-                <p>Loading conversation...</p>
-            }
-            else if (messages.Count == 0)
-            {
-                <p class="empty">No messages yet. Say hello!</p>
-            }
-            else
-            {
-                @foreach (var m in messages)
-                {
-                    var mine = !string.IsNullOrWhiteSpace(currentClientId) && m.SenderId == currentClientId;
-                    <div class="message @(mine ? "mine" : "theirs")">
-                        <div class="meta">
-                            <span class="name">@m.SenderName</span>
-                            <span class="time">@m.SentAt.ToLocalTime().ToString("HH:mm")</span>
-                        </div>
-                        <div class="text">
-                            @if (!string.IsNullOrWhiteSpace(m.Text))
-                            {
-                                <div>@m.Text</div>
-                            }
-
-                            @if (!string.IsNullOrEmpty(m.AttachmentFileName) && !string.IsNullOrEmpty(m.Id))
-                            {
-                                var isImage = m.AttachmentContentType?.StartsWith("image") == true;
-                                var isAudio = m.AttachmentContentType?.StartsWith("audio") == true || m.IsVoiceMessage;
-                                var url = GetAttachmentUrl(m);
-
-                                if (isImage)
-                                {
-                                    <img src="@url" class="chat-image" />
-                                }
-                                else if (isAudio)
-                                {
-                                    <audio controls src="@url" class="chat-audio"></audio>
-                                }
-                                else
-                                {
-                                    <a href="@url" target="_blank">
-                                        Download @m.AttachmentFileName
-                                    </a>
-                                }
-                            }
-                        </div>
-                    </div>
-                }
-            }
-        </div>
-
-        <div class="composer">
-            <InputFile OnChange="OnFileSelected" />
-
-            <input @bind="newMessageText"
-                   @bind:event="oninput"
-                   placeholder="Type a message..." />
-
-            @* 🎙 Voice note buttons *@
-            @if (!isRecording)
-            {
-                <button type="button" class="btn-secondary" @onclick="StartRecording">
-                    🎙
-                </button>
-            }
-            else
-            {
-                <button type="button" class="btn-secondary recording" @onclick="StopRecordingAndSend">
-                    ⏹
-                </button>
-            }
-
-            <button @onclick="SendMessage">Send</button>
-        </div>
-
-        @if (!string.IsNullOrEmpty(recordingStatus))
+        @foreach (var m in messages)
         {
-            <p class="recording-status">@recordingStatus</p>
+            var mine = !string.IsNullOrWhiteSpace(currentClientId) && m.SenderId == currentClientId;
+            <div class="message @(mine ? "mine" : "theirs")">
+                <div class="meta">
+                    <span class="name">@m.SenderName</span>
+                    <span class="time">@m.SentAt.ToLocalTime().ToString("HH:mm")</span>
+
+                </div>
+                <div class="bubble">
+                    @if (!string.IsNullOrWhiteSpace(m.Text))
+                    {
+                        <p>@m.Text</p>
+                    }
+
+                    @if (m.AttachmentData != null && !string.IsNullOrEmpty(m.AttachmentFileName))
+                    {
+                        var isImage = !string.IsNullOrEmpty(m.AttachmentContentType) &&
+                                      m.AttachmentContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+                        var isAudio = !string.IsNullOrEmpty(m.AttachmentContentType) &&
+                                      m.AttachmentContentType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase);
+
+                        var url = GetAttachmentUrl(m);
+
+                        if (isImage)
+                        {
+                            <img src="@url" class="chat-image" />
+                        }
+                        else if (isAudio)
+                        {
+                            <audio controls src="@url" class="chat-audio"></audio>
+                        }
+                        else
+                        {
+                            <a href="@url" target="_blank">
+                                Download @m.AttachmentFileName
+                            </a>
+                        }
+                    }
+                </div>
+            </div>
         }
     }
 </div>
 
+<div class="composer">
+    <InputFile OnChange="OnFileSelected" />
+
+    <input @bind="newMessageText"
+           @bind:event="oninput"
+           placeholder="Type a message..." />
+
+    @if (!isRecording)
+    {
+        <button type="button" class="btn-secondary" @onclick="StartRecording">
+            🎙
+        </button>
+    }
+    else
+    {
+        <button type="button" class="btn-secondary recording" @onclick="StopRecordingAndSend">
+            ⏹
+        </button>
+    }
+
+    <button @onclick="SendMessage">Send</button>
+</div>
+
+@if (!string.IsNullOrEmpty(recordingStatus))
+{
+    <p class="recording-status">@recordingStatus</p>
+}
+
 @code {
-    // Parameters passed to the component
     [Parameter] public string doctorClientId { get; set; } = "";
     [Parameter] public string userClientId { get; set; } = "";
 
-    private string doctorName = "Doctor";
-    private string userName = "You";
-
     private List<Message> messages = new();
-    private string newMessageText = "";
-    private bool isLoading = true;
-
-    // Identifies who is logged in (doctor or patient)
+    private string doctorName = "";
+    private string userName = "";
     private string? currentClientId;
     private bool isDoctorView = false;
 
-    // Attachments and file picker
+    private bool isLoading = true;
+    private string newMessageText = "";
     private IBrowserFile? selectedFile;
     private const long maxUploadSize = 10 * 1024 * 1024; // 10 MB
     private string apiBaseUrl = "";
 
-    // Voice recording (for voice notes)
     private bool isRecording = false;
     private string recordingStatus = "";
-
-    // Web call state
     private bool inCall = false;
 
     protected override async Task OnInitializedAsync()
@@ -167,7 +159,6 @@
 
         try
         {
-            // Load doctor name
             if (!string.IsNullOrWhiteSpace(doctorClientId))
             {
                 var doctor = await DoctorService.GetDoctorByClientIdAsync(doctorClientId);
@@ -175,7 +166,6 @@
                     doctorName = $"Dr. {doctor.Name}";
             }
 
-            // Load user name
             if (!string.IsNullOrWhiteSpace(userClientId))
             {
                 var user = await UserService.GetUserByClientIdAsync(userClientId);
@@ -183,7 +173,6 @@
                     userName = user.Name;
             }
 
-            // Determine who is logged in
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             var principal = authState.User;
 
@@ -204,11 +193,9 @@
                 }
             }
 
-            // Fallback if current client is not detected
             if (string.IsNullOrWhiteSpace(currentClientId))
                 currentClientId = userClientId;
 
-            // Load conversation
             if (!string.IsNullOrWhiteSpace(userClientId) &&
                 !string.IsNullOrWhiteSpace(doctorClientId))
             {
@@ -225,13 +212,11 @@
         }
     }
 
-    // Handle file selection (for attachments)
     private void OnFileSelected(InputFileChangeEventArgs e)
     {
         selectedFile = e.File;
     }
 
-    // Handle sending a message
     private async Task SendMessage()
     {
         if (string.IsNullOrWhiteSpace(newMessageText) && selectedFile == null)
@@ -265,7 +250,7 @@
                 content.Add(new StringContent(userClientId), "userClientId");
                 content.Add(new StringContent(doctorClientId), "doctorClientId");
                 content.Add(new StringContent(newMessageText ?? string.Empty), "text");
-                content.Add(new StringContent("false"), "isVoice");  // Normal message, not a voice message
+                content.Add(new StringContent("false"), "isVoice");
 
                 saved = await MessageService.SendAttachmentAsync(content);
                 selectedFile = null;
@@ -296,7 +281,6 @@
         }
     }
 
-    // Handle starting voice recording
     private async Task StartRecording()
     {
         try
@@ -311,7 +295,6 @@
         }
     }
 
-    // Handle stopping and sending voice recording
     private async Task StopRecordingAndSend()
     {
         try
@@ -377,7 +360,6 @@
         }
     }
 
-    // Get attachment URL for the message
     private string GetAttachmentUrl(Message m)
     {
         if (string.IsNullOrEmpty(m.Id))
@@ -386,14 +368,13 @@
         return $"{apiBaseUrl.TrimEnd('/')}/api/message/{m.Id}/attachment";
     }
 
-    // Handle voice call logic
     private async Task OnVoiceCall()
     {
         if (string.IsNullOrWhiteSpace(doctorClientId) ||
             string.IsNullOrWhiteSpace(userClientId) ||
             string.IsNullOrWhiteSpace(currentClientId))
         {
-            recordingStatus = "Cannot start voice call: missing IDs.";
+            recordingStatus = "Cannot start call: missing IDs.";
             return;
         }
 
@@ -404,8 +385,14 @@
         {
             if (!inCall)
             {
-                // Start the call (using WebRTC or a signaling system like SignalR)
-                await JS.InvokeVoidAsync("callManager.init", hubUrl, conversationId, true, currentClientId, "remoteAudio");
+                await JS.InvokeVoidAsync(
+                    "callManager.init",
+                    hubUrl,
+                    conversationId,
+                    true,
+                    currentClientId,
+                    "remoteAudio"
+                );
 
                 inCall = true;
                 recordingStatus = "Calling...";
@@ -422,46 +409,7 @@
             recordingStatus = $"Call error: {ex.Message}";
         }
     }
-
-    // Handle video call logic (future integration)
-    private async Task OnVideoCall()
-    {
-        if (string.IsNullOrWhiteSpace(doctorClientId) ||
-            string.IsNullOrWhiteSpace(userClientId) ||
-            string.IsNullOrWhiteSpace(currentClientId))
-        {
-            recordingStatus = "Cannot start video call: missing IDs.";
-            return;
-        }
-
-        var conversationId = $"{doctorClientId}_{userClientId}";
-        var hubUrl = $"{apiBaseUrl.TrimEnd('/')}/callHub";
-
-        try
-        {
-            if (!inCall)
-            {
-                // Initiate video call (we can extend WebRTC for video later)
-                await JS.InvokeVoidAsync("callManager.init", hubUrl, conversationId, true, currentClientId, "remoteVideo");
-
-                inCall = true;
-                recordingStatus = "Video Calling...";
-            }
-            else
-            {
-                await JS.InvokeVoidAsync("callManager.endCall");
-                inCall = false;
-                recordingStatus = "Call ended.";
-            }
-        }
-        catch (Exception ex)
-        {
-            recordingStatus = $"Video call error: {ex.Message}";
-        }
-    }
 }
-
-
 
 <style>
     .chat-header {

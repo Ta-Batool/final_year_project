@@ -1,5 +1,5 @@
+@page "/messages/{doctorClientId}/{userClientId}"
 @page "/chat/{doctorClientId}/{userClientId}"
-
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 @layout BlazorApp1.Components.Layout.DashboardLayout
 
@@ -11,7 +11,6 @@
 @using System.Net.Http.Headers
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Components.Forms
-@using Microsoft.JSInterop
 @using Model
 @using BlazorApp1.Service
 
@@ -21,27 +20,10 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject ICService CService
 @inject IConfiguration Configuration
-@inject IJSRuntime JS
 
-<div class="chat-header">
-    <div>
-        <h3>Chat with @(isDoctorView ? userName : doctorName)</h3>
-        <p class="chat-subtitle">
-            @(isDoctorView ? doctorName : userName)
-        </p>
-    </div>
-
-    <div class="chat-actions">
-        <button class="icon-btn" title="Voice Call" @onclick="OnVoiceCall">
-            @(inCall ? "🔴" : "📞")
-        </button>
-        <button class="icon-btn" title="Video Call" @onclick="OnVideoCall">🎥</button>
-    </div>
-</div>
+<h3>Chat with @(isDoctorView ? userName : doctorName)</h3>
 
 <div class="chat-container">
-    <audio id="remoteAudio" autoplay hidden></audio>
-
     @if (string.IsNullOrWhiteSpace(doctorClientId) || string.IsNullOrWhiteSpace(userClientId))
     {
         <p class="empty">No conversation selected. Go to <b>Messages</b> and choose a conversation.</p>
@@ -102,38 +84,17 @@
 
         <div class="composer">
             <InputFile OnChange="OnFileSelected" />
-
             <input @bind="newMessageText"
                    @bind:event="oninput"
                    placeholder="Type a message..." />
-
-            @if (!isRecording)
-            {
-                <button type="button" class="btn-secondary" @onclick="StartRecording">
-                    🎙
-                </button>
-            }
-            else
-            {
-                <button type="button" class="btn-secondary recording" @onclick="StopRecordingAndSend">
-                    ⏹
-                </button>
-            }
-
             <button @onclick="SendMessage">Send</button>
         </div>
-
-        @if (!string.IsNullOrEmpty(recordingStatus))
-        {
-            <p class="recording-status">@recordingStatus</p>
-        }
     }
 </div>
 
 @code {
-    // Parameters passed to the component
-    [Parameter] public string doctorClientId { get; set; } = "";
-    [Parameter] public string userClientId { get; set; } = "";
+    [Parameter] public string doctorClientId { get; set; } = string.Empty;
+    [Parameter] public string userClientId { get; set; } = string.Empty;
 
     private string doctorName = "Doctor";
     private string userName = "You";
@@ -142,17 +103,14 @@
     private string newMessageText = "";
     private bool isLoading = true;
 
+    // who is logged in
     private string? currentClientId;
     private bool isDoctorView = false;
 
+    // ⭐ attachments
     private IBrowserFile? selectedFile;
     private const long maxUploadSize = 10 * 1024 * 1024; // 10 MB
     private string apiBaseUrl = "";
-
-    private bool isRecording = false;
-    private string recordingStatus = "";
-
-    private bool inCall = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -161,6 +119,7 @@
 
         try
         {
+            // Load doctor name
             if (!string.IsNullOrWhiteSpace(doctorClientId))
             {
                 var doctor = await DoctorService.GetDoctorByClientIdAsync(doctorClientId);
@@ -168,6 +127,7 @@
                     doctorName = $"Dr. {doctor.Name}";
             }
 
+            // Load user name
             if (!string.IsNullOrWhiteSpace(userClientId))
             {
                 var user = await UserService.GetUserByClientIdAsync(userClientId);
@@ -175,12 +135,14 @@
                     userName = user.Name;
             }
 
+            // Determine who is currently logged in (doctor or patient)
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             var principal = authState.User;
 
             if (principal?.Identity != null && principal.Identity.IsAuthenticated)
             {
-                var email = principal.FindFirst(ClaimTypes.Email)?.Value ?? principal.FindFirst("email")?.Value;
+                var email = principal.FindFirst(ClaimTypes.Email)?.Value
+                            ?? principal.FindFirst("email")?.Value;
 
                 if (!string.IsNullOrWhiteSpace(email))
                 {
@@ -194,9 +156,11 @@
                 }
             }
 
+            // Fallback: if we couldn't detect current client, assume patient
             if (string.IsNullOrWhiteSpace(currentClientId))
                 currentClientId = userClientId;
 
+            // Load conversation
             if (!string.IsNullOrWhiteSpace(userClientId) &&
                 !string.IsNullOrWhiteSpace(doctorClientId))
             {
@@ -239,11 +203,13 @@
             {
                 using var content = new MultipartFormDataContent();
 
+                // file
                 var stream = selectedFile.OpenReadStream(maxUploadSize);
                 var fileContent = new StreamContent(stream);
                 fileContent.Headers.ContentType = new MediaTypeHeaderValue(selectedFile.ContentType);
                 content.Add(fileContent, "file", selectedFile.Name);
 
+                // metadata fields expected by API
                 content.Add(new StringContent(senderId), "senderId");
                 content.Add(new StringContent(senderName), "senderName");
                 content.Add(new StringContent(receiverId), "receiverId");
@@ -251,9 +217,10 @@
                 content.Add(new StringContent(userClientId), "userClientId");
                 content.Add(new StringContent(doctorClientId), "doctorClientId");
                 content.Add(new StringContent(newMessageText ?? string.Empty), "text");
-                content.Add(new StringContent("false"), "isVoice");
+                content.Add(new StringContent("false"), "isVoice"); // voice notes later
 
                 saved = await MessageService.SendAttachmentAsync(content);
+
                 selectedFile = null;
             }
             else
@@ -282,85 +249,6 @@
         }
     }
 
-    private async Task StartRecording()
-    {
-        try
-        {
-            await JS.InvokeVoidAsync("voiceRecorder.start");
-            isRecording = true;
-            recordingStatus = "Recording...";
-        }
-        catch (Exception ex)
-        {
-            recordingStatus = $"Unable to start recording: {ex.Message}";
-        }
-    }
-
-    private async Task StopRecordingAndSend()
-    {
-        try
-        {
-            var dataUrl = await JS.InvokeAsync<string>("voiceRecorder.stop");
-            isRecording = false;
-
-            if (string.IsNullOrEmpty(dataUrl))
-            {
-                recordingStatus = "No audio captured.";
-                return;
-            }
-
-            var parts = dataUrl.Split(',');
-            if (parts.Length != 2)
-            {
-                recordingStatus = "Invalid audio data.";
-                return;
-            }
-
-            var meta = parts[0];
-            var base64 = parts[1];
-
-            var contentType = "audio/webm";
-            var ctStart = meta.IndexOf(':');
-            var ctEnd = meta.IndexOf(';');
-            if (ctStart >= 0 && ctEnd > ctStart)
-            {
-                contentType = meta.Substring(ctStart + 1, ctEnd - ctStart - 1);
-            }
-
-            var bytes = Convert.FromBase64String(base64);
-
-            var senderId = currentClientId ?? userClientId;
-            var senderName = isDoctorView ? doctorName : userName;
-            var receiverId = isDoctorView ? userClientId : doctorClientId;
-            var receiverName = isDoctorView ? userName : doctorName;
-
-            using var content = new MultipartFormDataContent();
-
-            var fileContent = new ByteArrayContent(bytes);
-            fileContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
-            content.Add(fileContent, "file", "voice-message.webm");
-
-            content.Add(new StringContent(senderId), "senderId");
-            content.Add(new StringContent(senderName), "senderName");
-            content.Add(new StringContent(receiverId), "receiverId");
-            content.Add(new StringContent(receiverName), "receiverName");
-            content.Add(new StringContent(userClientId), "userClientId");
-            content.Add(new StringContent(doctorClientId), "doctorClientId");
-            content.Add(new StringContent("Voice message"), "text");
-            content.Add(new StringContent("true"), "isVoice");
-
-            var saved = await MessageService.SendAttachmentAsync(content);
-            messages.Add(saved);
-
-            recordingStatus = "Voice message sent.";
-        }
-        catch (Exception ex)
-        {
-            isRecording = false;
-            recordingStatus = $"Error recording audio: {ex.Message}";
-        }
-    }
-
     private string GetAttachmentUrl(Message m)
     {
         if (string.IsNullOrEmpty(m.Id))
@@ -368,120 +256,12 @@
 
         return $"{apiBaseUrl.TrimEnd('/')}/api/message/{m.Id}/attachment";
     }
-
-    private async Task OnVoiceCall()
-    {
-        if (string.IsNullOrWhiteSpace(doctorClientId) ||
-            string.IsNullOrWhiteSpace(userClientId) ||
-            string.IsNullOrWhiteSpace(currentClientId))
-        {
-            recordingStatus = "Cannot start voice call: missing IDs.";
-            return;
-        }
-
-        var conversationId = $"{doctorClientId}_{userClientId}";
-        var hubUrl = $"{apiBaseUrl.TrimEnd('/')}/callHub";
-
-        try
-        {
-            if (!inCall)
-            {
-                await JS.InvokeVoidAsync("callManager.init", hubUrl, conversationId, true, currentClientId, "remoteAudio");
-
-                inCall = true;
-                recordingStatus = "Calling...";
-            }
-            else
-            {
-                await JS.InvokeVoidAsync("callManager.endCall");
-                inCall = false;
-                recordingStatus = "Call ended.";
-            }
-        }
-        catch (Exception ex)
-        {
-            recordingStatus = $"Call error: {ex.Message}";
-        }
-    }
-
-    private async Task OnVideoCall()
-    {
-        if (string.IsNullOrWhiteSpace(doctorClientId) ||
-            string.IsNullOrWhiteSpace(userClientId) ||
-            string.IsNullOrWhiteSpace(currentClientId))
-        {
-            recordingStatus = "Cannot start video call: missing IDs.";
-            return;
-        }
-
-        var conversationId = $"{doctorClientId}_{userClientId}";
-        var hubUrl = $"{apiBaseUrl.TrimEnd('/')}/callHub";
-
-        try
-        {
-            if (!inCall)
-            {
-                await JS.InvokeVoidAsync("callManager.init", hubUrl, conversationId, true, currentClientId, "remoteVideo");
-
-                inCall = true;
-                recordingStatus = "Video Calling...";
-            }
-            else
-            {
-                await JS.InvokeVoidAsync("callManager.endCall");
-                inCall = false;
-                recordingStatus = "Call ended.";
-            }
-        }
-        catch (Exception ex)
-        {
-            recordingStatus = $"Video call error: {ex.Message}";
-        }
-    }
 }
 
-
 <style>
-    .chat-header {
-        max-width: 700px;
-        margin: 20px auto 0;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-
-    .chat-subtitle {
-        margin: 0;
-        font-size: 13px;
-        color: #666;
-    }
-
-    .chat-actions {
-        display: flex;
-        gap: 8px;
-    }
-
-    .icon-btn {
-        border: none;
-        background: #3b3bbf;
-        color: #fff;
-        border-radius: 50%;
-        width: 32px;
-        height: 32px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 16px;
-    }
-
-    .icon-btn:hover {
-        opacity: 0.9;
-    }
-
     .chat-container {
         max-width: 700px;
-        margin: 10px auto 20px;
+        margin: 20px auto;
         background: #ffffff;
         border-radius: 12px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.08);
@@ -542,6 +322,7 @@
         font-size: 12px;
     }
 
+    .composer input[type="text"],
     .composer input:not([type="file"]) {
         flex: 1;
         padding: 8px;
@@ -556,14 +337,6 @@
         color: #fff;
         cursor: pointer;
         border-radius: 8px;
-    }
-
-    .composer .btn-secondary {
-        background: #6c757d;
-    }
-
-    .composer .btn-secondary.recording {
-        background: #dc3545;
     }
 
     .composer button:hover {
@@ -582,13 +355,7 @@
     }
 
     .chat-audio {
-        width: 220px;
-        margin-top: 4px;
-    }
-
-    .recording-status {
-        font-size: 13px;
-        color: #555;
+        width: 200px;
         margin-top: 4px;
     }
 </style>
