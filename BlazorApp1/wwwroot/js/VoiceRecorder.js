@@ -1,5 +1,3 @@
-// wwwroot/js/voiceRecorder.js
-
 window.voiceRecorder = (function () {
     let mediaRecorder = null;
     let chunks = [];
@@ -36,7 +34,7 @@ window.voiceRecorder = (function () {
 
                 const reader = new FileReader();
                 reader.onloadend = function () {
-                    // result looks like: data:audio/webm;codecs=opus;base64,AAAA...
+                    // result: data:audio/webm;codecs=opus;base64,AAAA...
                     resolve(reader.result);
                 };
                 reader.onerror = reject;

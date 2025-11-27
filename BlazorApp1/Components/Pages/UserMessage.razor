@@ -121,8 +121,9 @@
         if (string.IsNullOrWhiteSpace(currentUserClientId))
             return;
 
-        Nav.NavigateTo($"/messages/{doctorClientId}/{currentUserClientId}");
+        Nav.NavigateTo($"/user-chat/{doctorClientId}/{currentUserClientId}");
     }
+
 
     private void GoToDoctorList()
     {

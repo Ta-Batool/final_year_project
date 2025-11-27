@@ -23,9 +23,26 @@
 @inject IConfiguration Configuration
 @inject IJSRuntime JS
 
-<h3>Chat with @(isDoctorView ? userName : doctorName)</h3>
+<div class="chat-header">
+    <div>
+        <h3>Chat with @(isDoctorView ? userName : doctorName)</h3>
+        <p class="chat-subtitle">
+            @(isDoctorView ? doctorName : userName)
+        </p>
+    </div>
+
+    <div class="chat-actions">
+        <button class="icon-btn" title="Voice Call" @onclick="OnVoiceCall">
+            @(inCall ? "🔴" : "📞")
+        </button>
+        <button class="icon-btn" title="Video Call" @onclick="OnVideoCall">🎥</button>
+    </div>
+</div>
 
 <div class="chat-container">
+    @* 🔊 remote audio from WebRTC *@
+    <audio id="remoteAudio" autoplay hidden></audio>
+
     @if (string.IsNullOrWhiteSpace(doctorClientId) || string.IsNullOrWhiteSpace(userClientId))
     {
         <p class="empty">No conversation selected. Go to <b>Messages</b> and choose a conversation.</p>
@@ -86,11 +103,12 @@
 
         <div class="composer">
             <InputFile OnChange="OnFileSelected" />
+
             <input @bind="newMessageText"
                    @bind:event="oninput"
                    placeholder="Type a message..." />
 
-            <!-- 🎙 Voice note buttons -->
+            @* 🎙 Voice note buttons *@
             @if (!isRecording)
             {
                 <button type="button" class="btn-secondary" @onclick="StartRecording">
@@ -134,9 +152,12 @@
     private const long maxUploadSize = 10 * 1024 * 1024; // 10 MB
     private string apiBaseUrl = "";
 
-    // 🎙 voice recording
+    // 🎙 voice recording (offline voice notes)
     private bool isRecording = false;
     private string recordingStatus = "";
+
+    // 📞 web call state
+    private bool inCall = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -275,7 +296,7 @@
         }
     }
 
-    // 🎙 Start recording via JS
+    // 🎙 Start recording via JS (voice note)
     private async Task StartRecording()
     {
         try
@@ -364,12 +385,98 @@
 
         return $"{apiBaseUrl.TrimEnd('/')}/api/message/{m.Id}/attachment";
     }
+
+    // 📞 Web call handler (calls JS callManager)
+    private async Task OnVoiceCall()
+    {
+        if (string.IsNullOrWhiteSpace(doctorClientId) ||
+            string.IsNullOrWhiteSpace(userClientId) ||
+            string.IsNullOrWhiteSpace(currentClientId))
+        {
+            recordingStatus = "Cannot start call: missing IDs.";
+            return;
+        }
+
+        var conversationId = $"{doctorClientId}_{userClientId}";
+        var hubUrl = $"{apiBaseUrl.TrimEnd('/')}/callHub";
+
+        try
+        {
+            if (!inCall)
+            {
+                await JS.InvokeVoidAsync(
+                    "callManager.init",
+                    hubUrl,
+                    conversationId,
+                    true,                // this side is initiator
+                    currentClientId,
+                    "remoteAudio"
+                );
+
+                inCall = true;
+                recordingStatus = "Calling...";
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("callManager.endCall");
+                inCall = false;
+                recordingStatus = "Call ended.";
+            }
+        }
+        catch (Exception ex)
+        {
+            recordingStatus = $"Call error: {ex.Message}";
+        }
+    }
+
+    private void OnVideoCall()
+    {
+        // Future enhancement – WebRTC video
+        Console.WriteLine("Video call clicked");
+    }
 }
 
 <style>
+    .chat-header {
+        max-width: 700px;
+        margin: 20px auto 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .chat-subtitle {
+        margin: 0;
+        font-size: 13px;
+        color: #666;
+    }
+
+    .chat-actions {
+        display: flex;
+        gap: 8px;
+    }
+
+    .icon-btn {
+        border: none;
+        background: #3b3bbf;
+        color: #fff;
+        border-radius: 50%;
+        width: 32px;
+        height: 32px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+    }
+
+    .icon-btn:hover {
+        opacity: 0.9;
+    }
+
     .chat-container {
         max-width: 700px;
-        margin: 20px auto;
+        margin: 10px auto 20px;
         background: #ffffff;
         border-radius: 12px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.08);

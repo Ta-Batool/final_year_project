@@ -2,7 +2,7 @@ using API.MongoModel;
 using API.Services;
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
-
+using API.Hubs;                    // ✅ add this (namespace where CallHub lives)
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -24,8 +24,25 @@ builder.Services.AddScoped<IMealService, MealService>();
 builder.Services.AddSingleton<IMedicationService, MedicationService>();
 builder.Services.AddSingleton<IConversationService, ConversationService>();
 
+// ✅ SignalR for WebRTC signalling
+builder.Services.AddSignalR();
 
-
+// ✅ CORS so Blazor app can reach this API + SignalR hub
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowBlazor", policy =>
+    {
+        policy
+            .WithOrigins(
+                "https://fyp-blazor.onrender.com",  // your Render Blazor app
+                "https://localhost:7090",           // local https dev
+                "http://localhost:5090"             // local http dev (adjust if needed)
+            )
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+    });
+});
 
 var app = builder.Build();
 
@@ -36,8 +53,12 @@ if (app.Environment.IsDevelopment())
 }
 
 // ❌ On Render this can cause issues / warnings.
-//    You don't really need HTTPS redirection inside the container.
 // app.UseHttpsRedirection();
+
+app.UseRouting();
+
+// ✅ Apply CORS before auth/endpoints
+app.UseCors("AllowBlazor");
 
 app.UseAuthorization();
 
@@ -49,5 +70,8 @@ app.MapGet("/health", () => Results.Ok(new { status = "Healthy" }));
 
 // ✅ Your actual API controllers
 app.MapControllers();
+
+// ✅ WebRTC signalling hub
+app.MapHub<CallHub>("/callHub");
 
 app.Run();
