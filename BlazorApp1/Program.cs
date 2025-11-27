@@ -64,25 +64,53 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
-// 🌐 API base URL
+// 🌐 API base URL  (make sure this points to your API service on Render in production)
 var apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? "http://localhost:5092/";
 
-// Domain services
-builder.Services.AddHttpClient<IDService, DService>(c => c.BaseAddress = new Uri(apiBaseUrl));
-builder.Services.AddHttpClient<IUService, UService>(c => c.BaseAddress = new Uri(apiBaseUrl));
-builder.Services.AddHttpClient<ICService, CService>(c => c.BaseAddress = new Uri(apiBaseUrl));
-builder.Services.AddHttpClient<IAService, AService>(c => c.BaseAddress = new Uri(apiBaseUrl));
-builder.Services.AddHttpClient<IMService, MService>(c => c.BaseAddress = new Uri(apiBaseUrl));
-builder.Services.AddHttpClient<IMealService, MealService>(c => c.BaseAddress = new Uri(apiBaseUrl));
+// ─── Domain services (typed HttpClients) ────────────────────────────────────────
+
+builder.Services.AddHttpClient<IDService, DService>(c =>
+{
+    c.BaseAddress = new Uri(apiBaseUrl);
+});
+
+builder.Services.AddHttpClient<IUService, UService>(c =>
+{
+    c.BaseAddress = new Uri(apiBaseUrl);
+});
+
+builder.Services.AddHttpClient<ICService, CService>(c =>
+{
+    c.BaseAddress = new Uri(apiBaseUrl);
+});
+
+builder.Services.AddHttpClient<IAService, AService>(c =>
+{
+    c.BaseAddress = new Uri(apiBaseUrl);
+});
+
+builder.Services.AddHttpClient<IMService, MService>(c =>
+{
+    c.BaseAddress = new Uri(apiBaseUrl);
+});
+
+builder.Services.AddHttpClient<IMealService, MealService>(c =>
+{
+    c.BaseAddress = new Uri(apiBaseUrl);
+});
 
 builder.Services.AddHttpClient<IMedicationHttpService, MedicationHttpService>(c =>
 {
     c.BaseAddress = new Uri(apiBaseUrl);
 });
 
-
-// ⬇️ NEW: Medication API client
 builder.Services.AddHttpClient<IMedicationService, MedicationService>(c =>
+{
+    c.BaseAddress = new Uri(apiBaseUrl);
+});
+
+// 📨 Chat / Messages API client  ✅ NEW
+builder.Services.AddHttpClient<MessageClientService>(c =>
 {
     c.BaseAddress = new Uri(apiBaseUrl);
 });
@@ -90,7 +118,7 @@ builder.Services.AddHttpClient<IMedicationService, MedicationService>(c =>
 // 🔁 TRANSLATION SERVICE (Google Cloud)
 builder.Services.AddHttpClient<ITranslationService, TranslationService>();
 
-// Fallback HttpClient
+// Fallback HttpClient (for any direct HttpClient injection)
 builder.Services.AddScoped(sp => new HttpClient
 {
     BaseAddress = new Uri(apiBaseUrl)
@@ -98,7 +126,7 @@ builder.Services.AddScoped(sp => new HttpClient
 
 var app = builder.Build();
 
-// Forwarded headers (Render)
+// Forwarded headers (Render / reverse proxy)
 app.UseForwardedHeaders(new ForwardedHeadersOptions
 {
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
