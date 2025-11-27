@@ -2,7 +2,6 @@
 @layout BlazorApp1.Components.Layout.DashboardLayout
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 
-
 @using Model
 @using BlazorApp1.Service
 @inject IAService AppointmentService
@@ -46,21 +45,19 @@
                         <td>@a.Start.ToShortDateString()</td>
                         <td>@a.Start.ToShortTimeString()</td>
                         <td>
-                            <select value="@a.Status" @onchange="(e) => OnStatusChanged(e, a)">
+                            <select value="@a.Status" @onchange="@(e => OnStatusChanged(e, a))">
                                 <option>Scheduled</option>
                                 <option>Completed</option>
                                 <option>Cancelled</option>
                             </select>
-
                         </td>
                         <td>@a.Notes</td>
                         <td>
-                            <button class="btn" @onclick="() => OpenChat(a)">Chat</button>
-                            <button class="btn" @onclick="() => Nav.NavigateTo($"/patientdetail/{a.UserClientId}")">
+                            <button class="btn" @onclick="@(() => OpenChat(a))">Chat</button>
+                            <button class="btn" @onclick="@(() => Nav.NavigateTo($"/patientdetail/{a.UserClientId}"))">
                                 Details
                             </button>
                         </td>
-
                     </tr>
                 }
             </tbody>
@@ -164,18 +161,11 @@
     }
 
     private async Task OnStatusChanged(ChangeEventArgs e, DoctorAppointmentVm appt)
-{
-    appt.Status = e.Value?.ToString() ?? "Scheduled";
-    await ChangeStatus(appt);
+    {
+        appt.Status = e.Value?.ToString() ?? "Scheduled";
+        await ChangeStatus(appt);
+    }
 }
-
-}
-
-
-
-
-
-
 
 <style>
     .appointments-page {
