@@ -159,10 +159,6 @@
     // Web call state
     private bool inCall = false;
 
-    // WebRTC setup (peer-to-peer connection management)
-    private string localPeerId = "";
-    private string remotePeerId = "";
-
     protected override async Task OnInitializedAsync()
     {
         isLoading = true;
@@ -228,81 +224,86 @@
         }
     }
 
-    private async Task OnVoiceCall()
+    private void OnFileSelected(InputFileChangeEventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(doctorClientId) ||
-            string.IsNullOrWhiteSpace(userClientId) ||
-            string.IsNullOrWhiteSpace(currentClientId))
-        {
-            recordingStatus = "Cannot start voice call: missing IDs.";
-            return;
-        }
+        // Handle file selection (for attachments)
+        selectedFile = e.File;
+    }
 
-        var conversationId = $"{doctorClientId}_{userClientId}";
-        var hubUrl = $"{apiBaseUrl.TrimEnd('/')}/callHub";
+    private async Task SendMessage()
+    {
+        // Ensure there is content to send (either text or file)
+        if (string.IsNullOrWhiteSpace(newMessageText) && selectedFile == null)
+            return;
+
+        if (string.IsNullOrWhiteSpace(doctorClientId) || string.IsNullOrWhiteSpace(userClientId))
+            return;
+
+        var senderId = currentClientId ?? userClientId;
+        var senderName = isDoctorView ? doctorName : userName;
+        var receiverId = isDoctorView ? userClientId : doctorClientId;
+        var receiverName = isDoctorView ? userName : doctorName;
 
         try
         {
-            if (!inCall)
-            {
-                // Initialize the call with WebRTC (this part should be handled by callManager.js)
-                await JS.InvokeVoidAsync("callManager.init", hubUrl, conversationId, true, currentClientId, "remoteAudio");
+            Message saved;
 
-                inCall = true;
-                recordingStatus = "Calling...";
+            // If there is a file, handle it separately
+            if (selectedFile != null)
+            {
+                using var content = new MultipartFormDataContent();
+
+                // Attach the file
+                var stream = selectedFile.OpenReadStream(maxUploadSize);
+                var fileContent = new StreamContent(stream);
+                fileContent.Headers.ContentType = new MediaTypeHeaderValue(selectedFile.ContentType);
+                content.Add(fileContent, "file", selectedFile.Name);
+
+                // Attach metadata fields expected by the API
+                content.Add(new StringContent(senderId), "senderId");
+                content.Add(new StringContent(senderName), "senderName");
+                content.Add(new StringContent(receiverId), "receiverId");
+                content.Add(new StringContent(receiverName), "receiverName");
+                content.Add(new StringContent(userClientId), "userClientId");
+                content.Add(new StringContent(doctorClientId), "doctorClientId");
+                content.Add(new StringContent(newMessageText ?? string.Empty), "text");
+                content.Add(new StringContent("false"), "isVoice");  // This is a normal attachment, not a voice message
+
+                // Send the attachment
+                saved = await MessageService.SendAttachmentAsync(content);
+                selectedFile = null;
             }
             else
             {
-                await JS.InvokeVoidAsync("callManager.endCall");
-                inCall = false;
-                recordingStatus = "Call ended.";
+                // Create and send a regular text message
+                var msg = new Message
+                {
+                    SenderId = senderId,
+                    SenderName = senderName,
+                    ReceiverId = receiverId,
+                    ReceiverName = receiverName,
+                    UserClientId = userClientId,
+                    DoctorClientId = doctorClientId,
+                    Text = newMessageText,
+                    SentAt = DateTime.UtcNow
+                };
+
+                saved = await MessageService.SendMessageAsync(msg);
             }
+
+            // Add the message to the UI
+            messages.Add(saved);
+            newMessageText = "";  // Clear the input field after sending
         }
         catch (Exception ex)
         {
-            recordingStatus = $"Call error: {ex.Message}";
+            Console.WriteLine($"❌ Error sending message: {ex.Message}");
         }
     }
 
-    private async Task OnVideoCall()
-    {
-        if (string.IsNullOrWhiteSpace(doctorClientId) ||
-            string.IsNullOrWhiteSpace(userClientId) ||
-            string.IsNullOrWhiteSpace(currentClientId))
-        {
-            recordingStatus = "Cannot start video call: missing IDs.";
-            return;
-        }
-
-        var conversationId = $"{doctorClientId}_{userClientId}";
-        var hubUrl = $"{apiBaseUrl.TrimEnd('/')}/callHub";
-
-        try
-        {
-            if (!inCall)
-            {
-                // Set up video call with WebRTC (we are assuming callManager handles this)
-                await JS.InvokeVoidAsync("callManager.init", hubUrl, conversationId, true, currentClientId, "remoteVideo");
-
-                inCall = true;
-                recordingStatus = "Video Calling...";
-            }
-            else
-            {
-                await JS.InvokeVoidAsync("callManager.endCall");
-                inCall = false;
-                recordingStatus = "Call ended.";
-            }
-        }
-        catch (Exception ex)
-        {
-            recordingStatus = $"Video call error: {ex.Message}";
-        }
-    }
-
-    // Add other necessary methods for voice recording and message sending
     private async Task StartRecording()
     {
+        // Start voice recording via JS
         try
         {
             await JS.InvokeVoidAsync("voiceRecorder.start");
@@ -317,6 +318,7 @@
 
     private async Task StopRecordingAndSend()
     {
+        // Stop recording and send the audio as a voice message
         try
         {
             var dataUrl = await JS.InvokeAsync<string>("voiceRecorder.stop");
