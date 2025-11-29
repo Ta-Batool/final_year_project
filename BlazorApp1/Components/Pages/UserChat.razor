@@ -412,46 +412,9 @@
 }
 
 <style>
-    .chat-header {
-        max-width: 700px;
-        margin: 20px auto 0;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-
-    .chat-subtitle {
-        margin: 0;
-        font-size: 13px;
-        color: #666;
-    }
-
-    .chat-actions {
-        display: flex;
-        gap: 8px;
-    }
-
-    .icon-btn {
-        border: none;
-        background: #3b3bbf;
-        color: #fff;
-        border-radius: 50%;
-        width: 32px;
-        height: 32px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 16px;
-    }
-
-    .icon-btn:hover {
-        opacity: 0.9;
-    }
-
     .chat-container {
         max-width: 700px;
-        margin: 10px auto 20px;
+        margin: 20px auto;
         background: #ffffff;
         border-radius: 12px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.08);
@@ -512,6 +475,7 @@
         font-size: 12px;
     }
 
+    .composer input[type="text"],
     .composer input:not([type="file"]) {
         flex: 1;
         padding: 8px;
@@ -526,14 +490,6 @@
         color: #fff;
         cursor: pointer;
         border-radius: 8px;
-    }
-
-    .composer .btn-secondary {
-        background: #6c757d;
-    }
-
-    .composer .btn-secondary.recording {
-        background: #dc3545;
     }
 
     .composer button:hover {
@@ -552,13 +508,7 @@
     }
 
     .chat-audio {
-        width: 220px;
-        margin-top: 4px;
-    }
-
-    .recording-status {
-        font-size: 13px;
-        color: #555;
+        width: 200px;
         margin-top: 4px;
     }
 </style>
