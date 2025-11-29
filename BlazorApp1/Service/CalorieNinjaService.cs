@@ -1,4 +1,11 @@
+using System;
+using System.Collections.Generic;
+using System.Net.Http;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace BlazorApp1.Service
 {
@@ -6,80 +13,72 @@ namespace BlazorApp1.Service
     {
         private readonly HttpClient _httpClient;
         private readonly ILogger<CalorieNinjaService> _logger;
+        private readonly IConfiguration _config;
 
-        public CalorieNinjaService(HttpClient httpClient, ILogger<CalorieNinjaService> logger)
+        private readonly JsonSerializerOptions _jsonOptions = new()
+        {
+            PropertyNameCaseInsensitive = true
+        };
+
+        public CalorieNinjaService(
+            HttpClient httpClient,
+            ILogger<CalorieNinjaService> logger,
+            IConfiguration config)
         {
             _httpClient = httpClient;
             _logger = logger;
+            _config = config;
         }
 
-        public async Task<List<NutritionItemDto>> GetNutritionAsync(string query)
+        public async Task<List<NutritionItemDto>> GetNutritionAsync(
+            string query,
+            CancellationToken cancellationToken = default)
         {
-            if (string.IsNullOrWhiteSpace(query))
+            var trimmed = (query ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(trimmed))
                 return new List<NutritionItemDto>();
+
+            var apiKey = _config["NutritionApi:ApiKey"];
+            if (string.IsNullOrWhiteSpace(apiKey))
+            {
+                _logger.LogWarning("Nutrition API key not configured (NutritionApi:ApiKey).");
+                return new List<NutritionItemDto>();
+            }
+
+            // API Ninjas endpoint
+            var url =
+                $"https://api.api-ninjas.com/v1/nutrition?query={Uri.EscapeDataString(trimmed)}";
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Add("X-Api-Key", apiKey);
+
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "Nutrition API failed. Status: {Status}, Body: {Body}",
+                    (int)response.StatusCode,
+                    body);
+                return new List<NutritionItemDto>();
+            }
 
             try
             {
-                // API Ninjas endpoint
-                var url = $"v1/nutrition?query={Uri.EscapeDataString(query)}";
+                // API Ninjas already returns the same shape as NutritionItemDto
+                var items =
+                    JsonSerializer.Deserialize<List<NutritionItemDto>>(body, _jsonOptions)
+                    ?? new List<NutritionItemDto>();
 
-                using var response = await _httpClient.GetAsync(url);
-                var body = await response.Content.ReadAsStringAsync();
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    _logger.LogWarning(
-                        "Nutrition API failed. Status: {Status}, Body: {Body}",
-                        (int)response.StatusCode,
-                        body
-                    );
-                    return new List<NutritionItemDto>();
-                }
-
-                var options = new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                };
-
-                var rawItems = JsonSerializer.Deserialize<List<NutritionApiItem>>(body, options)
-                              ?? new List<NutritionApiItem>();
-
-                return rawItems.Select(x => new NutritionItemDto
-                {
-                    Name = x.Name ?? string.Empty,
-                    Calories = x.GetCaloriesAsDouble()
-                }).ToList();
+                // Filter out weird empty names
+                return items
+                    .FindAll(x => !string.IsNullOrWhiteSpace(x.Name));
             }
-            catch (Exception ex)
+            catch (JsonException ex)
             {
-                _logger.LogError(ex, "Error calling Nutrition API");
+                _logger.LogError(ex, "Failed to parse Nutrition API response: {Body}", body);
                 return new List<NutritionItemDto>();
-            }
-        }
-
-        // Matches API Ninjas JSON shape and safely parses "calories"
-        private class NutritionApiItem
-        {
-            public string? Name { get; set; }
-
-            // "calories" can be a number OR a string like "Only available for premium subscribers."
-            public JsonElement Calories { get; set; }
-
-            public double? GetCaloriesAsDouble()
-            {
-                if (Calories.ValueKind == JsonValueKind.Number &&
-                    Calories.TryGetDouble(out var d))
-                {
-                    return d;
-                }
-
-                if (Calories.ValueKind == JsonValueKind.String &&
-                    double.TryParse(Calories.GetString(), out var parsed))
-                {
-                    return parsed;
-                }
-
-                return null; // free tier might not return calories at all
             }
         }
     }

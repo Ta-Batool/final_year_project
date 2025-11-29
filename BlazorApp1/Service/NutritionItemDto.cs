@@ -7,7 +7,7 @@ namespace BlazorApp1.Service
         [JsonPropertyName("name")]
         public string Name { get; set; } = string.Empty;
 
-        // Make nullable so we don't crash if API can't send calories
+        // Maps directly to the numeric "calories" field from API Ninjas
         [JsonPropertyName("calories")]
         public double? Calories { get; set; }
     }
