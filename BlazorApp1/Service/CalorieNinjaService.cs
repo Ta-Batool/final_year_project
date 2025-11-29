@@ -45,7 +45,6 @@ namespace BlazorApp1.Service
                 return new List<NutritionItemDto>();
             }
 
-            // API Ninjas endpoint
             var url =
                 $"https://api.api-ninjas.com/v1/nutrition?query={Uri.EscapeDataString(trimmed)}";
 
@@ -59,21 +58,18 @@ namespace BlazorApp1.Service
             {
                 _logger.LogWarning(
                     "Nutrition API failed. Status: {Status}, Body: {Body}",
-                    (int)response.StatusCode,
-                    body);
+                    (int)response.StatusCode, body);
+
                 return new List<NutritionItemDto>();
             }
 
             try
             {
-                // API Ninjas already returns the same shape as NutritionItemDto
                 var items =
                     JsonSerializer.Deserialize<List<NutritionItemDto>>(body, _jsonOptions)
                     ?? new List<NutritionItemDto>();
 
-                // Filter out weird empty names
-                return items
-                    .FindAll(x => !string.IsNullOrWhiteSpace(x.Name));
+                return items.FindAll(x => !string.IsNullOrWhiteSpace(x.Name));
             }
             catch (JsonException ex)
             {

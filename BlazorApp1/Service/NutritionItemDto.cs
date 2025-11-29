@@ -7,7 +7,6 @@ namespace BlazorApp1.Service
         [JsonPropertyName("name")]
         public string Name { get; set; } = string.Empty;
 
-        // Maps directly to the numeric "calories" field from API Ninjas
         [JsonPropertyName("calories")]
         public double? Calories { get; set; }
     }

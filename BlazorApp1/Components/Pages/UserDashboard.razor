@@ -467,12 +467,13 @@ else
             await Task.Delay(300, token);
             if (token.IsCancellationRequested) return;
 
-            var items = await CalorieService.GetNutritionAsync(query);
+            var items = await CalorieService.GetNutritionAsync(query, token);
             if (token.IsCancellationRequested) return;
 
             items ??= new List<NutritionItemDto>();
 
             foodSuggestions = items
+                .Where(x => !string.IsNullOrWhiteSpace(x.Name))
                 .Select(x => new NutritionItemSuggestion
                 {
                     Name = x.Name,

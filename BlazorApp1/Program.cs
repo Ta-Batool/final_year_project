@@ -129,16 +129,8 @@ builder.Services.AddHttpClient<ConversationClientService>(c =>
 {
     c.BaseAddress = new Uri(apiBaseUrl);
 });
-builder.Services.AddHttpClient<ICalorieNinjaService, CalorieNinjaService>(client =>
-{
-    client.BaseAddress = new Uri("https://api.api-ninjas.com/");
+builder.Services.AddHttpClient<ICalorieNinjaService, CalorieNinjaService>();
 
-    var apiKey = builder.Configuration["CalorieNinjas:ApiKey"]; // from appsettings / env
-    if (!string.IsNullOrWhiteSpace(apiKey))
-    {
-        client.DefaultRequestHeaders.Add("X-Api-Key", apiKey);
-    }
-});
 
 
 
