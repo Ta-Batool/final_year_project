@@ -1,59 +1,82 @@
+using System;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace BlazorApp1.Service
 {
     public class CalorieNinjaService : ICalorieNinjaService
-{
-    private readonly HttpClient _http;
-    private readonly ILogger<CalorieNinjaService> _logger;
-    private const string BaseUrl = "https://api.api-ninjas.com/v1/nutrition?query=";
-    // or whatever URL you’re using
-
-    public CalorieNinjaService(HttpClient http, ILogger<CalorieNinjaService> logger,
-                               IConfiguration config)
     {
-        _http = http;
-        _logger = logger;
+        private readonly HttpClient _http;
+        private readonly ILogger<CalorieNinjaService> _logger;
+        private readonly string _baseUrl = "https://api.calorieninjas.com/v1/nutrition?query=";
 
-        var apiKey = config["CalorieNinjas:ApiKey"];
-        if (!string.IsNullOrWhiteSpace(apiKey))
+        public CalorieNinjaService(HttpClient http,
+                                   ILogger<CalorieNinjaService> logger,
+                                   IConfiguration config)
         {
-            _http.DefaultRequestHeaders.Add("X-Api-Key", apiKey);
-        }
-    }
+            _http = http;
+            _logger = logger;
 
-    public async Task<List<NutritionItemDto>> GetNutritionAsync(string query)
-    {
-        var url = $"{BaseUrl}{Uri.EscapeDataString(query)}";
-        using var response = await _http.GetAsync(url);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            _logger.LogWarning("Nutrition API failed: {Status} {Reason}", 
-                               (int)response.StatusCode, response.ReasonPhrase);
-            return new List<NutritionItemDto>();
-        }
-
-        var json = await response.Content.ReadAsStringAsync();
-
-        try
-        {
-            var items = System.Text.Json.JsonSerializer
-                .Deserialize<List<NutritionItemDto>>(json, new System.Text.Json.JsonSerializerOptions
+            var apiKey = config["CalorieNinjas:ApiKey"];
+            if (!string.IsNullOrWhiteSpace(apiKey))
+            {
+                // Ensure header set once
+                if (!_http.DefaultRequestHeaders.Contains("X-Api-Key"))
                 {
-                    PropertyNameCaseInsensitive = true
-                });
-
-            return items ?? new List<NutritionItemDto>();
+                    _http.DefaultRequestHeaders.Add("X-Api-Key", apiKey);
+                }
+            }
         }
-        catch (Exception ex)
+
+        public async Task<List<NutritionItemDto>> GetNutritionAsync(string query)
         {
-            _logger.LogError(ex, "Food suggestions failed. Raw JSON: {Json}", json);
-            return new List<NutritionItemDto>();
+            if (string.IsNullOrWhiteSpace(query))
+                return new List<NutritionItemDto>();
+
+            var url = _baseUrl + Uri.EscapeDataString(query);
+
+            HttpResponseMessage response;
+            try
+            {
+                response = await _http.GetAsync(url);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error calling CalorieNinjas API.");
+                return new List<NutritionItemDto>();
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var msg = await response.Content.ReadAsStringAsync();
+                _logger.LogWarning(
+                    "CalorieNinjas API failed. Status: {Status}, Body: {Body}",
+                    (int)response.StatusCode, msg);
+                return new List<NutritionItemDto>();
+            }
+
+            var json = await response.Content.ReadAsStringAsync();
+
+            try
+            {
+                var items = JsonSerializer.Deserialize<List<NutritionItemDto>>(
+                    json,
+                    new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
+
+                return items ?? new List<NutritionItemDto>();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Food suggestions failed. Raw JSON: {Json}", json);
+                return new List<NutritionItemDto>();
+            }
         }
     }
-}
-
 }
