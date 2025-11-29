@@ -446,7 +446,9 @@ else
         // reset error for new typing
         errorMessage = null;
 
-        if (string.IsNullOrWhiteSpace(newMealFoods) || newMealFoods.Length < 2)
+        var query = newMealFoods.Trim();
+
+        if (string.IsNullOrWhiteSpace(query) || query.Length < 2)
         {
             showSuggestions = false;
             foodSuggestions.Clear();
@@ -454,6 +456,7 @@ else
             return;
         }
 
+        // cancel previous pending call
         _suggestCts?.Cancel();
         _suggestCts = new CancellationTokenSource();
         var token = _suggestCts.Token;
@@ -464,7 +467,7 @@ else
             await Task.Delay(300, token);
             if (token.IsCancellationRequested) return;
 
-            var items = await CalorieService.GetNutritionAsync(newMealFoods);
+            var items = await CalorieService.GetNutritionAsync(query);
             if (token.IsCancellationRequested) return;
 
             items ??= new List<NutritionItemDto>();
@@ -473,7 +476,7 @@ else
                 .Select(x => new NutritionItemSuggestion
                 {
                     Name = x.Name,
-                    Calories = x.Calories   // double? → double?
+                    Calories = x.Calories  // double? from DTO
                 })
                 .GroupBy(x => x.Name.ToLowerInvariant())
                 .Select(g => g.First())
@@ -482,9 +485,18 @@ else
 
             showSuggestions = foodSuggestions.Any();
         }
+        catch (OperationCanceledException)
+        {
+            // expected when user keeps typing quickly
+        }
+        catch (TaskCanceledException)
+        {
+            // expected when debounce cancels older requests
+        }
         catch (Exception ex)
         {
-            errorMessage = "Food suggestions failed: " + ex.Message;
+            Console.WriteLine($"Food suggestions error: {ex}");
+            errorMessage = "Food suggestions temporarily unavailable. Please try again.";
             showSuggestions = false;
             foodSuggestions.Clear();
         }
@@ -502,7 +514,6 @@ else
         }
         else
         {
-            // API didn't return calories (e.g., free tier) – leave field empty
             newMealCalories = string.Empty;
         }
 
@@ -572,7 +583,6 @@ else
         public double? Calories { get; set; }   // nullable now
     }
 }
-
 
 <style>
     .user-dashboard {
