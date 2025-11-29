@@ -441,6 +441,9 @@ else
     {
         newMealFoods = e.Value?.ToString() ?? string.Empty;
 
+        // reset error for new typing
+        errorMessage = null;
+
         if (string.IsNullOrWhiteSpace(newMealFoods) || newMealFoods.Length < 2)
         {
             showSuggestions = false;
@@ -455,11 +458,14 @@ else
 
         try
         {
+            // debounce
             await Task.Delay(300, token);
+            if (token.IsCancellationRequested) return;
 
             var items = await CalorieService.GetNutritionAsync(newMealFoods);
-            if (token.IsCancellationRequested)
-                return;
+            if (token.IsCancellationRequested) return;
+
+            items ??= new List<NutritionItemDto>();
 
             foodSuggestions = items
                 .Select(x => new NutritionItemSuggestion { Name = x.Name, Calories = x.Calories })
@@ -470,8 +476,9 @@ else
 
             showSuggestions = foodSuggestions.Any();
         }
-        catch
+        catch (Exception ex)
         {
+            errorMessage = "Food suggestions failed: " + ex.Message;
             showSuggestions = false;
             foodSuggestions.Clear();
         }
@@ -956,7 +963,7 @@ else
         color: #6b7280;
     }
 
-    @@media (max-width: 960px) {
+    @media (max-width: 960px) {
         .user-dashboard {
             flex-direction: column;
         }
@@ -970,7 +977,7 @@ else
         }
     }
 
-    @@media (max-width: 720px) {
+    @media (max-width: 720px) {
         .meal-types-grid {
             grid-template-columns: 1fr;
         }

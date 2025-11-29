@@ -4,15 +4,20 @@ using System.Threading.Tasks;
 
 namespace BlazorApp1.Service
 {
-    public class ApiNinjasService : ICalorieNinjaService
+    public class CalorieNinjaService : ICalorieNinjaService
     {
         private readonly HttpClient _http;
         private readonly string _apiKey;
 
-        public ApiNinjasService(HttpClient http, IConfiguration config)
+        public CalorieNinjaService(HttpClient http, IConfiguration config)
         {
             _http = http;
             _apiKey = config["ApiNinjas:ApiKey"] ?? "";
+
+            if (string.IsNullOrWhiteSpace(_apiKey))
+            {
+                Console.WriteLine("⚠️ ApiNinjas:ApiKey is missing from configuration.");
+            }
         }
 
         public async Task<List<NutritionItemDto>> GetNutritionAsync(string query)
@@ -25,18 +30,18 @@ namespace BlazorApp1.Service
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
             req.Headers.Add("X-Api-Key", _apiKey);
 
-            var res = await _http.SendAsync(req);
+            using var res = await _http.SendAsync(req);
             var json = await res.Content.ReadAsStringAsync();
 
             if (!res.IsSuccessStatusCode)
             {
-                Console.WriteLine("API Ninja ERROR → " + json);
-                return new List<NutritionItemDto>();
+                Console.WriteLine($"❌ ApiNinjas error {res.StatusCode}: {json}");
+                return new List<NutritionItemDto>(); // keep UI silent but log on server
             }
 
             return JsonSerializer.Deserialize<List<NutritionItemDto>>(json,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-                ?? new List<NutritionItemDto>();
+                       new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                   ?? new List<NutritionItemDto>();
         }
     }
 }

@@ -8,7 +8,6 @@ namespace BlazorApp1.Service
         Task<List<NutritionItemDto>> GetNutritionAsync(string query);
     }
 
-    // keep DTO definition here (ONE place only)
     public class NutritionItemDto
     {
         public string Name { get; set; } = string.Empty;
