@@ -129,8 +129,8 @@ builder.Services.AddHttpClient<ConversationClientService>(c =>
 {
     c.BaseAddress = new Uri(apiBaseUrl);
 });
+builder.Services.AddHttpClient<ICalorieNinjaService, ApiNinjasService>();
 
-builder.Services.AddHttpClient<ICalorieNinjaService, CalorieNinjaService>();
 
 
 
