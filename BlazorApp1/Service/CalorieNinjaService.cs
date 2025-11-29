@@ -5,43 +5,55 @@ using System.Threading.Tasks;
 namespace BlazorApp1.Service
 {
     public class CalorieNinjaService : ICalorieNinjaService
+{
+    private readonly HttpClient _http;
+    private readonly ILogger<CalorieNinjaService> _logger;
+    private const string BaseUrl = "https://api.api-ninjas.com/v1/nutrition?query=";
+    // or whatever URL you’re using
+
+    public CalorieNinjaService(HttpClient http, ILogger<CalorieNinjaService> logger,
+                               IConfiguration config)
     {
-        private readonly HttpClient _http;
-        private readonly string _apiKey;
+        _http = http;
+        _logger = logger;
 
-        public CalorieNinjaService(HttpClient http, IConfiguration config)
+        var apiKey = config["CalorieNinjas:ApiKey"];
+        if (!string.IsNullOrWhiteSpace(apiKey))
         {
-            _http = http;
-            _apiKey = config["ApiNinjas:ApiKey"] ?? "";
-
-            if (string.IsNullOrWhiteSpace(_apiKey))
-            {
-                Console.WriteLine("⚠️ ApiNinjas:ApiKey is missing from configuration.");
-            }
-        }
-
-        public async Task<List<NutritionItemDto>> GetNutritionAsync(string query)
-        {
-            if (string.IsNullOrWhiteSpace(_apiKey))
-                throw new InvalidOperationException("API Ninjas key not configured.");
-
-            var url = $"https://api.api-ninjas.com/v1/nutrition?query={Uri.EscapeDataString(query)}";
-
-            using var req = new HttpRequestMessage(HttpMethod.Get, url);
-            req.Headers.Add("X-Api-Key", _apiKey);
-
-            using var res = await _http.SendAsync(req);
-            var json = await res.Content.ReadAsStringAsync();
-
-            if (!res.IsSuccessStatusCode)
-            {
-                Console.WriteLine($"❌ ApiNinjas error {res.StatusCode}: {json}");
-                return new List<NutritionItemDto>(); // keep UI silent but log on server
-            }
-
-            return JsonSerializer.Deserialize<List<NutritionItemDto>>(json,
-                       new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-                   ?? new List<NutritionItemDto>();
+            _http.DefaultRequestHeaders.Add("X-Api-Key", apiKey);
         }
     }
+
+    public async Task<List<NutritionItemDto>> GetNutritionAsync(string query)
+    {
+        var url = $"{BaseUrl}{Uri.EscapeDataString(query)}";
+        using var response = await _http.GetAsync(url);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("Nutrition API failed: {Status} {Reason}", 
+                               (int)response.StatusCode, response.ReasonPhrase);
+            return new List<NutritionItemDto>();
+        }
+
+        var json = await response.Content.ReadAsStringAsync();
+
+        try
+        {
+            var items = System.Text.Json.JsonSerializer
+                .Deserialize<List<NutritionItemDto>>(json, new System.Text.Json.JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+            return items ?? new List<NutritionItemDto>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Food suggestions failed. Raw JSON: {Json}", json);
+            return new List<NutritionItemDto>();
+        }
+    }
+}
+
 }
