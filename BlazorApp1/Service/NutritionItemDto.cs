@@ -1,10 +1,14 @@
-using System.Collections.Generic;
-using System.Threading.Tasks;
+using System.Text.Json.Serialization;
 
 namespace BlazorApp1.Service
 {
-    public interface ICalorieNinjaService
+    public class NutritionItemDto
     {
-        Task<List<NutritionItemDto>> GetNutritionAsync(string query);
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = string.Empty;
+
+        // Make nullable so we don't crash if API can't send calories
+        [JsonPropertyName("calories")]
+        public double? Calories { get; set; }
     }
 }
