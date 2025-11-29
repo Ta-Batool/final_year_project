@@ -5,10 +5,11 @@
 @using System.Linq
 @using System.Threading
 @using Model
-@using Microsoft.AspNetCore.Authorization
 @using BlazorApp1.Components.Layout
 @using BlazorApp1.Service
 @layout UserDashboardLayout
+@using Microsoft.AspNetCore.Components
+
 
 @inject AuthenticationStateProvider AuthStateProvider
 @inject ICService CService
@@ -18,7 +19,6 @@
 @inject IMedicationHttpService MedicationService
 @inject ICalorieNinjaService CalorieService
 @inject NavigationManager Navigation
-
 
 @if (isLoading)
 {
@@ -36,183 +36,199 @@ else
 {
     <div class="user-dashboard">
         <div class="left-panel">
-            <h2>
-                @if (currentDoctor is not null)
-                {
-                    @($"Hello, Dr. {currentDoctor.Name}")
-                }
-                else
-                {
-                    @($"Hello, {currentUser!.Name}")
-                }
-            </h2>
-
-            <p class="subtitle">
-                Let's start living healthy from now on
-            </p>
-
-            <div class="chart-section">
-                <img src="https://toneopeats-strapi-prod.s3.ap-south-1.amazonaws.com/chart_of_a_healthy_diet_02_b7a3be54bb.jpg"
-                     alt="Healthy diet chart" style="width:300px; height:auto;" />
+            <div class="welcome-row">
+                <div>
+                    <h2>
+                        @if (currentDoctor is not null)
+                        {
+                            @($"Hello, Dr. {currentDoctor.Name}")
+                        }
+                        else
+                        {
+                            @($"Hello, {currentUser!.Name}")
+                        }
+                    </h2>
+                    <p class="subtitle">
+                        Let's start living healthy from now on
+                    </p>
+                </div>
+                <div class="hero-image">
+                    <img src="https://toneopeats-strapi-prod.s3.ap-south-1.amazonaws.com/chart_of_a_healthy_diet_02_b7a3be54bb.jpg"
+                         alt="Healthy diet chart" />
+                </div>
             </div>
 
-            <h3>Meals on @selectedDate.ToString("dd MMM yyyy")</h3>
+            <h3 class="section-title">Meals on @selectedDate.ToString("dd MMM yyyy")</h3>
 
-            <!-- Add meal form -->
-            <div class="add-meal-card">
-                <div class="field">
-                    <label>Meal type</label>
-                    <select class="input" @bind="newMealType">
-                        <option>Breakfast</option>
-                        <option>Lunch</option>
-                        <option>Dinner</option>
-                        <option>Snack</option>
-                    </select>
-                </div>
+            <div class="meals-layout">
+                <!-- LEFT: Add meal form -->
+                <div class="add-meal-card">
+                    <h4>Add a meal</h4>
 
-                <div class="field">
-                    <label>Food items</label>
-                    <input class="input"
-                           @bind="newMealFoods"
-                           @oninput="OnFoodsInput"
-                           placeholder="e.g. 2 eggs, toast, tea" />
+                    <div class="field">
+                        <label>Meal type</label>
+                        <select class="input" @bind="newMealType">
+                            <option>Breakfast</option>
+                            <option>Lunch</option>
+                            <option>Dinner</option>
+                            <option>Snack</option>
+                        </select>
+                    </div>
 
-                    @if (showSuggestions && foodSuggestions.Any())
-                    {
-                        <ul class="suggestions-list">
-                            @foreach (var item in foodSuggestions)
-                            {
-                                <li @onclick="@(() => SelectSuggestion(item))">
-                                    <span class="sugg-name">@item.Name</span>
-                                    <span class="sugg-cal">@item.Calories.ToString("0") kcal</span>
-                                </li>
-                            }
-                        </ul>
-                    }
-                </div>
+                    <div class="field">
+                        <label>Food items</label>
+                        <input class="input"
+                               @bind="newMealFoods"
+                               @oninput="OnFoodsInput"
+                               placeholder="e.g. 2 eggs, toast, tea" />
 
-                <div class="field">
-                    <label>Calories (optional)</label>
-                    <input class="input"
-                           @bind="newMealCalories"
-                           placeholder="e.g. 350" />
-                </div>
-
-                <button type="button" class="save-btn" @onclick="AddMealAsync">
-                    Add meal
-                </button>
-            </div>
-
-            @if (meals.Count == 0)
-            {
-                <p class="no-meals">No meals logged for this date.</p>
-            }
-            else
-            {
-                <div class="meals-grid">
-                    @foreach (var meal in meals)
-                    {
-                        <div class="meal-card">
-                            <div>
-                                <h4>@meal.Type</h4>
-                                <p>@meal.Foods</p>
-
-                                @if (meal.Calories.HasValue)
+                        @if (showSuggestions && foodSuggestions.Any())
+                        {
+                            <ul class="suggestions-list">
+                                @foreach (var item in foodSuggestions)
                                 {
-                                    <span class="meal-cal">@meal.Calories.Value kcal</span>
+                                    <li @onclick="@(() => SelectSuggestion(item))">
+                                        <span class="sugg-name">@item.Name</span>
+                                        <span class="sugg-cal">@item.Calories.ToString("0") kcal</span>
+                                    </li>
                                 }
-                            </div>
+                            </ul>
+                        }
+                    </div>
 
-                            <button class="delete-meal-btn"
-                                    @onclick="() => DeleteMealAsync(meal.Id)">
-                                ✕
-                            </button>
-                        </div>
-                    }
+                    <div class="field">
+                        <label>Calories (optional)</label>
+                        <input class="input"
+                               @bind="newMealCalories"
+                               placeholder="e.g. 350" />
+                    </div>
+
+                    <button type="button" class="primary-btn wide" @onclick="AddMealAsync">
+                        Add meal
+                    </button>
                 </div>
-            }
+
+                <!-- RIGHT: Meals by type -->
+                <div class="meal-types-grid">
+                    @RenderMealsByType("Breakfast")
+                    @RenderMealsByType("Lunch")
+                    @RenderMealsByType("Dinner")
+                    @RenderMealsByType("Snack")
+                </div>
+            </div>
         </div>
 
         <div class="right-panel">
             <header class="top-bar">
-                <button @onclick="Logout">Logout</button>
-                <i class="fas fa-bell"></i>
-                <i class="fas fa-envelope"></i>
-                <i class="fas fa-cog"></i>
+                <span class="dashboard-title">@headerTitle</span>
+                <div class="top-icons">
+                    <button class="icon-btn" @onclick="Logout">Logout</button>
+                </div>
             </header>
 
-            <!-- ✅ Today’s Medication summary card -->
-            <div class="meds-summary-card">
-                <h3>Today’s Medication</h3>
+            <!-- Calendar card -->
+            <div class="card calendar-card">
+                <div class="calendar-header">
+                    <button class="calendar-nav" @onclick="PrevMonth">‹</button>
+                    <span>@calendarMonth.ToString("MMMM yyyy")</span>
+                    <button class="calendar-nav" @onclick="NextMonth">›</button>
+                </div>
 
-                @if (medsTotal == 0)
-                {
-                    <p>No medication scheduled for today.</p>
-                }
-                else
-                {
-                    <p><b>Total doses:</b> @medsTotal</p>
-                    <p><b>Taken:</b> @medsTaken</p>
-                    <p><b>Pending:</b> @medsPending</p>
-                    <p><b>Skipped:</b> @medsSkipped</p>
-
-                    <button type="button"
-                            class="primary-btn"
-                            @onclick="@(() => Navigation.NavigateTo("/medication-compliance"))">
-                        Manage medications
-                    </button>
-                }
-            </div>
-
-            <!-- ✅ Functional 7-day calendar -->
-            <div class="calendar">
-                <h3>@selectedDate.ToString("MMMM yyyy")</h3>
-                <div class="calendar-grid">
-                    @foreach (var offset in Enumerable.Range(-3, 7))
+                <div class="calendar-weekdays">
+                    @foreach (var dayName in weekdayShortNames)
                     {
-                        var d = DateTime.Today.AddDays(offset);
-                        var css = d.Date == selectedDate.Date ? "active" : string.Empty;
+                        <span>@dayName</span>
+                    }
+                </div>
 
-                        <span class="@css"
-                              @onclick="@(() => OnDateSelected(d))">
+                <div class="calendar-grid">
+                    @foreach (var d in calendarDays)
+                    {
+                        var css = "calendar-day";
+                        if (d.Month != calendarMonth.Month) css += " other-month";
+                        if (d.Date == DateTime.Today.Date) css += " today";
+                        if (d.Date == selectedDate.Date) css += " active";
+
+                        <button class="@css"
+                                @onclick="@(() => OnDateSelected(d))">
                             @d.Day
-                        </span>
+                        </button>
                     }
                 </div>
             </div>
 
-            <div class="report">
+            <!-- Medication card -->
+            <div class="card meds-summary-card">
+                <h3>Today’s Medication</h3>
+
+                @if (medsTotal == 0)
+                {
+                    <p class="muted">No medication scheduled for today.</p>
+                }
+                else
+                {
+                    <div class="meds-stats">
+                        <div>
+                            <span class="stat-label">Total doses</span>
+                            <span class="stat-value">@medsTotal</span>
+                        </div>
+                        <div>
+                            <span class="stat-label taken">Taken</span>
+                            <span class="stat-value">@medsTaken</span>
+                        </div>
+                        <div>
+                            <span class="stat-label pending">Pending</span>
+                            <span class="stat-value">@medsPending</span>
+                        </div>
+                        <div>
+                            <span class="stat-label skipped">Skipped</span>
+                            <span class="stat-value">@medsSkipped</span>
+                        </div>
+                    </div>
+
+                    <button type="button"
+                            class="secondary-btn"
+                            @onclick="@(() => Navigation.NavigateTo("/medication-compliance"))">
+                        Open medication tracker
+                    </button>
+                }
+            </div>
+
+            <!-- Today report -->
+            <div class="card report-card">
                 <h3>Today report</h3>
 
                 <div class="report-item">
-                    <b>Total meals (selected date):</b> @meals.Count
+                    <b>Total meals (selected date):</b>
+                    <span>@meals.Count</span>
                 </div>
                 <div class="report-item">
-                    <b>Total calories (selected date):</b> @totalCalories kcal
+                    <b>Total calories (selected date):</b>
+                    <span>@totalCalories kcal</span>
                 </div>
 
                 @if (currentDoctor is not null)
                 {
                     <div class="report-item">
-                        <b>Email:</b> @clientEmail
+                        <b>Email:</b> <span>@clientEmail</span>
                     </div>
                     <div class="report-item">
-                        <b>Specialization:</b> @currentDoctor.Specialization
+                        <b>Specialization:</b> <span>@currentDoctor.Specialization</span>
                     </div>
                     <div class="report-item">
-                        <b>Gender:</b> @currentDoctor.Gender
+                        <b>Gender:</b> <span>@currentDoctor.Gender</span>
                     </div>
                 }
                 else if (currentUser is not null)
                 {
                     <div class="report-item">
-                        <b>Email:</b> @clientEmail
+                        <b>Email:</b> <span>@clientEmail</span>
                     </div>
                     <div class="report-item">
-                        <b>Phone:</b> @currentUser.Phone
+                        <b>Phone:</b> <span>@currentUser.Phone</span>
                     </div>
                     <div class="report-item">
-                        <b>Reason:</b> @currentUser.Reason
+                        <b>Reason:</b> <span>@currentUser.Reason</span>
                     </div>
                 }
             </div>
@@ -229,8 +245,13 @@ else
     private Doctor? currentDoctor;
     private User? currentUser;
 
+    private string headerTitle = "Patient Dashboard";
+
     // Selected date for meals (calendar)
     private DateTime selectedDate = DateTime.Today;
+    private DateTime calendarMonth = DateTime.Today;
+    private readonly string[] weekdayShortNames = new[] { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
+    private List<DateTime> calendarDays = new();
 
     // Meals state
     private List<Meal> meals = new();
@@ -242,7 +263,6 @@ else
         meals.Where(m => m.Calories.HasValue).Sum(m => m.Calories!.Value);
 
     // Medication summary for today
-    private List<MedicationLog> todayMedicationLogs = new();
     private int medsTotal;
     private int medsTaken;
     private int medsPending;
@@ -277,7 +297,6 @@ else
                 return;
             }
 
-            // 1) get client (common table)
             currentClient = await CService.GetClientByEmailAsync(clientEmail);
 
             if (currentClient is null)
@@ -288,25 +307,25 @@ else
 
             var role = currentClient.Role?.ToLowerInvariant();
 
-            // 2) then role-specific profile
             if (role == "doctor")
             {
                 currentDoctor = await DService.GetDoctorByClientIdAsync(currentClient.Id);
-                if (currentDoctor is null)
-                    errorMessage = "Doctor profile not found. Please complete doctor registration.";
+                headerTitle = "Doctor Dashboard";
             }
             else
             {
                 currentUser = await UService.GetUserByClientIdAsync(currentClient.Id);
-                if (currentUser is null)
-                    errorMessage = "Patient profile not found. Please complete registration.";
+                headerTitle = "Patient Dashboard";
             }
 
-            // 3) load meals for selected date
+            // Load meals for selected date
             await LoadMealsForDateAsync(currentClient.Id, selectedDate);
 
-            // 4) load today's medication logs (always "today", not calendar-based yet)
+            // Load today's medication logs (always today)
             await LoadTodayMedicationAsync(currentClient.Id);
+
+            // Build initial calendar view
+            BuildCalendarDays();
         }
         catch (Exception ex)
         {
@@ -320,22 +339,32 @@ else
 
     private async Task LoadMealsForDateAsync(string clientId, DateTime date)
     {
-        // 👉 If you don't have this method yet, implement it in IMealService/MealService.
-        // For now, you can temporarily call GetTodayMealsAsync if needed.
         meals = await MealService.GetMealsByDateAsync(clientId, date);
     }
 
     private async Task LoadTodayMedicationAsync(string clientId)
     {
-        var logs = await MedicationService.GetTodayLogsAsync(clientId)
-                   ?? new List<MedicationLog>();
-
-        todayMedicationLogs = logs;
+        var logs = await MedicationService.GetTodayLogsAsync(clientId) ?? new List<MedicationLog>();
 
         medsTotal = logs.Count;
         medsTaken = logs.Count(l => l.Status == MedicationStatus.Taken);
         medsPending = logs.Count(l => l.Status == MedicationStatus.Pending);
         medsSkipped = logs.Count(l => l.Status == MedicationStatus.Skipped);
+    }
+
+    private void BuildCalendarDays()
+    {
+        calendarDays.Clear();
+
+        var firstOfMonth = new DateTime(calendarMonth.Year, calendarMonth.Month, 1);
+        // Make Monday = 0 ... Sunday = 6
+        int offset = ((int)firstOfMonth.DayOfWeek + 6) % 7;
+        var start = firstOfMonth.AddDays(-offset);
+
+        for (int i = 0; i < 42; i++)
+        {
+            calendarDays.Add(start.AddDays(i));
+        }
     }
 
     private async Task OnDateSelected(DateTime date)
@@ -346,14 +375,26 @@ else
         {
             await LoadMealsForDateAsync(currentClient.Id!, selectedDate);
         }
+
+        calendarMonth = new DateTime(selectedDate.Year, selectedDate.Month, 1);
+        BuildCalendarDays();
+    }
+
+    private void PrevMonth()
+    {
+        calendarMonth = calendarMonth.AddMonths(-1);
+        BuildCalendarDays();
+    }
+
+    private void NextMonth()
+    {
+        calendarMonth = calendarMonth.AddMonths(1);
+        BuildCalendarDays();
     }
 
     private async Task AddMealAsync()
     {
-        if (currentClient == null)
-            return;
-
-        if (string.IsNullOrWhiteSpace(newMealFoods))
+        if (currentClient == null || string.IsNullOrWhiteSpace(newMealFoods))
             return;
 
         int? calories = null;
@@ -368,14 +409,12 @@ else
             Type = newMealType,
             Foods = newMealFoods.Trim(),
             Calories = calories,
-            // make sure your Meal model has a Date/CreatedAt field to save this:
             Date = selectedDate.Date
         };
 
         await MealService.AddMealAsync(meal);
         await LoadMealsForDateAsync(currentClient.Id, selectedDate);
 
-        // reset form
         newMealFoods = string.Empty;
         newMealCalories = string.Empty;
         newMealType = "Breakfast";
@@ -397,8 +436,7 @@ else
         Navigation.NavigateTo("/logout", true);
     }
 
-    // ========= CalorieNinjas autocomplete logic =========
-
+    // ---- CalorieNinjas autocomplete ----
     private async Task OnFoodsInput(ChangeEventArgs e)
     {
         newMealFoods = e.Value?.ToString() ?? string.Empty;
@@ -411,17 +449,15 @@ else
             return;
         }
 
-        // debounce
         _suggestCts?.Cancel();
         _suggestCts = new CancellationTokenSource();
         var token = _suggestCts.Token;
 
         try
         {
-            await Task.Delay(300, token); // 300ms debounce
+            await Task.Delay(300, token);
 
             var items = await CalorieService.GetNutritionAsync(newMealFoods);
-
             if (token.IsCancellationRequested)
                 return;
 
@@ -436,7 +472,6 @@ else
         }
         catch
         {
-            // fail silently for now
             showSuggestions = false;
             foodSuggestions.Clear();
         }
@@ -452,6 +487,62 @@ else
         foodSuggestions.Clear();
     }
 
+    private IEnumerable<Meal> MealsOfType(string type) =>
+        meals.Where(m => string.Equals(m.Type, type, StringComparison.OrdinalIgnoreCase));
+
+    private RenderFragment RenderMealsByType(string type) => builder =>
+    {
+        var seq = 0;
+        var list = MealsOfType(type).ToList();
+
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "meal-type-card");
+
+        builder.OpenElement(seq++, "h4");
+        builder.AddContent(seq++, type);
+        builder.CloseElement(); // h4
+
+        if (!list.Any())
+        {
+            builder.OpenElement(seq++, "p");
+            builder.AddAttribute(seq++, "class", "meal-empty");
+            builder.AddContent(seq++, "No " + type.ToLower() + " logged.");
+            builder.CloseElement();
+        }
+        else
+        {
+            foreach (var meal in list)
+            {
+                builder.OpenElement(seq++, "div");
+                builder.AddAttribute(seq++, "class", "meal-row");
+
+                builder.OpenElement(seq++, "div");
+                builder.AddAttribute(seq++, "class", "meal-text");
+                builder.AddContent(seq++, meal.Foods);
+                builder.CloseElement();
+
+                if (meal.Calories.HasValue)
+                {
+                    builder.OpenElement(seq++, "span");
+                    builder.AddAttribute(seq++, "class", "meal-cal");
+                    builder.AddContent(seq++, meal.Calories.Value + " kcal");
+                    builder.CloseElement();
+                }
+
+                builder.OpenElement(seq++, "button");
+                builder.AddAttribute(seq++, "class", "meal-delete-btn");
+                builder.AddAttribute(seq++, "type", "button");
+                builder.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, () => DeleteMealAsync(meal.Id)));
+                builder.AddContent(seq++, "✕");
+                builder.CloseElement();
+
+                builder.CloseElement(); // meal-row
+            }
+        }
+
+        builder.CloseElement(); // meal-type-card
+    };
+
     public class NutritionItemSuggestion
     {
         public string Name { get; set; } = string.Empty;
@@ -459,241 +550,429 @@ else
     }
 }
 
-.user-dashboard {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 30px;
-    padding: 20px;
-    font-family: 'Roboto', sans-serif;
-    background-color: #fafafa;
-}
+<style>
+    .user-dashboard {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px 20px 40px;
+        display: flex;
+        gap: 24px;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
 
-.left-panel {
-    flex: 2;
-    background-color: #ffffff;
-    padding: 20px;
-    border-radius: 12px;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-}
+    .left-panel {
+        flex: 2;
+        background: #ffffff;
+        padding: 20px 24px 24px;
+        border-radius: 16px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+    }
 
-.right-panel {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-    background-color: #ffffff;
-    padding: 20px;
-    border-radius: 12px;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-}
+    .right-panel {
+        flex: 1.2;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
 
-.subtitle {
-    color: #555;
-    margin-bottom: 20px;
-    font-size: 16px;
-}
+    .welcome-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 10px;
+    }
 
-.add-meal-card {
-    background: #fff;
-    border-radius: 12px;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
-    padding: 20px;
-    margin-bottom: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    position: relative;
-}
+    .hero-image img {
+        width: 200px;
+        border-radius: 12px;
+        object-fit: cover;
+    }
 
-.add-meal-card .field {
-    display: flex;
-    flex-direction: column;
-    position: relative;
-}
+    h2 {
+        margin: 0 0 6px;
+        font-size: 24px;
+        font-weight: 600;
+    }
 
-.add-meal-card label {
-    font-size: 14px;
-    font-weight: 600;
-    color: #444;
-}
+    .subtitle {
+        color: #6b7280;
+        margin: 0;
+        font-size: 14px;
+    }
 
-.add-meal-card .input {
-    padding: 10px;
-    border-radius: 8px;
-    border: 1px solid #ddd;
-    font-size: 14px;
-    transition: border 0.3s ease;
-}
+    .section-title {
+        margin-top: 18px;
+        margin-bottom: 10px;
+        font-size: 18px;
+        font-weight: 600;
+    }
 
-.add-meal-card .input:focus {
-    border-color: #3b3bbf;
-}
+    .meals-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.8fr);
+        gap: 16px;
+        align-items: flex-start;
+    }
 
-.save-btn {
-    align-self: flex-end;
-    border: none;
-    border-radius: 8px;
-    background-color: #5b2dfc;
-    color: #fff;
-    padding: 8px 16px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.3s ease;
-}
+    .add-meal-card {
+        background: #f9fafb;
+        border-radius: 14px;
+        padding: 16px 16px 20px;
+        box-shadow: inset 0 0 0 1px #e5e7eb;
+        position: relative;
+    }
 
-.save-btn:hover {
-    background-color: #4720c8;
-}
+    .add-meal-card h4 {
+        margin: 0 0 8px;
+        font-size: 16px;
+        font-weight: 600;
+    }
 
-.meals-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 15px;
-}
+    .field {
+        display: flex;
+        flex-direction: column;
+        margin-top: 8px;
+        position: relative;
+    }
 
-.meal-card {
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    background: #fff;
-    padding: 15px;
-    border-radius: 12px;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
-    gap: 10px;
-    position: relative;
-}
+    .field label {
+        font-size: 13px;
+        font-weight: 500;
+        color: #4b5563;
+        margin-bottom: 3px;
+    }
 
-.meal-card h4 {
-    font-size: 18px;
-    margin-bottom: 8px;
-}
+    .input {
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid #d1d5db;
+        font-size: 14px;
+        outline: none;
+    }
 
-.meal-cal {
-    font-size: 12px;
-    color: #888;
-}
+    .input:focus {
+        border-color: #6366f1;
+        box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.25);
+    }
 
-.delete-meal-btn {
-    position: absolute;
-    top: 5px;
-    right: 5px;
-    background-color: transparent;
-    border: none;
-    cursor: pointer;
-    font-size: 20px;
-    color: #e53935;
-    transition: color 0.3s ease;
-}
+    .primary-btn,
+    .secondary-btn {
+        border: none;
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        padding: 8px 14px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
 
-.delete-meal-btn:hover {
-    color: #d32f2f;
-}
+    .primary-btn {
+        background: #4f46e5;
+        color: #fff;
+    }
 
-.top-bar {
-    display: flex;
-    justify-content: flex-end;
-    gap: 15px;
-    font-size: 20px;
-    color: #3b3bbf;
-}
+    .primary-btn:hover {
+        background: #4338ca;
+    }
 
-.calendar-grid {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    gap: 10px;
-    margin-top: 10px;
-}
+    .primary-btn.wide {
+        width: 100%;
+        margin-top: 12px;
+    }
 
-.calendar-grid span {
-    padding: 8px 12px;
-    border-radius: 8px;
-    background: #f3f3f3;
-    cursor: pointer;
-    text-align: center;
-}
+    .secondary-btn {
+        background: #eef2ff;
+        color: #4338ca;
+        width: 100%;
+        margin-top: 12px;
+    }
 
-.calendar-grid span:hover {
-    background: #e0e0ff;
-}
+    .secondary-btn:hover {
+        background: #e0e7ff;
+    }
 
-.calendar-grid .active {
-    background-color: #3b3bbf;
-    color: #fff;
-}
+    .meal-types-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+    }
 
-.report-item {
-    padding: 8px 0;
-    font-size: 14px;
-}
+    .meal-type-card {
+        background: #ffffff;
+        border-radius: 12px;
+        padding: 10px 10px 6px;
+        box-shadow: 0 1px 4px rgba(15, 23, 42, 0.06);
+        border: 1px solid #e5e7eb;
+        min-height: 120px;
+    }
 
-/* ✅ Medication summary */
-.meds-summary-card {
-    background: #fff;
-    border-radius: 12px;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
-    padding: 16px;
-    font-size: 14px;
-}
+    .meal-type-card h4 {
+        margin: 0 0 4px;
+        font-size: 14px;
+        font-weight: 600;
+    }
 
-.meds-summary-card h3 {
-    margin-bottom: 10px;
-}
+    .meal-empty {
+        margin: 4px 0 0;
+        font-size: 12px;
+        color: #9ca3af;
+    }
 
-.meds-summary-card p {
-    margin: 4px 0;
-}
+    .meal-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
+        margin-top: 4px;
+        font-size: 13px;
+    }
 
-.primary-btn {
-    margin-top: 10px;
-    padding: 6px 12px;
-    border-radius: 8px;
-    border: none;
-    background: #4CAF50;
-    color: #fff;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.3s ease;
-}
+    .meal-text {
+        flex: 1;
+        color: #374151;
+    }
 
-.primary-btn:hover {
-    background: #3f8c41;
-}
+    .meal-cal {
+        font-size: 12px;
+        color: #6b7280;
+        margin-right: 4px;
+    }
 
-/* ✅ Suggestions dropdown */
-.suggestions-list {
-    list-style: none;
-    margin: 4px 0 0;
-    padding: 0;
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    background: #fff;
-    border-radius: 8px;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-    max-height: 220px;
-    overflow-y: auto;
-    z-index: 20;
-    font-size: 13px;
-}
+    .meal-delete-btn {
+        border: none;
+        background: transparent;
+        color: #f97373;
+        cursor: pointer;
+        font-size: 14px;
+        padding: 0 4px;
+    }
 
-.suggestions-list li {
-    display: flex;
-    justify-content: space-between;
-    padding: 6px 10px;
-    cursor: pointer;
-}
+    .top-bar {
+        background: #ffffff;
+        border-radius: 16px;
+        padding: 10px 14px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    }
 
-.suggestions-list li:hover {
-    background: #f5f5ff;
-}
+    .dashboard-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #111827;
+    }
 
-.sugg-name {
-    font-weight: 500;
-}
+    .icon-btn {
+        border: none;
+        background: #ef4444;
+        color: #fff;
+        border-radius: 999px;
+        font-size: 12px;
+        padding: 6px 10px;
+        cursor: pointer;
+    }
 
-.sugg-cal {
-    color: #777;
-}
+    .icon-btn:hover {
+        background: #dc2626;
+    }
+
+    .card {
+        background: #ffffff;
+        border-radius: 16px;
+        padding: 14px 16px 16px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+    }
+
+    .card h3 {
+        margin: 0 0 8px;
+        font-size: 15px;
+        font-weight: 600;
+    }
+
+    .calendar-card {
+        padding-bottom: 14px;
+    }
+
+    .calendar-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 6px;
+        font-size: 13px;
+        font-weight: 600;
+    }
+
+    .calendar-nav {
+        border: none;
+        background: #e5e7eb;
+        width: 24px;
+        height: 24px;
+        border-radius: 999px;
+        cursor: pointer;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .calendar-nav:hover {
+        background: #d4d4d8;
+    }
+
+    .calendar-weekdays {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        font-size: 11px;
+        color: #9ca3af;
+        text-align: center;
+        margin-bottom: 4px;
+    }
+
+    .calendar-weekdays span {
+        padding: 2px 0;
+    }
+
+    .calendar-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 4px;
+    }
+
+    .calendar-day {
+        border: none;
+        background: #f3f4f6;
+        border-radius: 8px;
+        padding: 5px 0;
+        font-size: 12px;
+        cursor: pointer;
+        text-align: center;
+        color: #374151;
+    }
+
+    .calendar-day.other-month {
+        color: #9ca3af;
+        background: #f9fafb;
+    }
+
+    .calendar-day.today {
+        border: 1px solid #6366f1;
+    }
+
+    .calendar-day.active {
+        background: #4f46e5;
+        color: #fff;
+    }
+
+    .calendar-day:hover {
+        background: #e5e7eb;
+    }
+
+    .meds-summary-card .muted {
+        font-size: 13px;
+        color: #9ca3af;
+        margin: 4px 0 0;
+    }
+
+    .meds-stats {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 4px;
+        font-size: 12px;
+    }
+
+    .stat-label {
+        display: block;
+        color: #6b7280;
+    }
+
+    .stat-label.taken {
+        color: #16a34a;
+    }
+
+    .stat-label.pending {
+        color: #f97316;
+    }
+
+    .stat-label.skipped {
+        color: #ef4444;
+    }
+
+    .stat-value {
+        font-weight: 600;
+        color: #111827;
+    }
+
+    .report-card .report-item {
+        display: flex;
+        justify-content: space-between;
+        font-size: 13px;
+        margin-top: 4px;
+    }
+
+    .report-card .report-item span {
+        color: #374151;
+    }
+
+    /* Suggestions dropdown */
+    .suggestions-list {
+        list-style: none;
+        margin: 4px 0 0;
+        padding: 2px 0;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: #ffffff;
+        border-radius: 10px;
+        box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12);
+        max-height: 210px;
+        overflow-y: auto;
+        z-index: 30;
+        font-size: 12px;
+    }
+
+    .suggestions-list li {
+        display: flex;
+        justify-content: space-between;
+        padding: 6px 9px;
+        cursor: pointer;
+    }
+
+    .suggestions-list li:hover {
+        background: #eef2ff;
+    }
+
+    .sugg-name {
+        font-weight: 500;
+        color: #111827;
+    }
+
+    .sugg-cal {
+        color: #6b7280;
+    }
+
+    @media (max-width: 960px) {
+        .user-dashboard {
+            flex-direction: column;
+        }
+
+        .meals-layout {
+            grid-template-columns: 1fr;
+        }
+
+        .meal-types-grid {
+            grid-template-columns: 1fr 1fr;
+        }
+    }
+
+    @media (max-width: 720px) {
+        .meal-types-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
