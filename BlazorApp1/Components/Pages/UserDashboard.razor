@@ -487,11 +487,7 @@ else
         }
         catch (OperationCanceledException)
         {
-            // expected when user keeps typing quickly
-        }
-        catch (TaskCanceledException)
-        {
-            // expected when debounce cancels older requests
+            // expected when user keeps typing quickly / debounce cancels older requests
         }
         catch (Exception ex)
         {
