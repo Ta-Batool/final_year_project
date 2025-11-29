@@ -39,10 +39,4 @@ namespace BlazorApp1.Service
                 ?? new List<NutritionItemDto>();
         }
     }
-
-    public class NutritionItemDto
-    {
-        public string Name { get; set; } = "";
-        public double Calories { get; set; }
-    }
 }
