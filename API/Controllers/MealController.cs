@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using API.Services;
 using Microsoft.AspNetCore.Mvc;
 using Model;
@@ -21,6 +24,19 @@ namespace API.Controllers
         {
             var todayUtc = DateTime.UtcNow.Date;
             var meals = await _mealService.GetMealsForDayAsync(clientId, todayUtc);
+            return Ok(meals);
+        }
+
+        // ✅ NEW: GET api/meals/by-date?clientId=...&date=2025-11-29
+        [HttpGet("by-date")]
+        public async Task<ActionResult<List<Meal>>> GetByDate(
+            [FromQuery] string clientId,
+            [FromQuery] DateTime date)
+        {
+            if (string.IsNullOrWhiteSpace(clientId))
+                return BadRequest("clientId is required.");
+
+            var meals = await _mealService.GetMealsByDateAsync(clientId, date);
             return Ok(meals);
         }
 

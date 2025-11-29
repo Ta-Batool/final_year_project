@@ -1,6 +1,7 @@
+using System;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Json;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Model;
 
@@ -15,9 +16,21 @@ namespace BlazorApp1.Service
             _http = http;
         }
 
+        // Existing: today’s meals (used by other pages, keep it)
         public async Task<List<Meal>> GetTodayMealsAsync(string clientId)
         {
             return await _http.GetFromJsonAsync<List<Meal>>($"api/meals/today/{clientId}")
+                   ?? new List<Meal>();
+        }
+
+        // ✅ New: meals by specific date (used by functional calendar)
+        public async Task<List<Meal>> GetMealsByDateAsync(string clientId, DateTime date)
+        {
+            // Send date as YYYY-MM-DD (easy to parse on API side)
+            var dateString = date.Date.ToString("yyyy-MM-dd");
+
+            var url = $"api/meals/by-date?clientId={clientId}&date={dateString}";
+            return await _http.GetFromJsonAsync<List<Meal>>(url)
                    ?? new List<Meal>();
         }
 

@@ -130,6 +130,8 @@ builder.Services.AddHttpClient<ConversationClientService>(c =>
     c.BaseAddress = new Uri(apiBaseUrl);
 });
 
+builder.Services.AddHttpClient<ICalorieNinjaService, CalorieNinjaService>();
+
 
 
 var app = builder.Build();
