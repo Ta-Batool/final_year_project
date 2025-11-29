@@ -1,4 +1,6 @@
 ﻿@page "/userdashboard"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components
 @attribute [Authorize]
 
 @using System.Security.Claims
@@ -8,7 +10,7 @@
 @using BlazorApp1.Components.Layout
 @using BlazorApp1.Service
 @layout UserDashboardLayout
-@using Microsoft.AspNetCore.Components
+
 
 
 @inject AuthenticationStateProvider AuthStateProvider
