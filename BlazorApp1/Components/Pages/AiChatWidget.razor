@@ -1,0 +1,113 @@
+@using System.Net.Http.Json
+@using Microsoft.AspNetCore.Components.Web
+@inject HttpClient Http
+
+<div class="ai-chat-container">
+    @if (isOpen)
+    {
+        <div class="ai-chat-window">
+            <div class="ai-chat-header">
+                <span>@(IsDoctor ? "Doctor AI Assistant" : "Health AI Assistant")</span>
+                <button @onclick="Toggle">×</button>
+            </div>
+
+            <div class="ai-chat-messages">
+                @foreach (var msg in messages)
+                {
+                    <div class="msg @(msg.IsUser ? "user" : "bot")">
+                        @msg.Text
+                    </div>
+                }
+            </div>
+
+            <div class="ai-chat-input">
+                <input @bind="currentInput" @bind:event="oninput"
+                       @onkeydown="HandleKeyDown"
+                       placeholder="Type your question..." />
+                <button @onclick="Send">Send</button>
+            </div>
+        </div>
+    }
+
+    <button class="ai-chat-bubble" @onclick="Toggle" title="Chat with assistant">
+        💬
+    </button>
+</div>
+
+@code {
+    [Parameter] public bool IsDoctor { get; set; }
+
+    private bool isOpen;
+    private string currentInput = string.Empty;
+
+    private List<ChatMessage> messages = new();
+
+    private class ChatMessage
+    {
+        public bool IsUser { get; set; }
+        public string Text { get; set; } = string.Empty;
+    }
+
+    private void Toggle() => isOpen = !isOpen;
+
+    private async Task Send()
+    {
+        if (string.IsNullOrWhiteSpace(currentInput)) return;
+
+        var text = currentInput.Trim();
+        currentInput = string.Empty;
+
+        messages.Add(new ChatMessage { IsUser = true, Text = text });
+
+        try
+        {
+            var payload = new
+            {
+                role = IsDoctor ? "doctor" : "patient",
+                message = text
+            };
+
+            // this hits your API service
+            var response = await Http.PostAsJsonAsync("api/aichat/chat", payload);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                messages.Add(new ChatMessage
+                {
+                    IsUser = false,
+                    Text = "Sorry, I couldn't reach the AI assistant right now."
+                });
+                return;
+            }
+
+            var data = await response.Content.ReadFromJsonAsync<AiChatResponse>();
+
+            messages.Add(new ChatMessage
+            {
+                IsUser = false,
+                Text = data?.Reply ?? "(No response received.)"
+            });
+        }
+        catch
+        {
+            messages.Add(new ChatMessage
+            {
+                IsUser = false,
+                Text = "An error occurred while contacting the AI assistant."
+            });
+        }
+    }
+
+    private void HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            _ = Send();
+        }
+    }
+
+    private class AiChatResponse
+    {
+        public string Reply { get; set; } = string.Empty;
+    }
+}

@@ -3,6 +3,7 @@ using API.Services;
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using API.Hubs;                    // ✅ add this (namespace where CallHub lives)
+using API.Ai;   // ⬅️ at the top of the file with the other using statements
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -23,6 +24,8 @@ builder.Services.AddScoped<IMessageService, MessageService>();
 builder.Services.AddScoped<IMealService, MealService>();
 builder.Services.AddSingleton<IMedicationService, MedicationService>();
 builder.Services.AddSingleton<IConversationService, ConversationService>();
+builder.Services.AddHttpClient<IAiAssistantService, AiAssistantService>();
+
 
 // ✅ SignalR for WebRTC signalling
 builder.Services.AddSignalR();

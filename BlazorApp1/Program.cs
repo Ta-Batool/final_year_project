@@ -134,6 +134,15 @@ builder.Services.AddHttpClient<ICalorieNinjaService, CalorieNinjaService>(client
     client.BaseAddress = new Uri("https://api.nal.usda.gov/fdc/v1/");
 });
 
+// Generic HttpClient pointing to API for misc calls (like AI chat)
+builder.Services.AddHttpClient("Api", client =>
+{
+    client.BaseAddress = new Uri(apiBaseUrl);
+});
+
+builder.Services.AddScoped(sp =>
+    sp.GetRequiredService<IHttpClientFactory>().CreateClient("Api"));
+
 
 
 var app = builder.Build();
