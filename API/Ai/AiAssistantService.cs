@@ -86,7 +86,7 @@ namespace API.Ai
 
         private async Task<string> CallOpenRouterAsync(string systemPrompt, string context, string userMessage)
         {
-            // 🔹 If key missing, return a clear message instead of crashing
+            // 🔹 If key missing, return a clear reply instead of crashing
             if (string.IsNullOrWhiteSpace(_apiKey))
             {
                 return "AI assistant is not configured on the server (missing OpenRouter API key). Please tell the admin.";
