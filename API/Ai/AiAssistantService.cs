@@ -11,7 +11,7 @@ namespace API.Ai
         private readonly HttpClient _httpClient;
         private readonly ILogger<AiAssistantService> _logger;
 
-        private readonly string _apiKey;
+        private readonly string? _apiKey;
         private readonly string _baseUrl;
         private readonly string _model;
 
@@ -23,20 +23,25 @@ namespace API.Ai
             _httpClient = httpClient;
             _logger = logger;
 
+            // 🔹 Do NOT throw here, just log if missing
             _apiKey =
-                Environment.GetEnvironmentVariable("OPENROUTER_API_KEY")
-                ?? configuration["OpenRouter:ApiKey"]
-                ?? throw new InvalidOperationException("OPENROUTER_API_KEY not configured");
+                Environment.GetEnvironmentVariable("OPENROUTER_API_KEY") ??
+                configuration["OpenRouter:ApiKey"];
+
+            if (string.IsNullOrWhiteSpace(_apiKey))
+            {
+                _logger.LogError("OPENROUTER_API_KEY is not configured. AI assistant will not work until it is set.");
+            }
 
             _baseUrl =
-                Environment.GetEnvironmentVariable("OPENROUTER_BASE_URL")
-                ?? configuration["OpenRouter:BaseUrl"]
-                ?? "https://openrouter.ai/api/v1/chat/completions";
+                Environment.GetEnvironmentVariable("OPENROUTER_BASE_URL") ??
+                configuration["OpenRouter:BaseUrl"] ??
+                "https://openrouter.ai/api/v1/chat/completions";
 
             _model =
-                Environment.GetEnvironmentVariable("OPENROUTER_MODEL")
-                ?? configuration["OpenRouter:Model"]
-                ?? "mistral-small";
+                Environment.GetEnvironmentVariable("OPENROUTER_MODEL") ??
+                configuration["OpenRouter:Model"] ??
+                "mistral-small";
         }
 
         public Task<string> GetPatientReplyAsync(string userId, string message)
@@ -81,6 +86,12 @@ namespace API.Ai
 
         private async Task<string> CallOpenRouterAsync(string systemPrompt, string context, string userMessage)
         {
+            // 🔹 If key missing, return a clear message instead of crashing
+            if (string.IsNullOrWhiteSpace(_apiKey))
+            {
+                return "AI assistant is not configured on the server (missing OpenRouter API key). Please tell the admin.";
+            }
+
             var payload = new
             {
                 model = _model,
