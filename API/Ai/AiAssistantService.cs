@@ -23,7 +23,7 @@ namespace API.Ai
             _httpClient = httpClient;
             _logger = logger;
 
-            // 🔹 Do NOT throw here, just log if missing
+            // Read API key (no throwing)
             _apiKey =
                 Environment.GetEnvironmentVariable("OPENROUTER_API_KEY") ??
                 configuration["OpenRouter:ApiKey"];
@@ -33,11 +33,13 @@ namespace API.Ai
                 _logger.LogError("OPENROUTER_API_KEY is not configured. AI assistant will not work until it is set.");
             }
 
+            // Base URL of OpenRouter
             _baseUrl =
                 Environment.GetEnvironmentVariable("OPENROUTER_BASE_URL") ??
                 configuration["OpenRouter:BaseUrl"] ??
                 "https://openrouter.ai/api/v1/chat/completions";
 
+            // Model name
             _model =
                 Environment.GetEnvironmentVariable("OPENROUTER_MODEL") ??
                 configuration["OpenRouter:Model"] ??
@@ -86,7 +88,7 @@ namespace API.Ai
 
         private async Task<string> CallOpenRouterAsync(string systemPrompt, string context, string userMessage)
         {
-            // 🔹 If key missing, return a clear reply instead of crashing
+            // If key missing, return a clear reply instead of crashing
             if (string.IsNullOrWhiteSpace(_apiKey))
             {
                 return "AI assistant is not configured on the server (missing OpenRouter API key). Please tell the admin.";
@@ -110,16 +112,27 @@ namespace API.Ai
             };
 
             request.Headers.Add("Authorization", $"Bearer {_apiKey}");
-            request.Headers.Add("HTTP-Referer", "https://your-fyp-site.example"); // optional
+
+            // Use your real Blazor site URL here so OpenRouter is happy
+            request.Headers.Add("HTTP-Referer", "https://fyp-blazor.onrender.com");
             request.Headers.Add("X-Title", "Insha Tayyaba FYP Assistant");
 
             try
             {
                 using var response = await _httpClient.SendAsync(request);
-                response.EnsureSuccessStatusCode();
+                var body = await response.Content.ReadAsStringAsync();
 
-                var responseJson = await response.Content.ReadAsStringAsync();
-                using var doc = JsonDocument.Parse(responseJson);
+                if (!response.IsSuccessStatusCode)
+                {
+                    // Log full details in Render logs
+                    _logger.LogError("OpenRouter error. Status: {StatusCode}, Body: {Body}",
+                        (int)response.StatusCode, body);
+
+                    // Short message shown to you in UI
+                    return $"OpenRouter error ({(int)response.StatusCode}): {response.ReasonPhrase}.";
+                }
+
+                using var doc = JsonDocument.Parse(body);
 
                 var content =
                     doc.RootElement
@@ -136,7 +149,7 @@ namespace API.Ai
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error calling OpenRouter");
-                return "Sorry, an error occurred while contacting the AI assistant.";
+                return "Sorry, an unexpected error occurred while contacting the AI assistant.";
             }
         }
     }
