@@ -129,9 +129,10 @@ builder.Services.AddHttpClient<ConversationClientService>(c =>
 {
     c.BaseAddress = new Uri(apiBaseUrl);
 });
-builder.Services.AddHttpClient<ICalorieNinjaService, CalorieNinjaService>();
-
-
+builder.Services.AddHttpClient<ICalorieNinjaService, CalorieNinjaService>(client =>
+{
+    client.BaseAddress = new Uri("https://api.nal.usda.gov/fdc/v1/");
+});
 
 
 
