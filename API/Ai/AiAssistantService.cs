@@ -39,11 +39,11 @@ namespace API.Ai
                 configuration["OpenRouter:BaseUrl"] ??
                 "https://openrouter.ai/api/v1/chat/completions";
 
-            // Model name
+            // ✅ Model name (use full OpenRouter ID)
             _model =
                 Environment.GetEnvironmentVariable("OPENROUTER_MODEL") ??
                 configuration["OpenRouter:Model"] ??
-                "mistral-small";
+                "mistralai/mistral-small-latest";
         }
 
         public Task<string> GetPatientReplyAsync(string userId, string message)
