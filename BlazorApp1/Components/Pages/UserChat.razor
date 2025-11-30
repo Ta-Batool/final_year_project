@@ -21,116 +21,121 @@
 @inject ICService CService
 @inject IConfiguration Configuration
 @inject IJSRuntime JS
+@inject NavigationManager Navigation
 
-<div class="chat-header">
-    <div>
-        <h3>Chat with @(isDoctorView ? userName : doctorName)</h3>
-        <p class="chat-subtitle">
-            @if (isDoctorView)
+<div class="chat-page">
+    <div class="chat-header">
+        <div>
+            <h3>Chat with @(isDoctorView ? userName : doctorName)</h3>
+            <p class="chat-subtitle">
+                @if (isDoctorView)
+                {
+                    <span>You are logged in as doctor.</span>
+                }
+                else
+                {
+                    <span>You are logged in as patient.</span>
+                }
+            </p>
+        </div>
+
+        <div class="chat-actions">
+            <button class="icon-btn" title="Voice call" @onclick="OnVoiceCall">
+                <i class="fa-solid fa-phone"></i>
+            </button>
+            <button class="icon-btn" title="Voice note" @onclick="StartRecording" disabled="@isRecording">
+                <i class="fa-solid fa-microphone"></i>
+            </button>
+            <audio id="remoteAudio" autoplay hidden></audio>
+        </div>
+    </div>
+
+    <div class="chat-container">
+        <div class="messages">
+            @if (isLoading)
             {
-                <span>You are logged in as doctor.</span>
+                <p>Loading conversation...</p>
+            }
+            else if (messages.Count == 0)
+            {
+                <p class="empty">No messages yet. Say hello!</p>
             }
             else
             {
-                <span>You are logged in as patient.</span>
+                @foreach (var m in messages)
+                {
+                    var mine = !string.IsNullOrWhiteSpace(currentClientId) && m.SenderId == currentClientId;
+                    <div class="message @(mine ? "mine" : "theirs")">
+                        <div class="meta">
+                            <span class="name">@m.SenderName</span>
+                            <span class="time">@m.SentAt.ToLocalTime().ToString("HH:mm")</span>
+                        </div>
+
+                        <div class="text">
+                            @if (!string.IsNullOrWhiteSpace(m.Text))
+                            {
+                                <div>@m.Text</div>
+                            }
+
+                            @if (m.AttachmentData != null && !string.IsNullOrEmpty(m.AttachmentFileName))
+                            {
+                                var isImage = !string.IsNullOrEmpty(m.AttachmentContentType) &&
+                                              m.AttachmentContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+                                var isAudio = !string.IsNullOrEmpty(m.AttachmentContentType) &&
+                                              m.AttachmentContentType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase);
+
+                                var url = GetAttachmentUrl(m);
+
+                                if (isImage)
+                                {
+                                    <img src="@url" class="chat-image" />
+                                }
+                                else if (isAudio)
+                                {
+                                    <audio controls src="@url" class="chat-audio"></audio>
+                                }
+                                else
+                                {
+                                    <a href="@url" target="_blank">
+                                        Download @m.AttachmentFileName
+                                    </a>
+                                }
+                            }
+                        </div>
+                    </div>
+                }
             }
-        </p>
+        </div>
+
+        <div class="composer">
+            <InputFile OnChange="OnFileSelected" />
+
+            <input @bind="newMessageText"
+                   @bind:event="oninput"
+                   placeholder="Type a message..." />
+
+            @if (!isRecording)
+            {
+                <button type="button" class="btn-secondary" @onclick="StartRecording">
+                    🎙
+                </button>
+            }
+            else
+            {
+                <button type="button" class="btn-secondary recording" @onclick="StopRecordingAndSend">
+                    ⏹
+                </button>
+            }
+
+            <button @onclick="SendMessage">Send</button>
+        </div>
     </div>
 
-    <div class="chat-actions">
-        <button class="icon-btn" title="Voice call" @onclick="OnVoiceCall">
-            <i class="fa-solid fa-phone"></i>
-        </button>
-        <button class="icon-btn" title="Voice note" @onclick="StartRecording" disabled="@isRecording">
-            <i class="fa-solid fa-microphone"></i>
-        </button>
-        <audio id="remoteAudio" autoplay hidden></audio>
-    </div>
-</div>
-
-<div class="chat-container">
-    @if (isLoading)
+    @if (!string.IsNullOrEmpty(recordingStatus))
     {
-        <p>Loading conversation...</p>
-    }
-    else if (messages.Count == 0)
-    {
-        <p class="empty">No messages yet. Say hello!</p>
-    }
-    else
-    {
-        @foreach (var m in messages)
-        {
-            var mine = !string.IsNullOrWhiteSpace(currentClientId) && m.SenderId == currentClientId;
-            <div class="message @(mine ? "mine" : "theirs")">
-                <div class="meta">
-                    <span class="name">@m.SenderName</span>
-                    <span class="time">@m.SentAt.ToLocalTime().ToString("HH:mm")</span>
-
-                </div>
-                <div class="bubble">
-                    @if (!string.IsNullOrWhiteSpace(m.Text))
-                    {
-                        <p>@m.Text</p>
-                    }
-
-                    @if (m.AttachmentData != null && !string.IsNullOrEmpty(m.AttachmentFileName))
-                    {
-                        var isImage = !string.IsNullOrEmpty(m.AttachmentContentType) &&
-                                      m.AttachmentContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
-                        var isAudio = !string.IsNullOrEmpty(m.AttachmentContentType) &&
-                                      m.AttachmentContentType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase);
-
-                        var url = GetAttachmentUrl(m);
-
-                        if (isImage)
-                        {
-                            <img src="@url" class="chat-image" />
-                        }
-                        else if (isAudio)
-                        {
-                            <audio controls src="@url" class="chat-audio"></audio>
-                        }
-                        else
-                        {
-                            <a href="@url" target="_blank">
-                                Download @m.AttachmentFileName
-                            </a>
-                        }
-                    }
-                </div>
-            </div>
-        }
+        <p class="recording-status">@recordingStatus</p>
     }
 </div>
-
-<div class="composer">
-    <InputFile OnChange="OnFileSelected" />
-
-    <input @bind="newMessageText"
-           @bind:event="oninput"
-           placeholder="Type a message..." />
-
-    @if (!isRecording)
-    {
-        <button type="button" class="btn-secondary" @onclick="StartRecording">
-            🎙
-        </button>
-    }
-    else
-    {
-        <button type="button" class="btn-secondary recording" @onclick="StopRecordingAndSend">
-            ⏹
-        </button>
-    }
-
-    <button @onclick="SendMessage">Send</button>
-</div>
-
-@if (!string.IsNullOrEmpty(recordingStatus))
-{
-    <p class="recording-status">@recordingStatus</p>
-}
 
 @code {
     [Parameter] public string doctorClientId { get; set; } = "";
@@ -379,7 +384,7 @@
         }
 
         var conversationId = $"{doctorClientId}_{userClientId}";
-        var hubUrl = $"{apiBaseUrl.TrimEnd('/')}/callHub";
+        var hubUrl = Navigation.BaseUri.TrimEnd('/') + "/callHub";
 
         try
         {
@@ -412,9 +417,49 @@
 }
 
 <style>
-    .chat-container {
-        max-width: 700px;
+    .chat-page {
+        max-width: 900px;
         margin: 20px auto;
+    }
+
+    .chat-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+    }
+
+    .chat-subtitle {
+        margin: 0;
+        font-size: 13px;
+        color: #6b7280;
+    }
+
+    .chat-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .icon-btn {
+        border: none;
+        background: #eef2ff;
+        color: #4338ca;
+        border-radius: 999px;
+        width: 32px;
+        height: 32px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-size: 14px;
+    }
+
+    .icon-btn:hover {
+        background: #e0e7ff;
+    }
+
+    .chat-container {
         background: #ffffff;
         border-radius: 12px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.08);
@@ -496,6 +541,16 @@
         opacity: 0.9;
     }
 
+    .btn-secondary {
+        background: #e5e7eb;
+        color: #111827;
+    }
+
+    .btn-secondary.recording {
+        background: #ef4444;
+        color: #fff;
+    }
+
     .empty {
         color: #777;
         font-style: italic;
@@ -510,5 +565,11 @@
     .chat-audio {
         width: 200px;
         margin-top: 4px;
+    }
+
+    .recording-status {
+        margin-top: 6px;
+        font-size: 13px;
+        color: #4b5563;
     }
 </style>

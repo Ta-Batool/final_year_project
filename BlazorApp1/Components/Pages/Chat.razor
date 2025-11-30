@@ -11,6 +11,7 @@
 @using System.Net.Http.Headers
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.JSInterop
 @using Model
 @using BlazorApp1.Service
 
@@ -20,64 +21,88 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject ICService CService
 @inject IConfiguration Configuration
+@inject IJSRuntime JS
 
-<h3>Chat with @(isDoctorView ? userName : doctorName)</h3>
+<div class="chat-page">
+    <div class="chat-header">
+        <div>
+            <h3>Chat with @(isDoctorView ? userName : doctorName)</h3>
+            <p class="chat-subtitle">
+                @if (isDoctorView)
+                {
+                    <span>You are logged in as doctor.</span>
+                }
+                else
+                {
+                    <span>You are logged in as patient.</span>
+                }
+            </p>
+        </div>
 
-<div class="chat-container">
-    @if (string.IsNullOrWhiteSpace(doctorClientId) || string.IsNullOrWhiteSpace(userClientId))
-    {
-        <p class="empty">No conversation selected. Go to <b>Messages</b> and choose a conversation.</p>
-    }
-    else
-    {
+        <div class="chat-actions">
+            <!-- Voice note shortcut in header -->
+            <button class="icon-btn" title="Voice note" @onclick="StartRecording" disabled="@isRecording">
+                <i class="fa-solid fa-microphone"></i>
+            </button>
+        </div>
+    </div>
+
+    <div class="chat-container">
         <div class="messages">
-            @if (isLoading)
+            @if (string.IsNullOrWhiteSpace(doctorClientId) || string.IsNullOrWhiteSpace(userClientId))
             {
-                <p>Loading conversation...</p>
-            }
-            else if (messages.Count == 0)
-            {
-                <p class="empty">No messages yet. Say hello!</p>
+                <p class="empty">No conversation selected. Go to <b>Messages</b> and choose a conversation.</p>
             }
             else
             {
-                @foreach (var m in messages)
+                @if (isLoading)
                 {
-                    var mine = !string.IsNullOrWhiteSpace(currentClientId) && m.SenderId == currentClientId;
-                    <div class="message @(mine ? "mine" : "theirs")">
-                        <div class="meta">
-                            <span class="name">@m.SenderName</span>
-                            <span class="time">@m.SentAt.ToLocalTime().ToString("HH:mm")</span>
-                        </div>
-                        <div class="text">
-                            @if (!string.IsNullOrWhiteSpace(m.Text))
-                            {
-                                <div>@m.Text</div>
-                            }
+                    <p>Loading conversation...</p>
+                }
+                else if (messages.Count == 0)
+                {
+                    <p class="empty">No messages yet. Say hello!</p>
+                }
+                else
+                {
+                    @foreach (var m in messages)
+                    {
+                        var mine = !string.IsNullOrWhiteSpace(currentClientId) && m.SenderId == currentClientId;
+                        <div class="message @(mine ? "mine" : "theirs")">
+                            <div class="meta">
+                                <span class="name">@m.SenderName</span>
+                                <span class="time">@m.SentAt.ToLocalTime().ToString("HH:mm")</span>
+                            </div>
+                            <div class="text">
+                                @if (!string.IsNullOrWhiteSpace(m.Text))
+                                {
+                                    <div>@m.Text</div>
+                                }
 
-                            @if (!string.IsNullOrEmpty(m.AttachmentFileName) && !string.IsNullOrEmpty(m.Id))
-                            {
-                                var isImage = m.AttachmentContentType?.StartsWith("image") == true;
-                                var isAudio = m.AttachmentContentType?.StartsWith("audio") == true || m.IsVoiceMessage;
-                                var url = GetAttachmentUrl(m);
+                                @if (!string.IsNullOrEmpty(m.AttachmentFileName) && !string.IsNullOrEmpty(m.Id))
+                                {
+                                    var isImage = m.AttachmentContentType?.StartsWith("image") == true;
+                                    var isAudio = m.AttachmentContentType?.StartsWith("audio") == true || m.IsVoiceMessage;
+                                    var url = GetAttachmentUrl(m);
 
-                                if (isImage)
-                                {
-                                    <img src="@url" class="chat-image" />
+                                    if (isImage)
+                                    {
+                                        <img src="@url" class="chat-image" />
+                                    }
+                                    else if (isAudio)
+                                    {
+                                        <audio controls src="@url" class="chat-audio"></audio>
+                                    }
+                                    else
+                                    {
+                                        <a href="@url" target="_blank">
+                                            Download @m.AttachmentFileName
+                                        </a>
+                                    }
                                 }
-                                else if (isAudio)
-                                {
-                                    <audio controls src="@url" class="chat-audio"></audio>
-                                }
-                                else
-                                {
-                                    <a href="@url" target="_blank">
-                                        Download @m.AttachmentFileName
-                                    </a>
-                                }
-                            }
+                            </div>
                         </div>
-                    </div>
+                    }
                 }
             }
         </div>
@@ -87,8 +112,27 @@
             <input @bind="newMessageText"
                    @bind:event="oninput"
                    placeholder="Type a message..." />
+
+            @if (!isRecording)
+            {
+                <button type="button" class="btn-secondary" @onclick="StartRecording">
+                    🎙
+                </button>
+            }
+            else
+            {
+                <button type="button" class="btn-secondary recording" @onclick="StopRecordingAndSend">
+                    ⏹
+                </button>
+            }
+
             <button @onclick="SendMessage">Send</button>
         </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(recordingStatus))
+    {
+        <p class="recording-status">@recordingStatus</p>
     }
 </div>
 
@@ -103,14 +147,15 @@
     private string newMessageText = "";
     private bool isLoading = true;
 
-    // who is logged in
     private string? currentClientId;
     private bool isDoctorView = false;
 
-    // ⭐ attachments
     private IBrowserFile? selectedFile;
     private const long maxUploadSize = 10 * 1024 * 1024; // 10 MB
     private string apiBaseUrl = "";
+
+    private bool isRecording = false;
+    private string recordingStatus = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -119,7 +164,6 @@
 
         try
         {
-            // Load doctor name
             if (!string.IsNullOrWhiteSpace(doctorClientId))
             {
                 var doctor = await DoctorService.GetDoctorByClientIdAsync(doctorClientId);
@@ -127,7 +171,6 @@
                     doctorName = $"Dr. {doctor.Name}";
             }
 
-            // Load user name
             if (!string.IsNullOrWhiteSpace(userClientId))
             {
                 var user = await UserService.GetUserByClientIdAsync(userClientId);
@@ -135,7 +178,6 @@
                     userName = user.Name;
             }
 
-            // Determine who is currently logged in (doctor or patient)
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             var principal = authState.User;
 
@@ -156,11 +198,9 @@
                 }
             }
 
-            // Fallback: if we couldn't detect current client, assume patient
             if (string.IsNullOrWhiteSpace(currentClientId))
-                currentClientId = userClientId;
+                currentClientId = doctorClientId;
 
-            // Load conversation
             if (!string.IsNullOrWhiteSpace(userClientId) &&
                 !string.IsNullOrWhiteSpace(doctorClientId))
             {
@@ -190,7 +230,7 @@
         if (string.IsNullOrWhiteSpace(doctorClientId) || string.IsNullOrWhiteSpace(userClientId))
             return;
 
-        var senderId = currentClientId ?? userClientId;
+        var senderId = currentClientId ?? doctorClientId;
         var senderName = isDoctorView ? doctorName : userName;
         var receiverId = isDoctorView ? userClientId : doctorClientId;
         var receiverName = isDoctorView ? userName : doctorName;
@@ -203,13 +243,11 @@
             {
                 using var content = new MultipartFormDataContent();
 
-                // file
                 var stream = selectedFile.OpenReadStream(maxUploadSize);
                 var fileContent = new StreamContent(stream);
                 fileContent.Headers.ContentType = new MediaTypeHeaderValue(selectedFile.ContentType);
                 content.Add(fileContent, "file", selectedFile.Name);
 
-                // metadata fields expected by API
                 content.Add(new StringContent(senderId), "senderId");
                 content.Add(new StringContent(senderName), "senderName");
                 content.Add(new StringContent(receiverId), "receiverId");
@@ -217,7 +255,7 @@
                 content.Add(new StringContent(userClientId), "userClientId");
                 content.Add(new StringContent(doctorClientId), "doctorClientId");
                 content.Add(new StringContent(newMessageText ?? string.Empty), "text");
-                content.Add(new StringContent("false"), "isVoice"); // voice notes later
+                content.Add(new StringContent("false"), "isVoice");
 
                 saved = await MessageService.SendAttachmentAsync(content);
 
@@ -249,6 +287,85 @@
         }
     }
 
+    private async Task StartRecording()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("voiceRecorder.start");
+            isRecording = true;
+            recordingStatus = "Recording...";
+        }
+        catch (Exception ex)
+        {
+            recordingStatus = $"Unable to start recording: {ex.Message}";
+        }
+    }
+
+    private async Task StopRecordingAndSend()
+    {
+        try
+        {
+            var dataUrl = await JS.InvokeAsync<string>("voiceRecorder.stop");
+            isRecording = false;
+
+            if (string.IsNullOrEmpty(dataUrl))
+            {
+                recordingStatus = "No audio captured.";
+                return;
+            }
+
+            var parts = dataUrl.Split(',');
+            if (parts.Length != 2)
+            {
+                recordingStatus = "Invalid audio data.";
+                return;
+            }
+
+            var meta = parts[0];
+            var base64 = parts[1];
+
+            var contentType = "audio/webm";
+            var ctStart = meta.IndexOf(':');
+            var ctEnd = meta.IndexOf(';');
+            if (ctStart >= 0 && ctEnd > ctStart)
+            {
+                contentType = meta.Substring(ctStart + 1, ctEnd - ctStart - 1);
+            }
+
+            var bytes = Convert.FromBase64String(base64);
+
+            var senderId = currentClientId ?? doctorClientId;
+            var senderName = isDoctorView ? doctorName : userName;
+            var receiverId = isDoctorView ? userClientId : doctorClientId;
+            var receiverName = isDoctorView ? userName : doctorName;
+
+            using var content = new MultipartFormDataContent();
+
+            var fileContent = new ByteArrayContent(bytes);
+            fileContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+            content.Add(fileContent, "file", "voice-message.webm");
+
+            content.Add(new StringContent(senderId), "senderId");
+            content.Add(new StringContent(senderName), "senderName");
+            content.Add(new StringContent(receiverId), "receiverId");
+            content.Add(new StringContent(receiverName), "receiverName");
+            content.Add(new StringContent(userClientId), "userClientId");
+            content.Add(new StringContent(doctorClientId), "doctorClientId");
+            content.Add(new StringContent("Voice message"), "text");
+            content.Add(new StringContent("true"), "isVoice");
+
+            var saved = await MessageService.SendAttachmentAsync(content);
+            messages.Add(saved);
+
+            recordingStatus = "Voice message sent.";
+        }
+        catch (Exception ex)
+        {
+            isRecording = false;
+            recordingStatus = $"Error recording audio: {ex.Message}";
+        }
+    }
+
     private string GetAttachmentUrl(Message m)
     {
         if (string.IsNullOrEmpty(m.Id))
@@ -259,9 +376,49 @@
 }
 
 <style>
-    .chat-container {
-        max-width: 700px;
+    .chat-page {
+        max-width: 900px;
         margin: 20px auto;
+    }
+
+    .chat-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+    }
+
+    .chat-subtitle {
+        margin: 0;
+        font-size: 13px;
+        color: #6b7280;
+    }
+
+    .chat-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .icon-btn {
+        border: none;
+        background: #eef2ff;
+        color: #4338ca;
+        border-radius: 999px;
+        width: 32px;
+        height: 32px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-size: 14px;
+    }
+
+    .icon-btn:hover {
+        background: #e0e7ff;
+    }
+
+    .chat-container {
         background: #ffffff;
         border-radius: 12px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.08);
@@ -343,6 +500,16 @@
         opacity: 0.9;
     }
 
+    .btn-secondary {
+        background: #e5e7eb;
+        color: #111827;
+    }
+
+    .btn-secondary.recording {
+        background: #ef4444;
+        color: #fff;
+    }
+
     .empty {
         color: #777;
         font-style: italic;
@@ -357,5 +524,11 @@
     .chat-audio {
         width: 200px;
         margin-top: 4px;
+    }
+
+    .recording-status {
+        margin-top: 6px;
+        font-size: 13px;
+        color: #4b5563;
     }
 </style>
