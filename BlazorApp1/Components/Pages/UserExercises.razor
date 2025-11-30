@@ -1,0 +1,320 @@
+@page "/userexercises"
+@attribute [Authorize]
+
+@using Microsoft.AspNetCore.Authorization
+@using System.Security.Claims
+@using System.Linq
+@using Model
+@using BlazorApp1.Components.Layout
+@using BlazorApp1.Service
+
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ICService CService
+@inject IUService UService
+@inject IExerciseService ExerciseService
+@inject IHydrationService HydrationService
+
+@layout UserDashboardLayout
+
+<h2>Exercise & Hydration</h2>
+
+<p class="subtitle">
+    Log your daily exercise and water intake to keep your lifestyle on track.
+</p>
+
+@if (isLoading)
+{
+    <p>Loading...</p>
+}
+else if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+else if (currentClient is null)
+{
+    <p>No profile found. Please complete your registration.</p>
+}
+else
+{
+    <div class="dashboard-grid">
+        <!-- LEFT: Exercises -->
+        <div class="card">
+            <h3>Today's Exercises (@selectedDate.ToString("dd MMM yyyy"))</h3>
+
+            <EditForm Model="exerciseForm" OnValidSubmit="AddExerciseAsync">
+                <div class="form-group">
+                    <label>Exercise name</label>
+                    <InputText @bind-Value="exerciseForm.Name" class="form-control" />
+                </div>
+
+                <div class="form-group">
+                    <label>Type</label>
+                    <InputSelect @bind-Value="exerciseForm.Type" class="form-control">
+                        <option value="Cardio">Cardio</option>
+                        <option value="Strength">Strength</option>
+                        <option value="Flexibility">Flexibility</option>
+                        <option value="Yoga">Yoga</option>
+                        <option value="Other">Other</option>
+                    </InputSelect>
+                </div>
+
+                <div class="form-group">
+                    <label>Duration (minutes)</label>
+                    <InputNumber @bind-Value="exerciseForm.DurationMinutes" class="form-control" />
+                </div>
+
+                <div class="form-group">
+                    <label>Intensity</label>
+                    <InputSelect @bind-Value="exerciseForm.Intensity" class="form-control">
+                        <option value="Low">Low</option>
+                        <option value="Medium">Medium</option>
+                        <option value="High">High</option>
+                    </InputSelect>
+                </div>
+
+                <button type="submit" class="btn-primary" disabled="@isSavingExercise">
+                    @(isSavingExercise ? "Saving..." : "Add Exercise")
+                </button>
+            </EditForm>
+
+            <h4 class="mt-3">Today</h4>
+
+            @if (!exerciseLogs.Any())
+            {
+                <p>No exercise logged for today yet.</p>
+            }
+            else
+            {
+                <p class="small-text">
+                    Total: <strong>@totalMinutes</strong> minutes (@exerciseLogs.Count entry/entries)
+                </p>
+
+                <ul class="simple-list">
+                    @foreach (var ex in exerciseLogs)
+                    {
+                        <li class="list-item">
+                            <div>
+                                <strong>@ex.Name</strong>
+                                <span class="badge">@ex.Type</span>
+                                <span class="badge">@ex.Intensity</span>
+                                <span class="muted">@ex.DurationMinutes min</span>
+                            </div>
+                            <button class="btn-link danger" @onclick="() => DeleteExerciseAsync(ex.Id)">
+                                remove
+                            </button>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+
+        <!-- RIGHT: Hydration -->
+        <div class="card">
+            <h3>Hydration Tracker (@selectedDate.ToString("dd MMM yyyy"))</h3>
+
+            @if (hydrationLog is null)
+            {
+                <p>No water logged yet today.</p>
+            }
+            else
+            {
+                <div class="hydration-progress">
+                    <div class="bar">
+                        <div class="fill" style="width:@hydrationPercent%"></div>
+                    </div>
+                    <p class="small-text">
+                        @hydrationLog.TotalMl ml / @hydrationLog.TargetMl ml (@hydrationPercent%)
+                    </p>
+                </div>
+            }
+
+            <div class="quick-buttons">
+                <button class="btn-secondary" @onclick="() => AddWaterAsync(250)">+250 ml</button>
+                <button class="btn-secondary" @onclick="() => AddWaterAsync(500)">+500 ml</button>
+            </div>
+
+            <div class="form-group mt-3">
+                <label>Daily target (ml)</label>
+                <InputNumber @bind-Value="targetMl" class="form-control" />
+                <button class="btn-primary mt-2" @onclick="UpdateTargetAsync" disabled="@isSavingHydration">
+                    @(isSavingHydration ? "Saving..." : "Update target")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private Client? currentClient;
+    private User? currentUser;
+
+    private bool isLoading = true;
+    private bool isSavingExercise = false;
+    private bool isSavingHydration = false;
+    private string? errorMessage;
+
+    private DateTime selectedDate = DateTime.UtcNow.Date;
+
+    private List<ExerciseLog> exerciseLogs = new();
+    private HydrationLog? hydrationLog;
+
+    private int totalMinutes => exerciseLogs.Sum(x => x.DurationMinutes);
+    private int hydrationPercent =>
+        hydrationLog is null || hydrationLog.TargetMl <= 0
+            ? 0
+            : Math.Min(100, hydrationLog.TotalMl * 100 / hydrationLog.TargetMl);
+
+    private int targetMl = 2000;
+
+    private ExerciseLog exerciseForm = new ExerciseLog
+    {
+        Type = "Cardio",
+        Intensity = "Medium",
+        DurationMinutes = 30
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var principal = authState.User;
+
+            if (!principal.Identity?.IsAuthenticated ?? true)
+            {
+                errorMessage = "You are not logged in.";
+                return;
+            }
+
+            var email = principal.FindFirst(ClaimTypes.Email)?.Value
+                        ?? principal.FindFirst("email")?.Value;
+
+            if (string.IsNullOrEmpty(email))
+            {
+                errorMessage = "Email not found in token.";
+                return;
+            }
+
+            currentClient = await CService.GetClientByEmailAsync(email);
+            currentUser = await UService.GetUserByClientIdAsync(currentClient?.Id);
+
+            if (currentClient == null)
+            {
+                errorMessage = "Client profile not found.";
+                return;
+            }
+
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load data: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        if (currentClient == null) return;
+
+        exerciseLogs = await ExerciseService.GetTodayAsync(currentClient.Id!);
+        hydrationLog = await HydrationService.GetTodayAsync(currentClient.Id!);
+
+        if (hydrationLog != null)
+        {
+            targetMl = hydrationLog.TargetMl;
+        }
+    }
+
+    private async Task AddExerciseAsync()
+    {
+        if (currentClient == null) return;
+        if (string.IsNullOrWhiteSpace(exerciseForm.Name)) return;
+
+        try
+        {
+            isSavingExercise = true;
+
+            var log = new ExerciseLog
+            {
+                ClientId = currentClient.Id!,
+                Name = exerciseForm.Name.Trim(),
+                Type = exerciseForm.Type,
+                DurationMinutes = exerciseForm.DurationMinutes,
+                Intensity = exerciseForm.Intensity,
+                Date = selectedDate
+            };
+
+            await ExerciseService.AddAsync(log);
+
+            exerciseForm.Name = string.Empty;
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Could not save exercise: {ex.Message}";
+        }
+        finally
+        {
+            isSavingExercise = false;
+        }
+    }
+
+    private async Task DeleteExerciseAsync(string? id)
+    {
+        if (string.IsNullOrEmpty(id)) return;
+
+        try
+        {
+            await ExerciseService.DeleteAsync(id);
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Could not delete exercise: {ex.Message}";
+        }
+    }
+
+    private async Task AddWaterAsync(int amountMl)
+    {
+        if (currentClient == null) return;
+
+        try
+        {
+            isSavingHydration = true;
+            await HydrationService.AddWaterAsync(currentClient.Id!, amountMl);
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Could not add water: {ex.Message}";
+        }
+        finally
+        {
+            isSavingHydration = false;
+        }
+    }
+
+    private async Task UpdateTargetAsync()
+    {
+        if (currentClient == null || targetMl <= 0) return;
+
+        try
+        {
+            isSavingHydration = true;
+            await HydrationService.UpdateTargetAsync(currentClient.Id!, targetMl);
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Could not update target: {ex.Message}";
+        }
+        finally
+        {
+            isSavingHydration = false;
+        }
+    }
+}

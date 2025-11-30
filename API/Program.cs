@@ -25,6 +25,9 @@ builder.Services.AddScoped<IMealService, MealService>();
 builder.Services.AddSingleton<IMedicationService, MedicationService>();
 builder.Services.AddSingleton<IConversationService, ConversationService>();
 builder.Services.AddHttpClient<IAiAssistantService, AiAssistantService>();
+builder.Services.AddSingleton<IExerciseService, ExerciseService>();
+builder.Services.AddSingleton<IHydrationService, HydrationService>();
+
 
 
 // ✅ SignalR for WebRTC signalling

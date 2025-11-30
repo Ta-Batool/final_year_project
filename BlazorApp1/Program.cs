@@ -143,6 +143,8 @@ builder.Services.AddHttpClient("Api", client =>
 builder.Services.AddScoped(sp =>
     sp.GetRequiredService<IHttpClientFactory>().CreateClient("Api"));
 
+builder.Services.AddHttpClient<IExerciseService, ExerciseService>();
+builder.Services.AddHttpClient<IHydrationService, HydrationService>();
 
 
 var app = builder.Build();
