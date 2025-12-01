@@ -60,7 +60,7 @@ else
                     <label>Search exercise</label>
                     <InputText @bind-Value="exerciseSearch"
                                class="form-control"
-                               oninput="@(async _ => await OnExerciseSearchChanged())" />
+                               @oninput="OnExerciseSearchChanged" />
 
                     @if (showSuggestions && exerciseSuggestions.Any())
                     {
@@ -96,10 +96,11 @@ else
 
                 <div class="form-group">
                     <label>Duration (minutes)</label>
-                    <InputNumber @bind-Value="exerciseForm.DurationMinutes"
-                                 class="form-control"
+                    <InputNumber TValue="int"
+                                 Value="exerciseForm.DurationMinutes"
                                  ValueChanged="OnDurationChanged"
-                                 ValueExpression="() => exerciseForm.DurationMinutes" />
+                                 ValueExpression="() => exerciseForm.DurationMinutes"
+                                 class="form-control" />
                 </div>
 
                 <div class="form-group">
@@ -305,7 +306,7 @@ else
         }
     }
 
-    private async Task OnExerciseSearchChanged()
+    private async Task OnExerciseSearchChanged(ChangeEventArgs _)
     {
         showSuggestions = false;
         selectedSuggestion = null;
