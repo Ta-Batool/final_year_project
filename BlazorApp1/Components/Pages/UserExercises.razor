@@ -56,27 +56,32 @@ else
             <h3>Today's Exercises</h3>
 
             <EditForm Model="exerciseForm" OnValidSubmit="AddExerciseAsync">
+                <!-- 🔍 search box -->
                 <div class="form-group">
                     <label>Search exercise</label>
                     <InputText @bind-Value="exerciseSearch"
                                class="form-control"
                                @oninput="OnExerciseSearchChanged" />
+                </div>
 
-                    @if (showSuggestions && exerciseSuggestions.Any())
-                    {
-                        <ul class="suggestions-list">
+                <!-- ⬇ dropdown with suggestions -->
+                @if (exerciseSuggestions.Any())
+                {
+                    <div class="form-group">
+                        <label>Suggestions</label>
+                        <InputSelect @bind-Value="selectedSuggestionName"
+                                     class="form-control"
+                                     @onchange="OnSuggestionChanged">
+                            <option value="">-- choose an exercise --</option>
                             @foreach (var s in exerciseSuggestions)
                             {
-                                <li @onclick="() => SelectSuggestion(s)">
-                                    <strong>@s.Name</strong>
-                                    <span class="muted">
-                                        (@s.Category · @s.CaloriesPerMinute.ToString("0.00") kcal/min)
-                                    </span>
-                                </li>
+                                <option value="@s.Name">
+                                    @s.Name (@s.CaloriesPerMinute.ToString("0.00") kcal/min)
+                                </option>
                             }
-                        </ul>
-                    }
-                </div>
+                        </InputSelect>
+                    </div>
+                }
 
                 <div class="form-group">
                     <label>Selected exercise</label>
@@ -235,8 +240,8 @@ else
     // exercise search state
     private string exerciseSearch = string.Empty;
     private List<ExerciseSuggestion> exerciseSuggestions = new();
-    private bool showSuggestions = false;
     private ExerciseSuggestion? selectedSuggestion;
+    private string selectedSuggestionName = string.Empty;
     private double calculatedCaloriesBurned = 0;
 
     private ExerciseLog exerciseForm = new ExerciseLog
@@ -308,8 +313,9 @@ else
 
     private async Task OnExerciseSearchChanged(ChangeEventArgs _)
     {
-        showSuggestions = false;
+        // exerciseSearch is already updated by @bind
         selectedSuggestion = null;
+        selectedSuggestionName = string.Empty;
         calculatedCaloriesBurned = 0;
         exerciseForm.Name = string.Empty;
 
@@ -319,22 +325,12 @@ else
             return;
         }
 
-        // 🔢 try to use user's weight if available
-        int? weightKg = null;
-        if (currentUser != null && !string.IsNullOrWhiteSpace(currentUser.Weight))
-        {
-            if (int.TryParse(currentUser.Weight, out var kg) && kg > 0)
-            {
-                weightKg = kg;
-            }
-        }
-
         try
         {
             exerciseSuggestions =
-                await ExerciseService.SearchExercisesAsync(exerciseSearch, weightKg);
+                await ExerciseService.SearchExercisesAsync(exerciseSearch);
 
-            showSuggestions = exerciseSuggestions.Any();
+            // if only one result, we could auto-select later if you want
         }
         catch (Exception ex)
         {
@@ -342,13 +338,26 @@ else
         }
     }
 
-    private void SelectSuggestion(ExerciseSuggestion suggestion)
+    private void OnSuggestionChanged(ChangeEventArgs e)
     {
-        selectedSuggestion = suggestion;
-        exerciseForm.Name = suggestion.Name;
-        exerciseSearch = suggestion.Name;
-        showSuggestions = false;
-        RecalculateCalories();
+        selectedSuggestionName = e.Value?.ToString() ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(selectedSuggestionName))
+        {
+            selectedSuggestion = null;
+            exerciseForm.Name = string.Empty;
+            calculatedCaloriesBurned = 0;
+            return;
+        }
+
+        selectedSuggestion = exerciseSuggestions
+            .FirstOrDefault(s => s.Name == selectedSuggestionName);
+
+        if (selectedSuggestion != null)
+        {
+            exerciseForm.Name = selectedSuggestion.Name;
+            RecalculateCalories();
+        }
     }
 
     private void OnDurationChanged(int value)
@@ -387,15 +396,17 @@ else
                 DurationMinutes = exerciseForm.DurationMinutes,
                 Intensity = exerciseForm.Intensity,
                 Date = selectedDate,
+                CreatedAt = DateTime.UtcNow,
                 CaloriesBurned = (int)Math.Round(calculatedCaloriesBurned)
             };
 
             await ExerciseService.AddAsync(log);
 
-            // reset search fields
+            // reset search + form
             exerciseSearch = string.Empty;
             exerciseForm.Name = string.Empty;
             selectedSuggestion = null;
+            selectedSuggestionName = string.Empty;
             exerciseSuggestions.Clear();
             calculatedCaloriesBurned = 0;
 
