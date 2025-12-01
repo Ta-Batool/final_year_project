@@ -7,9 +7,9 @@ namespace BlazorApp1.Service
 {
     public interface IExerciseService
     {
-        Task<List<ExerciseEntry>> GetForDateAsync(string clientId, DateTime date);
-        Task AddAsync(ExerciseEntry entry);
-        Task UpdateStatusAsync(string id, ExerciseStatus status);
+        Task<List<ExerciseLog>> GetTodayAsync(string clientId);
+        Task<List<ExerciseLog>> GetByDateAsync(string clientId, DateTime date);
+        Task AddAsync(ExerciseLog log);
         Task DeleteAsync(string id);
     }
 }

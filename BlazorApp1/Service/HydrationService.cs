@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Threading.Tasks;
@@ -16,24 +14,30 @@ namespace BlazorApp1.Service
             _http = http;
         }
 
-        public async Task<List<HydrationLog>> GetForDateAsync(string clientId, DateTime date)
+        public async Task<HydrationLog?> GetTodayAsync(string clientId)
         {
-            var dateParam = date.ToString("yyyy-MM-dd");
-            var result = await _http.GetFromJsonAsync<List<HydrationLog>>(
-                $"api/hydration/by-date/{clientId}?date={dateParam}");
-
-            return result ?? new List<HydrationLog>();
+            try
+            {
+                return await _http.GetFromJsonAsync<HydrationLog>($"api/hydration/today/{clientId}");
+            }
+            catch (HttpRequestException)
+            {
+                // 404: no hydration log yet
+                return null;
+            }
         }
 
-        public async Task AddAsync(HydrationLog log)
+        public async Task AddWaterAsync(string clientId, int amountMl)
         {
-            var response = await _http.PostAsJsonAsync("api/hydration", log);
+            var payload = new { ClientId = clientId, AmountMl = amountMl };
+            var response = await _http.PostAsJsonAsync("api/hydration/add", payload);
             response.EnsureSuccessStatusCode();
         }
 
-        public async Task DeleteAsync(string id)
+        public async Task UpdateTargetAsync(string clientId, int targetMl)
         {
-            var response = await _http.DeleteAsync($"api/hydration/{id}");
+            var payload = new { ClientId = clientId, TargetMl = targetMl };
+            var response = await _http.PostAsJsonAsync("api/hydration/target", payload);
             response.EnsureSuccessStatusCode();
         }
     }

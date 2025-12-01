@@ -16,24 +16,26 @@ namespace BlazorApp1.Service
             _http = http;
         }
 
-        public async Task<List<ExerciseEntry>> GetForDateAsync(string clientId, DateTime date)
+        public async Task<List<ExerciseLog>> GetTodayAsync(string clientId)
+        {
+            var result = await _http.GetFromJsonAsync<List<ExerciseLog>>(
+                $"api/exercises/today/{clientId}");
+
+            return result ?? new List<ExerciseLog>();
+        }
+
+        public async Task<List<ExerciseLog>> GetByDateAsync(string clientId, DateTime date)
         {
             var dateParam = date.ToString("yyyy-MM-dd");
-            var result = await _http.GetFromJsonAsync<List<ExerciseEntry>>(
-                $"api/exercises/by-date/{clientId}?date={dateParam}");
+            var url = $"api/exercises/by-date?clientId={clientId}&date={dateParam}";
 
-            return result ?? new List<ExerciseEntry>();
+            var result = await _http.GetFromJsonAsync<List<ExerciseLog>>(url);
+            return result ?? new List<ExerciseLog>();
         }
 
-        public async Task AddAsync(ExerciseEntry entry)
+        public async Task AddAsync(ExerciseLog log)
         {
-            var response = await _http.PostAsJsonAsync("api/exercises", entry);
-            response.EnsureSuccessStatusCode();
-        }
-
-        public async Task UpdateStatusAsync(string id, ExerciseStatus status)
-        {
-            var response = await _http.PatchAsJsonAsync($"api/exercises/{id}/status", status);
+            var response = await _http.PostAsJsonAsync("api/exercises", log);
             response.EnsureSuccessStatusCode();
         }
 

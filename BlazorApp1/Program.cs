@@ -143,8 +143,16 @@ builder.Services.AddHttpClient("Api", client =>
 builder.Services.AddScoped(sp =>
     sp.GetRequiredService<IHttpClientFactory>().CreateClient("Api"));
 
-builder.Services.AddHttpClient<IExerciseService, ExerciseService>();
-builder.Services.AddHttpClient<IHydrationService, HydrationService>();
+builder.Services.AddHttpClient<IExerciseService, ExerciseService>(c =>
+{
+    c.BaseAddress = new Uri(apiBaseUrl);
+});
+
+builder.Services.AddHttpClient<IHydrationService, HydrationService>(c =>
+{
+    c.BaseAddress = new Uri(apiBaseUrl);
+});
+
 
 
 var app = builder.Build();
