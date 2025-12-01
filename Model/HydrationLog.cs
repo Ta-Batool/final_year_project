@@ -12,14 +12,20 @@ namespace Model
         [BsonRepresentation(BsonType.ObjectId)]
         public string ClientId { get; set; } = null!;
 
-        // Amount of water in milliliters (e.g. 250, 500)
-        public int AmountMl { get; set; }
-
-        // We’ll store the date (for grouping) and exact time
+        // The day this hydration log belongs to
         [BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
-        public DateTime Date { get; set; } = DateTime.UtcNow.Date;
+        public DateTime Date { get; set; }
+
+        // Total water consumed today (ml)
+        public int TotalMl { get; set; }
+
+        // Daily target (ml)
+        public int TargetMl { get; set; }
 
         [BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime CreatedAt { get; set; }
+
+        [BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
+        public DateTime UpdatedAt { get; set; }
     }
 }
