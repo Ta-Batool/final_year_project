@@ -22,13 +22,49 @@ namespace API.Controllers
             _caloriesApi = caloriesApi;
         }
 
+        // helper: map DB entry -> DTO
+        private static ExerciseLog ToLog(ExerciseEntry e) => new ExerciseLog
+        {
+            Id = e.Id,
+            ClientId = e.ClientId,
+            Name = e.Name,
+            Type = e.Type,
+            DurationMinutes = e.DurationMinutes ?? 0,
+            Intensity = e.Intensity,
+            Date = e.Date,
+            CreatedAt = e.CreatedAt,
+            CaloriesBurned = e.CaloriesBurned
+        };
+
+        // helper: map DTO -> DB entry
+        private static ExerciseEntry ToEntry(ExerciseLog log) => new ExerciseEntry
+        {
+            Id = log.Id,
+            ClientId = log.ClientId!,
+            Name = log.Name,
+            Type = log.Type,
+            DurationMinutes = log.DurationMinutes,
+            Intensity = log.Intensity,
+            Date = log.Date,
+            CreatedAt = log.CreatedAt,
+            CaloriesBurned = log.CaloriesBurned,
+            Status = ExerciseStatus.Done // use existing enum value
+        };
+
         // GET api/exercises/today/{clientId}
         [HttpGet("today/{clientId}")]
         public async Task<ActionResult<List<ExerciseLog>>> GetToday(string clientId)
         {
             var todayUtc = DateTime.UtcNow.Date;
-            var items = await _exerciseService.GetForDayAsync(clientId, todayUtc);
-            return Ok(items);
+            var entries = await _exerciseService.GetForDayAsync(clientId, todayUtc);
+
+            var logs = new List<ExerciseLog>();
+            foreach (var e in entries)
+            {
+                logs.Add(ToLog(e));
+            }
+
+            return Ok(logs);
         }
 
         // GET api/exercises/by-date?clientId=...&date=2025-12-01
@@ -38,16 +74,15 @@ namespace API.Controllers
             [FromQuery] DateTime date)
         {
             var dateUtc = date.Kind == DateTimeKind.Utc ? date.Date : date.ToUniversalTime().Date;
-            var items = await _exerciseService.GetForDayAsync(clientId, dateUtc);
-            return Ok(items);
-        }
+            var entries = await _exerciseService.GetForDayAsync(clientId, dateUtc);
 
-        // GET api/exercises/client/{clientId}
-        [HttpGet("client/{clientId}")]
-        public async Task<ActionResult<List<ExerciseLog>>> GetAllForClient(string clientId)
-        {
-            var items = await _exerciseService.GetAllForClientAsync(clientId);
-            return Ok(items);
+            var logs = new List<ExerciseLog>();
+            foreach (var e in entries)
+            {
+                logs.Add(ToLog(e));
+            }
+
+            return Ok(logs);
         }
 
         // POST api/exercises
@@ -68,11 +103,15 @@ namespace API.Controllers
             log.CreatedAt = nowUtc;
             log.Id = null; // let Mongo assign
 
-            var created = await _exerciseService.CreateAsync(log);
+            // map DTO -> DB entity
+            var entry = ToEntry(log);
+
+            var createdEntry = await _exerciseService.AddAsync(entry);
+            var createdLog = ToLog(createdEntry);
 
             return CreatedAtAction(nameof(GetToday),
-                new { clientId = created.ClientId },
-                created);
+                new { clientId = createdLog.ClientId },
+                createdLog);
         }
 
         // DELETE api/exercises/{id}
@@ -83,15 +122,17 @@ namespace API.Controllers
             return NoContent();
         }
 
-        // 🔍 NOW USING EXTERNAL API (API Ninjas via ICaloriesBurnedApiService)
-        // GET api/exercises/search?query=run
+        // 🔍 SEARCH: external calories API via ICaloriesBurnedApiService
+        // GET api/exercises/search?query=run&weightKg=70
         [HttpGet("search")]
-        public async Task<ActionResult<List<ExerciseSuggestion>>> Search([FromQuery] string query)
+        public async Task<ActionResult<List<ExerciseSuggestion>>> Search(
+            [FromQuery] string query,
+            [FromQuery] int? weightKg = null)
         {
             if (string.IsNullOrWhiteSpace(query))
                 return Ok(new List<ExerciseSuggestion>());
 
-            var suggestions = await _caloriesApi.SearchExercisesAsync(query);
+            var suggestions = await _caloriesApi.SearchExercisesAsync(query, weightKg);
             return Ok(suggestions);
         }
     }

@@ -25,7 +25,7 @@ namespace Model
         // e.g. "Low", "Medium", "High"
         public string Intensity { get; set; } = "Medium";
 
-        // Optional calories burned (we'll use this later for net calories)
+        // Optional calories burned (for net calories)
         public int? CaloriesBurned { get; set; }
 
         // Date of exercise (day)

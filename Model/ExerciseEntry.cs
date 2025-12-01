@@ -25,14 +25,17 @@ namespace Model
         // e.g. "Walking", "Push-ups", "Yoga"
         public string Name { get; set; } = string.Empty;
 
-        // e.g. "Cardio", "Strength", "Flexibility"
-        public string Category { get; set; } = "Cardio";
+        // 🔹 Use Type instead of Category to match ExerciseLog
+        public string Type { get; set; } = "Cardio";
 
-        // Duration in minutes (optional)
+        // Duration in minutes (optional for DB)
         public int? DurationMinutes { get; set; }
 
         // e.g. "Low", "Medium", "High"
         public string Intensity { get; set; } = "Medium";
+
+        // Optional calories burned – so we persist what Blazor sends
+        public int? CaloriesBurned { get; set; }
 
         // Date this exercise belongs to (only date part is used)
         [BsonDateTimeOptions(Kind = DateTimeKind.Utc)]

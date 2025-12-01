@@ -319,10 +319,20 @@ else
             return;
         }
 
+        // 🔢 try to use user's weight if available
+        int? weightKg = null;
+        if (currentUser != null && !string.IsNullOrWhiteSpace(currentUser.Weight))
+        {
+            if (int.TryParse(currentUser.Weight, out var kg) && kg > 0)
+            {
+                weightKg = kg;
+            }
+        }
+
         try
         {
             exerciseSuggestions =
-                await ExerciseService.SearchExercisesAsync(exerciseSearch);
+                await ExerciseService.SearchExercisesAsync(exerciseSearch, weightKg);
 
             showSuggestions = exerciseSuggestions.Any();
         }
