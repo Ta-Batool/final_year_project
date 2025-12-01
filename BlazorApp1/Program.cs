@@ -148,10 +148,12 @@ builder.Services.AddHttpClient<IExerciseService, ExerciseService>(c =>
     c.BaseAddress = new Uri(apiBaseUrl);
 });
 
+
 builder.Services.AddHttpClient<IHydrationService, HydrationService>(c =>
 {
     c.BaseAddress = new Uri(apiBaseUrl);
 });
+
 
 
 

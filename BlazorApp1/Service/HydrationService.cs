@@ -1,6 +1,8 @@
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Threading.Tasks;
+using System.Collections.Generic;
+using System.Linq;
 using Model;
 
 namespace BlazorApp1.Service
@@ -18,11 +20,15 @@ namespace BlazorApp1.Service
         {
             try
             {
-                return await _http.GetFromJsonAsync<HydrationLog>($"api/hydration/today/{clientId}");
+                // 🔹 API is returning a LIST, so read as List<HydrationLog>
+                var list = await _http.GetFromJsonAsync<List<HydrationLog>>(
+                    $"api/hydration/today/{clientId}");
+
+                return list?.FirstOrDefault();
             }
             catch (HttpRequestException)
             {
-                // 404: no hydration log yet
+                // e.g. 404 → no hydration yet
                 return null;
             }
         }

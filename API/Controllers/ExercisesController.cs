@@ -12,46 +12,67 @@ namespace API.Controllers
     public class ExercisesController : ControllerBase
     {
         private readonly IExerciseService _exerciseService;
+        private readonly ICaloriesBurnedApiService _caloriesApi;
 
-        public ExercisesController(IExerciseService exerciseService)
+        public ExercisesController(
+            IExerciseService exerciseService,
+            ICaloriesBurnedApiService caloriesApi)
         {
             _exerciseService = exerciseService;
+            _caloriesApi = caloriesApi;
         }
 
         // GET api/exercises/today/{clientId}
         [HttpGet("today/{clientId}")]
-        public async Task<ActionResult<List<ExerciseEntry>>> GetToday(string clientId)
+        public async Task<ActionResult<List<ExerciseLog>>> GetToday(string clientId)
         {
             var todayUtc = DateTime.UtcNow.Date;
             var items = await _exerciseService.GetForDayAsync(clientId, todayUtc);
             return Ok(items);
         }
 
-        // GET api/exercises/by-date/{clientId}?date=2025-12-01
-        [HttpGet("by-date/{clientId}")]
-        public async Task<ActionResult<List<ExerciseEntry>>> GetByDate(string clientId, [FromQuery] DateTime date)
+        // GET api/exercises/by-date?clientId=...&date=2025-12-01
+        [HttpGet("by-date")]
+        public async Task<ActionResult<List<ExerciseLog>>> GetByDate(
+            [FromQuery] string clientId,
+            [FromQuery] DateTime date)
         {
-            var dateUtc = date.Kind == DateTimeKind.Utc ? date : date.ToUniversalTime();
+            var dateUtc = date.Kind == DateTimeKind.Utc ? date.Date : date.ToUniversalTime().Date;
             var items = await _exerciseService.GetForDayAsync(clientId, dateUtc);
+            return Ok(items);
+        }
+
+        // GET api/exercises/client/{clientId}
+        [HttpGet("client/{clientId}")]
+        public async Task<ActionResult<List<ExerciseLog>>> GetAllForClient(string clientId)
+        {
+            var items = await _exerciseService.GetAllForClientAsync(clientId);
             return Ok(items);
         }
 
         // POST api/exercises
         [HttpPost]
-        public async Task<ActionResult<ExerciseEntry>> Create(ExerciseEntry entry)
+        public async Task<ActionResult<ExerciseLog>> Create([FromBody] ExerciseLog log)
         {
-            var created = await _exerciseService.AddAsync(entry);
+            if (log == null)
+                return BadRequest("Exercise log is required.");
+
+            if (string.IsNullOrWhiteSpace(log.ClientId))
+                return BadRequest("ClientId is required.");
+
+            var nowUtc = DateTime.UtcNow;
+
+            if (log.Date == default)
+                log.Date = nowUtc.Date;
+
+            log.CreatedAt = nowUtc;
+            log.Id = null; // let Mongo assign
+
+            var created = await _exerciseService.CreateAsync(log);
+
             return CreatedAtAction(nameof(GetToday),
                 new { clientId = created.ClientId },
                 created);
-        }
-
-        // PATCH api/exercises/{id}/status
-        [HttpPatch("{id}/status")]
-        public async Task<IActionResult> UpdateStatus(string id, [FromBody] ExerciseStatus status)
-        {
-            await _exerciseService.UpdateStatusAsync(id, status);
-            return NoContent();
         }
 
         // DELETE api/exercises/{id}
@@ -60,6 +81,18 @@ namespace API.Controllers
         {
             await _exerciseService.DeleteAsync(id);
             return NoContent();
+        }
+
+        // 🔍 NOW USING EXTERNAL API (API Ninjas via ICaloriesBurnedApiService)
+        // GET api/exercises/search?query=run
+        [HttpGet("search")]
+        public async Task<ActionResult<List<ExerciseSuggestion>>> Search([FromQuery] string query)
+        {
+            if (string.IsNullOrWhiteSpace(query))
+                return Ok(new List<ExerciseSuggestion>());
+
+            var suggestions = await _caloriesApi.SearchExercisesAsync(query);
+            return Ok(suggestions);
         }
     }
 }

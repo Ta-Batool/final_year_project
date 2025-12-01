@@ -44,5 +44,19 @@ namespace BlazorApp1.Service
             var response = await _http.DeleteAsync($"api/exercises/{id}");
             response.EnsureSuccessStatusCode();
         }
+
+        public async Task<List<ExerciseSuggestion>> SearchExercisesAsync(string query, int? weightKg = null)
+        {
+            if (string.IsNullOrWhiteSpace(query))
+                return new List<ExerciseSuggestion>();
+
+            var url = $"api/exercises/search?query={Uri.EscapeDataString(query)}";
+
+            if (weightKg.HasValue)
+                url += $"&weightKg={weightKg.Value}";
+
+            var result = await _http.GetFromJsonAsync<List<ExerciseSuggestion>>(url);
+            return result ?? new List<ExerciseSuggestion>();
+        }
     }
 }

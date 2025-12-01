@@ -28,6 +28,7 @@ builder.Services.AddHttpClient<IAiAssistantService, AiAssistantService>();
 builder.Services.AddSingleton<IExerciseService, ExerciseService>();
 builder.Services.AddSingleton<IHydrationService, HydrationService>();
 
+builder.Services.AddHttpClient<ICaloriesBurnedApiService, CaloriesBurnedApiService>();
 
 
 // ✅ SignalR for WebRTC signalling
