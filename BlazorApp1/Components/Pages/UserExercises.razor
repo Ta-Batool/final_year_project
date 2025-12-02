@@ -60,6 +60,7 @@ else
                 <div class="form-group">
                     <label>Search exercise</label>
                     <InputText @bind-Value="exerciseSearch"
+                               @bind-Value:event="oninput"
                                class="form-control"
                                @oninput="OnExerciseSearchChanged" />
                 </div>
@@ -69,9 +70,11 @@ else
                 {
                     <div class="form-group">
                         <label>Suggestions</label>
-                        <InputSelect @bind-Value="selectedSuggestionName"
-                                     class="form-control"
-                                     @onchange="OnSuggestionChanged">
+                        <InputSelect TValue="string"
+                                     Value="selectedSuggestionName"
+                                     ValueChanged="OnSuggestionChanged"
+                                     ValueExpression="() => selectedSuggestionName"
+                                     class="form-control">
                             <option value="">-- choose an exercise --</option>
                             @foreach (var s in exerciseSuggestions)
                             {
@@ -329,8 +332,6 @@ else
         {
             exerciseSuggestions =
                 await ExerciseService.SearchExercisesAsync(exerciseSearch);
-
-            // if only one result, we could auto-select later if you want
         }
         catch (Exception ex)
         {
@@ -338,9 +339,9 @@ else
         }
     }
 
-    private void OnSuggestionChanged(ChangeEventArgs e)
+    private void OnSuggestionChanged(string value)
     {
-        selectedSuggestionName = e.Value?.ToString() ?? string.Empty;
+        selectedSuggestionName = value;
 
         if (string.IsNullOrWhiteSpace(selectedSuggestionName))
         {
