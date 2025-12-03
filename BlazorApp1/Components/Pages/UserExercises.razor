@@ -55,26 +55,24 @@ else
         <div class="card">
             <h3>Today's Exercises</h3>
 
-            <EditForm Model="exerciseForm" OnValidSubmit="AddExerciseAsync">
-                <!-- 🔍 search box -->
+            <!-- 🔹 Use OnSubmit (no validation attributes) -->
+            <EditForm Model="exerciseForm" OnSubmit="AddExerciseAsync">
+                <!-- 🔍 Search box -->
                 <div class="form-group">
                     <label>Search exercise</label>
-                    <InputText Value="exerciseSearch"
-                               ValueChanged="OnExerciseSearchChanged"
-                               ValueExpression="() => exerciseSearch"
-                               class="form-control" />
+                    <input class="form-control"
+                           value="@exerciseSearch"
+                           @oninput="OnExerciseSearchChanged" />
                 </div>
 
-                <!-- ⬇ dropdown with suggestions -->
+                <!-- ⬇ Dropdown with suggestions -->
                 @if (exerciseSuggestions.Any())
                 {
                     <div class="form-group">
                         <label>Suggestions</label>
-                        <InputSelect TValue="string"
-                                     Value="selectedSuggestionName"
-                                     ValueChanged="OnSuggestionChanged"
-                                     ValueExpression="() => selectedSuggestionName"
-                                     class="form-control">
+                        <select class="form-control"
+                                value="@selectedSuggestionName"
+                                @onchange="OnSuggestionChanged">
                             <option value="">-- choose an exercise --</option>
                             @foreach (var s in exerciseSuggestions)
                             {
@@ -82,7 +80,7 @@ else
                                     @s.Name (@s.CaloriesPerMinute.ToString("0.00") kcal/min)
                                 </option>
                             }
-                        </InputSelect>
+                        </select>
                     </div>
                 }
 
@@ -128,8 +126,10 @@ else
                     else
                     {
                         <span>
-                            Per minute: <strong>@selectedSuggestion.CaloriesPerMinute.ToString("0.00")</strong> kcal ·
-                            This session: <strong>@calculatedCaloriesBurned.ToString("0")</strong> kcal
+                            Per minute:
+                            <strong>@selectedSuggestion.CaloriesPerMinute.ToString("0.00")</strong> kcal ·
+                            This session:
+                            <strong>@calculatedCaloriesBurned.ToString("0")</strong> kcal
                         </span>
                     }
                 </p>
@@ -314,10 +314,10 @@ else
         }
     }
 
-    // 🔍 called whenever user types in the search box
-    private async Task OnExerciseSearchChanged(string value)
+    // 🔍 When user types into search box
+    private async Task OnExerciseSearchChanged(ChangeEventArgs e)
     {
-        exerciseSearch = value?.Trim() ?? string.Empty;
+        exerciseSearch = e.Value?.ToString() ?? string.Empty;
 
         selectedSuggestion = null;
         selectedSuggestionName = string.Empty;
@@ -341,9 +341,10 @@ else
         }
     }
 
-    private void OnSuggestionChanged(string value)
+    // 🔽 When user picks option from dropdown
+    private void OnSuggestionChanged(ChangeEventArgs e)
     {
-        selectedSuggestionName = value;
+        selectedSuggestionName = e.Value?.ToString() ?? string.Empty;
 
         if (string.IsNullOrWhiteSpace(selectedSuggestionName))
         {
@@ -363,6 +364,7 @@ else
         }
     }
 
+    // 🔢 Duration change
     private void OnDurationChanged(int value)
     {
         exerciseForm.DurationMinutes = value;
@@ -381,7 +383,8 @@ else
             selectedSuggestion.CaloriesPerMinute * exerciseForm.DurationMinutes;
     }
 
-    private async Task AddExerciseAsync()
+    // 💾 Add exercise (OnSubmit handler)
+    private async Task AddExerciseAsync(EditContext _)
     {
         if (currentClient == null || selectedSuggestion == null) return;
         if (string.IsNullOrWhiteSpace(exerciseForm.Name)) return;
