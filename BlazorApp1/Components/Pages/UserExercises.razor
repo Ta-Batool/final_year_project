@@ -59,10 +59,10 @@ else
                 <!-- 🔍 search box -->
                 <div class="form-group">
                     <label>Search exercise</label>
-                    <InputText @bind-Value="exerciseSearch"
-                               @bind-Value:event="oninput"
-                               class="form-control"
-                               @oninput="OnExerciseSearchChanged" />
+                    <InputText Value="exerciseSearch"
+                               ValueChanged="OnExerciseSearchChanged"
+                               ValueExpression="() => exerciseSearch"
+                               class="form-control" />
                 </div>
 
                 <!-- ⬇ dropdown with suggestions -->
@@ -314,9 +314,11 @@ else
         }
     }
 
-    private async Task OnExerciseSearchChanged(ChangeEventArgs _)
+    // 🔍 called whenever user types in the search box
+    private async Task OnExerciseSearchChanged(string value)
     {
-        // exerciseSearch is already updated by @bind
+        exerciseSearch = value?.Trim() ?? string.Empty;
+
         selectedSuggestion = null;
         selectedSuggestionName = string.Empty;
         calculatedCaloriesBurned = 0;
