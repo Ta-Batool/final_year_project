@@ -20,13 +20,11 @@ namespace API.Services
 
         public async Task<List<HydrationLog>> GetForDayAsync(string clientId, DateTime dateUtc)
         {
-            var start = dateUtc.Date;
-            var end = start.AddDays(1);
+            var day = dateUtc.Date;
 
             var filter = Builders<HydrationLog>.Filter.And(
                 Builders<HydrationLog>.Filter.Eq(x => x.ClientId, clientId),
-                Builders<HydrationLog>.Filter.Gte(x => x.Date, start),
-                Builders<HydrationLog>.Filter.Lt(x => x.Date, end)
+                Builders<HydrationLog>.Filter.Eq(x => x.Date, day)
             );
 
             return await _collection.Find(filter)
@@ -36,10 +34,55 @@ namespace API.Services
 
         public async Task<HydrationLog> AddAsync(HydrationLog log)
         {
-            log.Date = log.Date.Date.ToUniversalTime();
+            // normalize
+            log.Date = log.Date == default ? DateTime.UtcNow.Date : log.Date.Date;
             log.CreatedAt = DateTime.UtcNow;
+
             await _collection.InsertOneAsync(log);
             return log;
+        }
+
+        public async Task AddWaterAsync(string clientId, int amountMl)
+        {
+            var today = DateTime.UtcNow.Date;
+
+            var filter = Builders<HydrationLog>.Filter.And(
+                Builders<HydrationLog>.Filter.Eq(x => x.ClientId, clientId),
+                Builders<HydrationLog>.Filter.Eq(x => x.Date, today)
+            );
+
+            // if document for today does not exist, create it with default target 2000ml
+            var update = Builders<HydrationLog>.Update
+                .Inc(x => x.TotalMl, amountMl)
+                .SetOnInsert(x => x.ClientId, clientId)
+                .SetOnInsert(x => x.Date, today)
+                .SetOnInsert(x => x.CreatedAt, DateTime.UtcNow)
+                .SetOnInsert(x => x.TargetMl, 2000);
+
+            var options = new UpdateOptions { IsUpsert = true };
+
+            await _collection.UpdateOneAsync(filter, update, options);
+        }
+
+        public async Task UpdateTargetAsync(string clientId, int targetMl)
+        {
+            var today = DateTime.UtcNow.Date;
+
+            var filter = Builders<HydrationLog>.Filter.And(
+                Builders<HydrationLog>.Filter.Eq(x => x.ClientId, clientId),
+                Builders<HydrationLog>.Filter.Eq(x => x.Date, today)
+            );
+
+            var update = Builders<HydrationLog>.Update
+                .Set(x => x.TargetMl, targetMl)
+                .SetOnInsert(x => x.TotalMl, 0)
+                .SetOnInsert(x => x.ClientId, clientId)
+                .SetOnInsert(x => x.Date, today)
+                .SetOnInsert(x => x.CreatedAt, DateTime.UtcNow);
+
+            var options = new UpdateOptions { IsUpsert = true };
+
+            await _collection.UpdateOneAsync(filter, update, options);
         }
 
         public async Task DeleteAsync(string id)

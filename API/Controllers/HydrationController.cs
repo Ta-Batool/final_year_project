@@ -27,16 +27,18 @@ namespace API.Controllers
             return Ok(logs);
         }
 
-        // GET api/hydration/by-date/{clientId}?date=
+        // GET api/hydration/by-date/{clientId}?date=2025-12-01
         [HttpGet("by-date/{clientId}")]
-        public async Task<ActionResult<List<HydrationLog>>> GetByDate(string clientId, [FromQuery] DateTime date)
+        public async Task<ActionResult<List<HydrationLog>>> GetByDate(
+            string clientId,
+            [FromQuery] DateTime date)
         {
             var dateUtc = date.Kind == DateTimeKind.Utc ? date : date.ToUniversalTime();
             var logs = await _hydrationService.GetForDayAsync(clientId, dateUtc);
             return Ok(logs);
         }
 
-        // POST api/hydration  (create raw hydration entry)
+        // POST api/hydration
         [HttpPost]
         public async Task<ActionResult<HydrationLog>> Create([FromBody] HydrationLog log)
         {
@@ -46,23 +48,21 @@ namespace API.Controllers
                 created);
         }
 
-        // ❗ NEW ENDPOINT: ADD WATER
-        // POST api/hydration/add
+        // 🔹 Add water: POST api/hydration/add
         [HttpPost("add")]
         public async Task<IActionResult> AddWater([FromBody] HydrationAddRequest req)
         {
-            if (req == null) return BadRequest("Invalid request");
+            if (req == null) return BadRequest("Invalid request.");
 
             await _hydrationService.AddWaterAsync(req.ClientId, req.AmountMl);
             return Ok();
         }
 
-        // ❗ NEW ENDPOINT: UPDATE DAILY TARGET
-        // POST api/hydration/target
+        // 🔹 Update target: POST api/hydration/target
         [HttpPost("target")]
         public async Task<IActionResult> UpdateTarget([FromBody] HydrationTargetRequest req)
         {
-            if (req == null) return BadRequest("Invalid request");
+            if (req == null) return BadRequest("Invalid request.");
 
             await _hydrationService.UpdateTargetAsync(req.ClientId, req.TargetMl);
             return Ok();
@@ -77,7 +77,6 @@ namespace API.Controllers
         }
     }
 
-    // DTOs for Blazor API calls
     public class HydrationAddRequest
     {
         public string ClientId { get; set; } = null!;
