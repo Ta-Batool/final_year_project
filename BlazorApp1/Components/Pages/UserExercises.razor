@@ -57,7 +57,7 @@ else
         <div class="card">
             <h3>Today's Exercises</h3>
 
-            <!-- 🔍 Search box + button -->
+            <!-- 🔍 Search exercise -->
             <div class="form-group">
                 <label>Search exercise</label>
                 <div style="display:flex; gap:0.5rem;">
@@ -74,7 +74,7 @@ else
                 <p class="small-text">Type at least 2 letters and press Search.</p>
             </div>
 
-            <!-- ⬇ Dropdown with suggestions -->
+            <!-- ⬇ Suggestions dropdown -->
             @if (exerciseSuggestions.Any())
             {
                 <div class="form-group">
@@ -240,10 +240,10 @@ else
     private List<ExerciseLog> exerciseLogs = new();
     private HydrationLog? hydrationLog;
 
-    private int totalMinutes => exerciseLogs.Sum(x => x.DurationMinutes);
-    private int totalCaloriesEaten => mealsToday.Sum(m => m.Calories ?? 0);
-    private int totalCaloriesBurned => exerciseLogs.Sum(x => x.CaloriesBurned ?? 0);
-    private int netCalories => totalCaloriesEaten - totalCaloriesBurned;
+    private int totalMinutes           => exerciseLogs.Sum(x => x.DurationMinutes);
+    private int totalCaloriesEaten     => mealsToday.Sum(m => m.Calories ?? 0);
+    private int totalCaloriesBurned    => exerciseLogs.Sum(x => x.CaloriesBurned ?? 0);
+    private int netCalories            => totalCaloriesEaten - totalCaloriesBurned;
 
     private int hydrationPercent =>
         hydrationLog is null || hydrationLog.TargetMl <= 0
@@ -257,7 +257,8 @@ else
     private List<ExerciseSuggestion> exerciseSuggestions = new();
     private ExerciseSuggestion? selectedSuggestion;
     private int selectedSuggestionIndex = -1;
-    private string selectedSuggestionIndexString => selectedSuggestionIndex >= 0 ? selectedSuggestionIndex.ToString() : string.Empty;
+    private string selectedSuggestionIndexString =>
+        selectedSuggestionIndex >= 0 ? selectedSuggestionIndex.ToString() : string.Empty;
     private double calculatedCaloriesBurned = 0;
 
     private ExerciseLog exerciseForm = new ExerciseLog
@@ -330,6 +331,7 @@ else
     // 🔍 Search when button clicked
     private async Task SearchExercisesAsync()
     {
+        errorMessage = null;
         selectedSuggestion = null;
         selectedSuggestionIndex = -1;
         exerciseForm.Name = string.Empty;
@@ -343,8 +345,7 @@ else
 
         try
         {
-            exerciseSuggestions =
-                await ExerciseService.SearchExercisesAsync(exerciseSearch);
+            exerciseSuggestions = await ExerciseService.SearchExercisesAsync(exerciseSearch);
         }
         catch (Exception ex)
         {
@@ -352,7 +353,7 @@ else
         }
     }
 
-    // 🔽 When user picks option from dropdown
+    // 🔽 When user picks from dropdown
     private void OnSuggestionChanged(ChangeEventArgs e)
     {
         var value = e.Value?.ToString() ?? string.Empty;
@@ -396,9 +397,26 @@ else
     // 💾 Add exercise (button click)
     private async Task AddExerciseAsync()
     {
-        if (currentClient == null || selectedSuggestion == null) return;
-        if (string.IsNullOrWhiteSpace(exerciseForm.Name)) return;
-        if (exerciseForm.DurationMinutes <= 0) return;
+        errorMessage = null;
+        Console.WriteLine("DEBUG: AddExerciseAsync fired.");
+
+        if (currentClient == null)
+        {
+            errorMessage = "Client not loaded.";
+            return;
+        }
+
+        if (selectedSuggestion == null)
+        {
+            errorMessage = "Please select an exercise from the suggestions.";
+            return;
+        }
+
+        if (exerciseForm.DurationMinutes <= 0)
+        {
+            errorMessage = "Duration must be greater than 0.";
+            return;
+        }
 
         try
         {
@@ -416,19 +434,23 @@ else
                 CaloriesBurned  = (int)Math.Round(calculatedCaloriesBurned)
             };
 
-            var before = exerciseLogs.Count;
-
             await ExerciseService.AddAsync(log);
 
-            // reset search + form
+            // refresh from API
+            await LoadDataAsync();
+
+            // reset UI to default
             exerciseSearch = string.Empty;
-            exerciseForm.Name = string.Empty;
+            exerciseForm = new ExerciseLog
+            {
+                Type = "Cardio",
+                Intensity = "Medium",
+                DurationMinutes = 30
+            };
             selectedSuggestion = null;
             selectedSuggestionIndex = -1;
             exerciseSuggestions.Clear();
             calculatedCaloriesBurned = 0;
-
-            await LoadDataAsync();
         }
         catch (Exception ex)
         {
