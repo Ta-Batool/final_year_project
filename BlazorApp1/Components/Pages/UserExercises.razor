@@ -3,7 +3,6 @@
 
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components
-@using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.AspNetCore.Components.Web
 @using System.Security.Claims
 @using System.Linq
@@ -114,11 +113,9 @@ else
 
             <div class="form-group">
                 <label>Duration (minutes)</label>
-                <InputNumber TValue="int"
-                             Value="exerciseForm.DurationMinutes"
-                             ValueChanged="OnDurationChanged"
-                             ValueExpression="() => exerciseForm.DurationMinutes"
-                             class="form-control" />
+                <input class="form-control"
+                       @bind="durationText"
+                       placeholder="e.g. 30" />
             </div>
 
             <div class="form-group">
@@ -146,10 +143,10 @@ else
                 }
             </p>
 
+            <!-- 🔵 ALWAYS clickable now -->
             <button type="button"
                     class="btn-primary"
-                    @onclick="AddExerciseAsync"
-                    disabled="@isSavingExercise || selectedSuggestion is null || exerciseForm.DurationMinutes <= 0">
+                    @onclick="AddExerciseAsync">
                 @(isSavingExercise ? "Saving..." : "Add Exercise")
             </button>
 
@@ -216,7 +213,9 @@ else
 
             <div class="form-group mt-3">
                 <label>Daily target (ml)</label>
-                <InputNumber @bind-Value="targetMl" class="form-control" />
+                <input class="form-control"
+                       type="number"
+                       @bind="targetMl" />
                 <button class="btn-primary mt-2" @onclick="UpdateTargetAsync" disabled="@isSavingHydration">
                     @(isSavingHydration ? "Saving..." : "Update target")
                 </button>
@@ -240,10 +239,10 @@ else
     private List<ExerciseLog> exerciseLogs = new();
     private HydrationLog? hydrationLog;
 
-    private int totalMinutes           => exerciseLogs.Sum(x => x.DurationMinutes);
-    private int totalCaloriesEaten     => mealsToday.Sum(m => m.Calories ?? 0);
-    private int totalCaloriesBurned    => exerciseLogs.Sum(x => x.CaloriesBurned ?? 0);
-    private int netCalories            => totalCaloriesEaten - totalCaloriesBurned;
+    private int totalMinutes        => exerciseLogs.Sum(x => x.DurationMinutes);
+    private int totalCaloriesEaten  => mealsToday.Sum(m => m.Calories ?? 0);
+    private int totalCaloriesBurned => exerciseLogs.Sum(x => x.CaloriesBurned ?? 0);
+    private int netCalories         => totalCaloriesEaten - totalCaloriesBurned;
 
     private int hydrationPercent =>
         hydrationLog is null || hydrationLog.TargetMl <= 0
@@ -260,6 +259,9 @@ else
     private string selectedSuggestionIndexString =>
         selectedSuggestionIndex >= 0 ? selectedSuggestionIndex.ToString() : string.Empty;
     private double calculatedCaloriesBurned = 0;
+
+    // duration as string – like newMealCalories
+    private string durationText = "30";
 
     private ExerciseLog exerciseForm = new ExerciseLog
     {
@@ -375,30 +377,30 @@ else
         RecalculateCalories();
     }
 
-    // 🔢 Duration change
-    private void OnDurationChanged(int value)
-    {
-        exerciseForm.DurationMinutes = value;
-        RecalculateCalories();
-    }
-
     private void RecalculateCalories()
     {
-        if (selectedSuggestion == null || exerciseForm.DurationMinutes <= 0)
+        if (selectedSuggestion == null)
         {
             calculatedCaloriesBurned = 0;
             return;
         }
 
+        if (!int.TryParse(durationText, out var minutes) || minutes <= 0)
+        {
+            exerciseForm.DurationMinutes = 0;
+            calculatedCaloriesBurned = 0;
+            return;
+        }
+
+        exerciseForm.DurationMinutes = minutes;
         calculatedCaloriesBurned =
-            selectedSuggestion.CaloriesPerMinute * exerciseForm.DurationMinutes;
+            selectedSuggestion.CaloriesPerMinute * minutes;
     }
 
     // 💾 Add exercise (button click)
     private async Task AddExerciseAsync()
     {
         errorMessage = null;
-        Console.WriteLine("DEBUG: AddExerciseAsync fired.");
 
         if (currentClient == null)
         {
@@ -412,9 +414,9 @@ else
             return;
         }
 
-        if (exerciseForm.DurationMinutes <= 0)
+        if (!int.TryParse(durationText, out var minutes) || minutes <= 0)
         {
-            errorMessage = "Duration must be greater than 0.";
+            errorMessage = "Duration must be a positive number.";
             return;
         }
 
@@ -427,28 +429,30 @@ else
                 ClientId        = currentClient.Id!,
                 Name            = exerciseForm.Name.Trim(),
                 Type            = exerciseForm.Type,
-                DurationMinutes = exerciseForm.DurationMinutes,
+                DurationMinutes = minutes,
                 Intensity       = exerciseForm.Intensity,
                 Date            = selectedDate,
                 CreatedAt       = DateTime.UtcNow,
-                CaloriesBurned  = (int)Math.Round(calculatedCaloriesBurned)
+                CaloriesBurned  = (int)Math.Round(
+                    selectedSuggestion.CaloriesPerMinute * minutes)
             };
 
             await ExerciseService.AddAsync(log);
 
-            // refresh from API
+            // reload from API so totals update
             await LoadDataAsync();
 
-            // reset UI to default
+            // reset UI
             exerciseSearch = string.Empty;
+            durationText   = "30";
             exerciseForm = new ExerciseLog
             {
                 Type = "Cardio",
                 Intensity = "Medium",
                 DurationMinutes = 30
             };
-            selectedSuggestion = null;
-            selectedSuggestionIndex = -1;
+            selectedSuggestion       = null;
+            selectedSuggestionIndex  = -1;
             exerciseSuggestions.Clear();
             calculatedCaloriesBurned = 0;
         }
