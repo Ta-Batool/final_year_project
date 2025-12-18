@@ -11,7 +11,7 @@
             <div class="avatar-wrapper">
                 <img src="@(!string.IsNullOrEmpty(doctor.ProfileImageUrl) ? doctor.ProfileImageUrl : "https://via.placeholder.com/120")"
                      alt="Doctor Profile" class="profile-pic" />
-                <button class="edit-avatar">
+                <button type="button" class="edit-avatar">
                     <i class="fas fa-camera"></i>
                 </button>
             </div>
@@ -107,97 +107,102 @@
                            @onchange="UpdateLanguages" />
             </div>
 
-            <!-- Availability -->
-            @if (doctor.Slots != null && doctor.Slots.Count > 0)
+            <!-- =======================
+                 ✅ MULTI-DAY AVAILABILITY
+                 ======================= -->
+            <h4 style="margin-top:20px;">Availability</h4>
+
+            @if (!string.IsNullOrWhiteSpace(slotError))
             {
-                <div class="form-row">
-                    <label>Available Day</label>
-                    <InputSelect class="form-input" @bind-Value="doctor.Slots[0].Day">
-                        <option value="">Select Day</option>
-                        <option>Monday</option>
-                        <option>Tuesday</option>
-                        <option>Wednesday</option>
-                        <option>Thursday</option>
-                        <option>Friday</option>
-                        <option>Saturday</option>
-                        <option>Sunday</option>
-                    </InputSelect>
-                </div>
+                <div class="alert alert-danger">@slotError</div>
+            }
 
-                <div class="form-row">
-                    <label>Start Time</label>
-                    <input type="time" class="form-input"
-                           value="@startTimeStr"
-                           @onchange="OnStartTimeChanged" />
-                </div>
+            @if (doctor.Slots == null)
+            {
+                doctor.Slots = new List<TimeSlots>();
+            }
 
-                <div class="form-row">
-                    <label>End Time</label>
-                    <input type="time" class="form-input"
-                           value="@endTimeStr"
-                           @onchange="OnEndTimeChanged" />
+            @if (doctor.Slots.Count == 0)
+            {
+                <p style="color:#666;">No availability added yet.</p>
+            }
+
+            @for (int i = 0; i < doctor.Slots.Count; i++)
+            {
+                var idx = i;
+
+                <div class="availability-card" @key="idx">
+                    <div class="form-row">
+                        <label>Available Day</label>
+                        <InputSelect class="form-input" @bind-Value="doctor.Slots[idx].Day">
+                            <option value="">Select Day</option>
+                            <option>Monday</option>
+                            <option>Tuesday</option>
+                            <option>Wednesday</option>
+                            <option>Thursday</option>
+                            <option>Friday</option>
+                            <option>Saturday</option>
+                            <option>Sunday</option>
+                        </InputSelect>
+                    </div>
+
+                    <div class="form-row">
+                        <label>Start Time</label>
+                        <input type="time"
+                               class="form-input"
+                               value="@GetStartTimeStr(idx)"
+                               @onchange="(e) => OnStartTimeChanged(idx, e)" />
+                    </div>
+
+                    <div class="form-row">
+                        <label>End Time</label>
+                        <input type="time"
+                               class="form-input"
+                               value="@GetEndTimeStr(idx)"
+                               @onchange="(e) => OnEndTimeChanged(idx, e)" />
+                    </div>
+
+                    <div class="button-row" style="justify-content:flex-end;">
+                        <button type="button" class="back-btn" @onclick="() => RemoveSlot(idx)">
+                            Remove
+                        </button>
+                    </div>
+
+                    <hr />
                 </div>
             }
 
-            <div class="form-row">
+            <button type="button"
+                    class="save-btn"
+                    style="width:100%;margin-top:10px;"
+                    @onclick="AddSlot">
+                + Add Another Day
+            </button>
+
+            <div class="form-row" style="margin-top:18px;">
                 <label>Profile Image URL</label>
                 <InputText class="form-input" @bind-Value="doctor.ProfileImageUrl" />
             </div>
 
             <div class="button-row">
-                <button type="button" class="back-btn" @onclick='() => Navigation.NavigateTo("/dashboard")'>Back To Home</button>
-                <button type="submit" class="save-btn">Save Changes</button>
+                <button type="button" class="back-btn" @onclick='() => Navigation.NavigateTo("/dashboard")'>
+                    Back To Home
+                </button>
+                <button type="submit" class="save-btn">
+                    Save Changes
+                </button>
             </div>
         </EditForm>
     </div>
 </div>
 
 @code {
-    [Parameter]
-    public string? ClientId { get; set; }
+    [Parameter] public string? ClientId { get; set; }
 
     private Doctor doctor = new();
     private string languagesInput = string.Empty;
-    private string slotModesInput = string.Empty;
 
-    // ---- TimeOnly? safe string helpers ----
-    private string startTimeStr
-    {
-        get => doctor?.Slots != null && doctor.Slots.Count > 0 && doctor.Slots[0].StartTime.HasValue
-            ? doctor.Slots[0].StartTime.Value.ToString("HH:mm")
-            : "";
-    }
-
-    private string endTimeStr
-    {
-        get => doctor?.Slots != null && doctor.Slots.Count > 0 && doctor.Slots[0].EndTime.HasValue
-            ? doctor.Slots[0].EndTime.Value.ToString("HH:mm")
-            : "";
-    }
-
-    private void OnStartTimeChanged(ChangeEventArgs e)
-    {
-        var v = e.Value?.ToString();
-        if (string.IsNullOrWhiteSpace(v)) return;
-
-        EnsureSlot0();
-        doctor.Slots[0].StartTime = TimeOnly.Parse(v);
-    }
-
-    private void OnEndTimeChanged(ChangeEventArgs e)
-    {
-        var v = e.Value?.ToString();
-        if (string.IsNullOrWhiteSpace(v)) return;
-
-        EnsureSlot0();
-        doctor.Slots[0].EndTime = TimeOnly.Parse(v);
-    }
-
-    private void EnsureSlot0()
-    {
-        if (doctor.Slots == null) doctor.Slots = new List<TimeSlots>();
-        if (doctor.Slots.Count == 0) doctor.Slots.Add(new TimeSlots());
-    }
+    private string slotError = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -206,25 +211,17 @@
             if (string.IsNullOrEmpty(ClientId))
                 return;
 
-            // Ensure slot list exists before binding
-            EnsureSlot0();
-
             var existingDoctor = await DoctorService.GetDoctorByClientIdAsync(ClientId);
 
             if (existingDoctor != null)
             {
                 doctor = existingDoctor;
-
-                // Ensure slot list exists after fetch too
-                EnsureSlot0();
-
                 languagesInput = doctor.Languages != null ? string.Join(", ", doctor.Languages) : "";
-                slotModesInput = doctor.SlotModes != null ? string.Join(", ", doctor.SlotModes) : "";
             }
-            else
-            {
-                Console.WriteLine($"⚠️ No doctor found for ClientId: {ClientId}");
-            }
+
+            // Ensure list exists for binding
+            if (doctor.Slots == null)
+                doctor.Slots = new List<TimeSlots>();
         }
         catch (Exception ex)
         {
@@ -235,17 +232,85 @@
     private void UpdateLanguages(ChangeEventArgs e)
     {
         languagesInput = e.Value?.ToString() ?? "";
-        doctor.Languages = languagesInput.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                                         .Select(x => x.Trim()).ToList();
+        doctor.Languages = languagesInput
+            .Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(x => x.Trim())
+            .ToList();
     }
 
-    private void UpdateSlotModes(ChangeEventArgs e)
+    // ------------------------
+    // ✅ Slots helpers
+    // ------------------------
+    private void AddSlot()
     {
-        slotModesInput = e.Value?.ToString() ?? "";
-        doctor.SlotModes = slotModesInput.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                                         .Select(x => x.Trim()).ToList();
+        slotError = "";
+        if (doctor.Slots == null) doctor.Slots = new List<TimeSlots>();
+        doctor.Slots.Add(new TimeSlots());
     }
 
+    private void RemoveSlot(int index)
+    {
+        slotError = "";
+        if (doctor.Slots == null) return;
+        if (index < 0 || index >= doctor.Slots.Count) return;
+        doctor.Slots.RemoveAt(index);
+    }
+
+    private string GetStartTimeStr(int index)
+    {
+        if (doctor.Slots == null || index < 0 || index >= doctor.Slots.Count) return "";
+        return doctor.Slots[index].StartTime.HasValue
+            ? doctor.Slots[index].StartTime.Value.ToString("HH:mm")
+            : "";
+    }
+
+    private string GetEndTimeStr(int index)
+    {
+        if (doctor.Slots == null || index < 0 || index >= doctor.Slots.Count) return "";
+        return doctor.Slots[index].EndTime.HasValue
+            ? doctor.Slots[index].EndTime.Value.ToString("HH:mm")
+            : "";
+    }
+
+    private void OnStartTimeChanged(int index, ChangeEventArgs e)
+    {
+        slotError = "";
+        var v = e.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(v)) return;
+        if (doctor.Slots == null || index < 0 || index >= doctor.Slots.Count) return;
+
+        doctor.Slots[index].StartTime = TimeOnly.Parse(v);
+        ValidateSlot(index);
+    }
+
+    private void OnEndTimeChanged(int index, ChangeEventArgs e)
+    {
+        slotError = "";
+        var v = e.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(v)) return;
+        if (doctor.Slots == null || index < 0 || index >= doctor.Slots.Count) return;
+
+        doctor.Slots[index].EndTime = TimeOnly.Parse(v);
+        ValidateSlot(index);
+    }
+
+    private void ValidateSlot(int index)
+    {
+        if (doctor.Slots == null || index < 0 || index >= doctor.Slots.Count) return;
+
+        var s = doctor.Slots[index];
+        if (s.StartTime.HasValue && s.EndTime.HasValue)
+        {
+            if (s.EndTime.Value <= s.StartTime.Value)
+            {
+                slotError = "End Time must be after Start Time.";
+            }
+        }
+    }
+
+    // ------------------------
+    // ✅ Save
+    // ------------------------
     private async Task SaveProfile()
     {
         try
@@ -253,7 +318,20 @@
             if (string.IsNullOrEmpty(ClientId))
                 return;
 
-            await DoctorService.UpdateDoctorByClientIdAsync(ClientId!, doctor);
+            // Basic validation: remove empty slot rows
+            if (doctor.Slots != null)
+            {
+                doctor.Slots = doctor.Slots
+                    .Where(s =>
+                        !string.IsNullOrWhiteSpace(s.Day) &&
+                        s.StartTime.HasValue &&
+                        s.EndTime.HasValue &&
+                        s.EndTime.Value > s.StartTime.Value
+                    )
+                    .ToList();
+            }
+
+            await DoctorService.UpdateDoctorByClientIdAsync(ClientId, doctor);
             Console.WriteLine("✅ Doctor profile updated successfully!");
             Navigation.NavigateTo("/dashboard");
         }
@@ -265,7 +343,6 @@
 }
 
 <style>
-    /* Center the card */
     .profile-wrapper {
         display: flex;
         justify-content: center;
@@ -275,7 +352,6 @@
         padding: 40px;
     }
 
-    /* Card */
     .profile-card {
         background: white;
         width: 480px;
@@ -287,7 +363,6 @@
         align-items: center;
     }
 
-    /* Profile Image + Edit Icon */
     .avatar-wrapper {
         position: relative;
         margin-bottom: 20px;
@@ -322,7 +397,6 @@
         background-color: #4720c8;
     }
 
-    /* Form styling */
     .profile-form {
         width: 100%;
     }
@@ -353,7 +427,6 @@
         box-shadow: 0 0 0 2px rgba(91,45,252,0.1);
     }
 
-    /* Buttons */
     .button-row {
         display: flex;
         justify-content: space-between;
@@ -385,5 +458,13 @@
 
     .back-btn:hover {
         background-color: #e2e2e2;
+    }
+
+    .availability-card {
+        border: 1px solid #eee;
+        border-radius: 12px;
+        padding: 12px;
+        margin-top: 10px;
+        background: #fafafa;
     }
 </style>

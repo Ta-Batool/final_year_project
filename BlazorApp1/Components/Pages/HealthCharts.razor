@@ -1,0 +1,79 @@
+@page "/health-charts"
+@attribute [Authorize]
+@layout UserDashboardLayout
+
+@using Microsoft.AspNetCore.Authorization
+@using BlazorApp1.Service
+@inject IJSRuntime JS
+@inject BPLogApiService BPApi
+@inject GlucoseLogApiService GlucoseApi
+@inject WeightLogApiService WeightApi
+
+<h2>📊 Health Charts</h2>
+
+@if (!string.IsNullOrWhiteSpace(error))
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+@if (busy)
+{
+    <p>Loading charts...</p>
+}
+else
+{
+    <div class="card">
+        <h4>Blood Pressure</h4>
+        <canvas id="bpChart" height="120"></canvas>
+    </div>
+
+    <div class="card mt">
+        <h4>Glucose</h4>
+        <canvas id="glucoseChart" height="120"></canvas>
+    </div>
+
+    <div class="card mt">
+        <h4>Weight</h4>
+        <canvas id="weightChart" height="120"></canvas>
+    </div>
+}
+
+@code {
+    private bool busy = true;
+    private string error = "";
+    private string? userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            busy = true;
+            userId = await JS.InvokeAsync<string?>("localStorage.getItem", "userId");
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                error = "UserId not found. Please login again.";
+                return;
+            }
+
+            var bp = await BPApi.GetByUserAsync(userId) ?? new();
+            var gl = await GlucoseApi.GetByUserAsync(userId) ?? new();
+            var wt = await WeightApi.GetByUserAsync(userId) ?? new();
+
+            // Keep only latest 30 points, oldest -> newest
+            var bp30 = bp.Take(30).Reverse().ToList();
+            var gl30 = gl.Take(30).Reverse().ToList();
+            var wt30 = wt.Take(30).Reverse().ToList();
+
+            await JS.InvokeVoidAsync("healthCharts.renderBP", bp30);
+            await JS.InvokeVoidAsync("healthCharts.renderGlucose", gl30);
+            await JS.InvokeVoidAsync("healthCharts.renderWeight", wt30);
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+}
+
+<style>
+    .card { background:#fff; padding:16px; border-radius:12px; box-shadow:0 2px 6px rgba(0,0,0,.08); max-width: 1000px; }
+    .mt { margin-top:16px; }
+</style>

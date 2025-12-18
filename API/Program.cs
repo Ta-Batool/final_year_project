@@ -33,6 +33,9 @@ builder.Services.AddSingleton<DietPlanService>();
 builder.Services.AddSingleton<ExercisePlanService>();
 builder.Services.AddSingleton<DailyChecklistService>();
 builder.Services.AddHttpClient<ICaloriesBurnedApiService, CaloriesBurnedApiService>();
+builder.Services.AddSingleton<BPLogService>();
+builder.Services.AddSingleton<GlucoseLogService>();
+builder.Services.AddSingleton<WeightLogService>();
 
 
 

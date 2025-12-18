@@ -15,6 +15,10 @@ builder.Services.AddRazorPages()
     .WithRazorPagesRoot("/Components/Pages");
 
 builder.Services.AddServerSideBlazor();
+builder.Services.AddScoped<HealthApiService>();
+builder.Services.AddScoped<GlucoseLogApiService>();
+builder.Services.AddScoped<WeightLogApiService>();
+
 
 // 🔐 Authentication + Google OAuth
 builder.Services

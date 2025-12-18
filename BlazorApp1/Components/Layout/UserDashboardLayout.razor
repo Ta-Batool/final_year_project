@@ -47,6 +47,18 @@
                     <i class="fas fa-comments"></i> Messages
                 </button>
 
+                <button class="side-btn" @onclick='() => Navigation.NavigateTo("/health-logs")'>
+                    <i class="fas fa-notes-medical"></i> Health Logs
+                </button>
+
+                <button class="side-btn" @onclick='() => Navigation.NavigateTo("/health-charts")'>
+                    <i class="fas fa-chart-line"></i> Health Charts
+                </button>
+
+                <button class="side-btn" @onclick='() => Navigation.NavigateTo("/health-alerts")'>
+                    <i class="fas fa-triangle-exclamation"></i> Alerts
+                </button>
+
                 @* Optional: keep old route if that page still exists *@
                 @* <button class="side-btn" @onclick='() => Navigation.NavigateTo("/userappointments")'>
                     <i class="fas fa-calendar-check"></i> Appointments (Old)

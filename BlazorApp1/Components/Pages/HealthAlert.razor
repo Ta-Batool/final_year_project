@@ -1,0 +1,192 @@
+@page "/health-alerts"
+@attribute [Authorize]
+@layout UserDashboardLayout
+
+@using Microsoft.AspNetCore.Authorization
+@using BlazorApp1.Service
+@inject IJSRuntime JS
+@inject BPLogApiService BPApi
+@inject GlucoseLogApiService GlucoseApi
+@inject WeightLogApiService WeightApi
+
+<h2>🚨 Health Alerts</h2>
+
+@if (!string.IsNullOrWhiteSpace(error))
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+@if (busy)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <div class="card">
+        <h4>Latest Readings</h4>
+
+        <div class="grid">
+            <div class="box">
+                <div class="title">BP</div>
+                <div class="value">@bpText</div>
+                <div class="status @bpClass">@bpStatus</div>
+            </div>
+
+            <div class="box">
+                <div class="title">Glucose</div>
+                <div class="value">@glucoseText</div>
+                <div class="status @glucoseClass">@glucoseStatus</div>
+            </div>
+
+            <div class="box">
+                <div class="title">Weight</div>
+                <div class="value">@weightText</div>
+                <div class="status @weightClass">@weightStatus</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mt">
+        <h4>Warnings / Dangers</h4>
+
+        @if (alerts.Count == 0)
+        {
+            <p>No alerts right now ✅</p>
+        }
+        else
+        {
+            <ul>
+                @foreach (var a in alerts)
+                {
+                    <li class="@a.Level">@a.Message</li>
+                }
+            </ul>
+        }
+    </div>
+}
+
+@code {
+    private bool busy = true;
+    private string error = "";
+    private string? userId;
+
+    private string bpText = "-";
+    private string bpStatus = "No data";
+    private string bpClass = "ok";
+
+    private string glucoseText = "-";
+    private string glucoseStatus = "No data";
+    private string glucoseClass = "ok";
+
+    private string weightText = "-";
+    private string weightStatus = "No data";
+    private string weightClass = "ok";
+
+    private List<AlertItem> alerts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            busy = true;
+            userId = await JS.InvokeAsync<string?>("localStorage.getItem", "userId");
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                error = "UserId not found. Please login again.";
+                return;
+            }
+
+            var bp = (await BPApi.GetByUserAsync(userId)) ?? new();
+            var gl = (await GlucoseApi.GetByUserAsync(userId)) ?? new();
+            var wt = (await WeightApi.GetByUserAsync(userId)) ?? new();
+
+            // latest
+            var lastBp = bp.FirstOrDefault();
+            var lastGl = gl.FirstOrDefault();
+            var lastWt = wt.FirstOrDefault();
+
+            if (lastBp != null)
+            {
+                bpText = $"{lastBp.Systolic}/{lastBp.Diastolic}";
+                (bpStatus, bpClass) = ClassifyBP(lastBp.Systolic, lastBp.Diastolic);
+                if (bpClass != "ok") alerts.Add(new AlertItem(bpClass, $"BP is {bpStatus}: {bpText}"));
+            }
+
+            if (lastGl != null)
+            {
+                glucoseText = $"{lastGl.Value} ({lastGl.Type})";
+                (glucoseStatus, glucoseClass) = ClassifyGlucose(lastGl.Value, lastGl.Type);
+                if (glucoseClass != "ok") alerts.Add(new AlertItem(glucoseClass, $"Glucose is {glucoseStatus}: {glucoseText}"));
+            }
+
+            if (lastWt != null)
+            {
+                weightText = $"{lastWt.WeightKg} kg";
+                (weightStatus, weightClass) = ("Normal", "ok");
+                // Optional: detect sudden change using last 2 points
+                if (wt.Count >= 2)
+                {
+                    var prev = wt.Skip(1).First();
+                    var diff = lastWt.WeightKg - prev.WeightKg;
+                    if (Math.Abs(diff) >= 2.0)
+                    {
+                        weightStatus = "Sudden Change";
+                        weightClass = "warn";
+                        alerts.Add(new AlertItem("warn", $"Weight changed by {diff:+0.0;-0.0} kg since last log."));
+                    }
+                }
+            }
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private (string label, string level) ClassifyBP(int sys, int dia)
+    {
+        if (sys >= 180 || dia >= 120) return ("Hypertensive Crisis", "danger");
+        if (sys >= 140 || dia >= 90) return ("High (Stage 2)", "danger");
+        if (sys >= 130 || dia >= 80) return ("High (Stage 1)", "warn");
+        if (sys < 90 || dia < 60) return ("Low", "warn");
+        return ("Normal", "ok");
+    }
+
+    private (string label, string level) ClassifyGlucose(int value, string type)
+    {
+        // Simple baseline rules
+        if (type == "Fasting")
+        {
+            if (value >= 126) return ("Very High", "danger");
+            if (value >= 100) return ("High", "warn");
+            if (value < 70) return ("Low", "warn");
+            return ("Normal", "ok");
+        }
+        else
+        {
+            if (value >= 200) return ("Very High", "danger");
+            if (value >= 140) return ("High", "warn");
+            if (value < 70) return ("Low", "warn");
+            return ("Normal", "ok");
+        }
+    }
+
+    private record AlertItem(string Level, string Message);
+}
+
+<style>
+    .card { background:#fff; padding:16px; border-radius:12px; box-shadow:0 2px 6px rgba(0,0,0,.08); max-width: 1000px; }
+    .mt { margin-top:16px; }
+
+    .grid { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:14px; }
+    .box { border:1px solid #eee; border-radius:12px; padding:14px; }
+    .title { font-weight:700; color:#444; }
+    .value { font-size:22px; margin-top:6px; }
+    .status { margin-top:6px; font-weight:700; }
+    .ok { color: #1f8f3a; }
+    .warn { color: #c07a00; }
+    .danger { color: #c02626; }
+
+    li.warn { color: #c07a00; font-weight:600; }
+    li.danger { color: #c02626; font-weight:700; }
+
+    @media(max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+</style>

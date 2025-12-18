@@ -1,0 +1,327 @@
+@page "/health-logs"
+@attribute [Authorize]
+@layout UserDashboardLayout
+
+@using Microsoft.AspNetCore.Authorization
+@using BlazorApp1.Service
+@inject IJSRuntime JS
+@inject BPLogApiService BPApi
+@inject GlucoseLogApiService GlucoseApi
+@inject WeightLogApiService WeightApi
+
+<h2>📒 Health Logs</h2>
+
+@if (!string.IsNullOrWhiteSpace(error))
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+<div class="tabs">
+    <button class="tab-btn @(tab=="bp" ? "active" : "")" @onclick="() => tab = "bp"">BP</button>
+    <button class="tab-btn @(tab=="glucose" ? "active" : "")" @onclick="() => tab = "glucose"">Glucose</button>
+    <button class="tab-btn @(tab=="weight" ? "active" : "")" @onclick="() => tab = "weight"">Weight</button>
+</div>
+
+@if (busy)
+{
+    <p>Loading...</p>
+}
+else
+{
+    @if (tab == "bp")
+    {
+        <div class="card">
+            <h4>Add BP Log</h4>
+
+            <div class="grid">
+                <div>
+                    <label>Systolic</label>
+                    <input type="number" class="form-control" @bind="bpSystolic" />
+                </div>
+                <div>
+                    <label>Diastolic</label>
+                    <input type="number" class="form-control" @bind="bpDiastolic" />
+                </div>
+                <div>
+                    <label>Pulse (optional)</label>
+                    <input type="number" class="form-control" @bind="bpPulse" />
+                </div>
+                <div>
+                    <label>Notes</label>
+                    <input class="form-control" @bind="bpNotes" />
+                </div>
+            </div>
+
+            <button class="btn-primary" @onclick="AddBP" disabled="@busyAction">
+                @(busyAction ? "Saving..." : "Save BP")
+            </button>
+        </div>
+
+        <div class="card mt">
+            <h4>Recent BP Logs</h4>
+
+            @if (bpLogs.Count == 0) { <p>No BP logs yet.</p> }
+            else
+            {
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Date</th><th>Systolic</th><th>Diastolic</th><th>Pulse</th><th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var x in bpLogs)
+                        {
+                            <tr>
+                                <td>@x.LoggedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                                <td>@x.Systolic</td>
+                                <td>@x.Diastolic</td>
+                                <td>@(x.Pulse ?? 0)</td>
+                                <td>@x.Notes</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    }
+    else if (tab == "glucose")
+    {
+        <div class="card">
+            <h4>Add Glucose Log</h4>
+
+            <div class="grid">
+                <div>
+                    <label>Value (mg/dL)</label>
+                    <input type="number" class="form-control" @bind="glucoseValue" />
+                </div>
+                <div>
+                    <label>Type</label>
+                    <select class="form-control" @bind="glucoseType">
+                        <option value="Fasting">Fasting</option>
+                        <option value="Random">Random</option>
+                        <option value="PostMeal">PostMeal</option>
+                    </select>
+                </div>
+                <div>
+                    <label>Notes</label>
+                    <input class="form-control" @bind="glucoseNotes" />
+                </div>
+            </div>
+
+            <button class="btn-primary" @onclick="AddGlucose" disabled="@busyAction">
+                @(busyAction ? "Saving..." : "Save Glucose")
+            </button>
+        </div>
+
+        <div class="card mt">
+            <h4>Recent Glucose Logs</h4>
+
+            @if (glucoseLogs.Count == 0) { <p>No glucose logs yet.</p> }
+            else
+            {
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Date</th><th>Value</th><th>Type</th><th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var x in glucoseLogs)
+                        {
+                            <tr>
+                                <td>@x.LoggedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                                <td>@x.Value</td>
+                                <td>@x.Type</td>
+                                <td>@x.Notes</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    }
+    else if (tab == "weight")
+    {
+        <div class="card">
+            <h4>Add Weight Log</h4>
+
+            <div class="grid">
+                <div>
+                    <label>Weight (kg)</label>
+                    <input type="number" class="form-control" step="0.1" @bind="weightKg" />
+                </div>
+                <div>
+                    <label>Body Fat % (optional)</label>
+                    <input type="number" class="form-control" step="0.1" @bind="weightBodyFat" />
+                </div>
+                <div>
+                    <label>Notes</label>
+                    <input class="form-control" @bind="weightNotes" />
+                </div>
+            </div>
+
+            <button class="btn-primary" @onclick="AddWeight" disabled="@busyAction">
+                @(busyAction ? "Saving..." : "Save Weight")
+            </button>
+        </div>
+
+        <div class="card mt">
+            <h4>Recent Weight Logs</h4>
+
+            @if (weightLogs.Count == 0) { <p>No weight logs yet.</p> }
+            else
+            {
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Date</th><th>Weight (kg)</th><th>BodyFat %</th><th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var x in weightLogs)
+                        {
+                            <tr>
+                                <td>@x.LoggedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                                <td>@x.WeightKg</td>
+                                <td>@(x.BodyFatPercent ?? 0)</td>
+                                <td>@x.Notes</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    }
+}
+
+@code {
+    private string tab = "bp";
+    private bool busy = true;
+    private bool busyAction = false;
+    private string error = "";
+    private string? userId;
+
+    // Lists
+    private List<BPLogDto> bpLogs = new();
+    private List<GlucoseLogDto> glucoseLogs = new();
+    private List<WeightLogDto> weightLogs = new();
+
+    // BP form
+    private int bpSystolic = 120;
+    private int bpDiastolic = 80;
+    private int? bpPulse = null;
+    private string bpNotes = "";
+
+    // Glucose form
+    private int glucoseValue = 90;
+    private string glucoseType = "Fasting";
+    private string glucoseNotes = "";
+
+    // Weight form
+    private double weightKg = 70;
+    private double? weightBodyFat = null;
+    private string weightNotes = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            busy = true;
+            userId = await JS.InvokeAsync<string?>("localStorage.getItem", "userId");
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                error = "UserId not found in localStorage. Please login again.";
+                return;
+            }
+
+            await ReloadAll();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task ReloadAll()
+    {
+        if (string.IsNullOrWhiteSpace(userId)) return;
+
+        bpLogs = await BPApi.GetByUserAsync(userId) ?? new();
+        glucoseLogs = await GlucoseApi.GetByUserAsync(userId) ?? new();
+        weightLogs = await WeightApi.GetByUserAsync(userId) ?? new();
+    }
+
+    private async Task AddBP()
+    {
+        try
+        {
+            busyAction = true;
+            error = "";
+
+            if (string.IsNullOrWhiteSpace(userId)) throw new Exception("Missing userId");
+
+            await BPApi.CreateAsync(new CreateBPLogRequest(userId!, bpSystolic, bpDiastolic, bpPulse, bpNotes));
+            bpNotes = "";
+            await ReloadAll();
+            tab = "bp";
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { busyAction = false; }
+    }
+
+    private async Task AddGlucose()
+    {
+        try
+        {
+            busyAction = true;
+            error = "";
+
+            if (string.IsNullOrWhiteSpace(userId)) throw new Exception("Missing userId");
+
+            await GlucoseApi.CreateAsync(new CreateGlucoseLogRequest(userId!, glucoseValue, glucoseType, glucoseNotes));
+            glucoseNotes = "";
+            await ReloadAll();
+            tab = "glucose";
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { busyAction = false; }
+    }
+
+    private async Task AddWeight()
+    {
+        try
+        {
+            busyAction = true;
+            error = "";
+
+            if (string.IsNullOrWhiteSpace(userId)) throw new Exception("Missing userId");
+
+            await WeightApi.CreateAsync(new CreateWeightLogRequest(userId!, weightKg, weightBodyFat, weightNotes));
+            weightNotes = "";
+            await ReloadAll();
+            tab = "weight";
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { busyAction = false; }
+    }
+}
+
+<style>
+    .tabs { display:flex; gap:10px; margin-bottom:14px; }
+    .tab-btn { padding:8px 12px; border:1px solid #ccc; background:#fff; border-radius:8px; cursor:pointer; }
+    .tab-btn.active { background:#3b3bbf; color:#fff; border-color:#3b3bbf; }
+
+    .card { background:#fff; padding:16px; border-radius:12px; box-shadow:0 2px 6px rgba(0,0,0,.08); max-width: 1000px; }
+    .mt { margin-top:16px; }
+
+    .grid { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:12px; }
+    .form-control { width:100%; padding:8px; border:1px solid #ccc; border-radius:8px; }
+    .btn-primary { margin-top:12px; background:#3b3bbf; color:#fff; border:none; border-radius:8px; padding:10px 14px; cursor:pointer; }
+
+    @media(max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+</style>
