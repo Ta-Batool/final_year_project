@@ -11,13 +11,18 @@ using Microsoft.Extensions.Hosting;
 var builder = WebApplication.CreateBuilder(args);
 
 //
-// -------------------- CORE BLazor SETUP (DO NOT TOUCH) --------------------
+// ───────────────────────── RAZOR / BLAZOR ─────────────────────────
+// IMPORTANT: Tell Razor where your Pages actually are
 //
-builder.Services.AddRazorPages();
+builder.Services.AddRazorPages(options =>
+{
+    options.RootDirectory = "/Components/Pages";
+});
+
 builder.Services.AddServerSideBlazor();
 
 //
-// -------------------- AUTHENTICATION (GOOGLE) --------------------
+// ───────────────────────── AUTHENTICATION ─────────────────────────
 //
 builder.Services
     .AddAuthentication(options =>
@@ -64,22 +69,19 @@ builder.Services
 builder.Services.AddAuthorization();
 
 //
-// -------------------- API BASE URL --------------------
+// ───────────────────────── API BASE URL ─────────────────────────
 //
 var apiBaseUrl = builder.Configuration["ApiBaseUrl"]
                  ?? "http://localhost:5092/";
 
 //
-// -------------------- HTTP CLIENTS --------------------
+// ───────────────────────── HTTP CLIENTS ─────────────────────────
 //
-
-// HEALTH (THIS FIXES YOUR 404s)
 builder.Services.AddHttpClient<HealthApiService>(client =>
 {
     client.BaseAddress = new Uri(apiBaseUrl);
 });
 
-// Other domain services
 builder.Services.AddHttpClient<IDService, DService>(c => c.BaseAddress = new Uri(apiBaseUrl));
 builder.Services.AddHttpClient<IUService, UService>(c => c.BaseAddress = new Uri(apiBaseUrl));
 builder.Services.AddHttpClient<ICService, CService>(c => c.BaseAddress = new Uri(apiBaseUrl));
@@ -90,25 +92,23 @@ builder.Services.AddHttpClient<IMedicationService, MedicationService>(c => c.Bas
 builder.Services.AddHttpClient<IExerciseService, ExerciseService>(c => c.BaseAddress = new Uri(apiBaseUrl));
 builder.Services.AddHttpClient<IHydrationService, HydrationService>(c => c.BaseAddress = new Uri(apiBaseUrl));
 
-// Chat / messages
 builder.Services.AddHttpClient<MessageClientService>(c =>
 {
     c.BaseAddress = new Uri(apiBaseUrl);
 });
 
-// AI / Nutrition
 builder.Services.AddHttpClient<ICalorieNinjaService, CalorieNinjaService>(client =>
 {
     client.BaseAddress = new Uri("https://api.nal.usda.gov/fdc/v1/");
 });
 
 //
-// -------------------- APP BUILD --------------------
+// ───────────────────────── APP BUILD ─────────────────────────
 //
 var app = builder.Build();
 
 //
-// -------------------- MIDDLEWARE --------------------
+// ───────────────────────── MIDDLEWARE ─────────────────────────
 //
 app.UseForwardedHeaders(new ForwardedHeadersOptions
 {
@@ -129,13 +129,15 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 //
-// -------------------- BLazor ROUTING --------------------
+// ───────────────────────── BLAZOR ROUTING ─────────────────────────
+// THIS IS THE FIX
 //
 app.MapBlazorHub();
-app.MapFallbackToPage("/_Host");
+app.MapRazorPages();               // REQUIRED
+app.MapFallbackToPage("/_Host");   // NOW IT WORKS
 
 //
-// -------------------- AUTH ENDPOINTS --------------------
+// ───────────────────────── AUTH ENDPOINTS ─────────────────────────
 //
 app.MapGet("/login-google", async (HttpContext context) =>
 {
