@@ -107,20 +107,12 @@
                            @onchange="UpdateLanguages" />
             </div>
 
-            @* <div class="form-row">
-                <label>Slot Modes (comma separated)</label>
-                <InputText class="form-input"
-                           @bind-Value="slotModesInput"
-                           @onchange="UpdateSlotModes" />
-            </div> *@
-
-            <!-- Day, Start Time, End Time Fields -->
-
+            <!-- Availability -->
             @if (doctor.Slots != null && doctor.Slots.Count > 0)
             {
                 <div class="form-row">
                     <label>Available Day</label>
-                    <InputSelect class="form-input" @bind-Value = "doctor.Slots[0].Day">
+                    <InputSelect class="form-input" @bind-Value="doctor.Slots[0].Day">
                         <option value="">Select Day</option>
                         <option>Monday</option>
                         <option>Tuesday</option>
@@ -132,25 +124,20 @@
                     </InputSelect>
                 </div>
 
-                @* <div class="form-row">
+                <div class="form-row">
                     <label>Start Time</label>
-                    <InputTime class="form-input" @bind-Value="doctor.Slots[0].StartTime" />
+                    <input type="time" class="form-input"
+                           value="@startTimeStr"
+                           @onchange="OnStartTimeChanged" />
                 </div>
 
                 <div class="form-row">
                     <label>End Time</label>
-                    <InputTime class="form-input" @bind-Value="doctor.Slots[0].EndTime" />
-                </div> *@
-            }@* 
-            else
-            {
-                doctor.Slots = new List<TimeSlots>() 
-                {
-                    new TimeSlots()
-                };
-            } *@
-
-
+                    <input type="time" class="form-input"
+                           value="@endTimeStr"
+                           @onchange="OnEndTimeChanged" />
+                </div>
+            }
 
             <div class="form-row">
                 <label>Profile Image URL</label>
@@ -167,38 +154,76 @@
 
 @code {
     [Parameter]
-    public string? ClientId { get; set; }   // 👈 Get ClientId from URL
+    public string? ClientId { get; set; }
 
     private Doctor doctor = new();
     private string languagesInput = string.Empty;
     private string slotModesInput = string.Empty;
 
+    // ---- TimeOnly? safe string helpers ----
+    private string startTimeStr
+    {
+        get => doctor?.Slots != null && doctor.Slots.Count > 0 && doctor.Slots[0].StartTime.HasValue
+            ? doctor.Slots[0].StartTime.Value.ToString("HH:mm")
+            : "";
+    }
+
+    private string endTimeStr
+    {
+        get => doctor?.Slots != null && doctor.Slots.Count > 0 && doctor.Slots[0].EndTime.HasValue
+            ? doctor.Slots[0].EndTime.Value.ToString("HH:mm")
+            : "";
+    }
+
+    private void OnStartTimeChanged(ChangeEventArgs e)
+    {
+        var v = e.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(v)) return;
+
+        EnsureSlot0();
+        doctor.Slots[0].StartTime = TimeOnly.Parse(v);
+    }
+
+    private void OnEndTimeChanged(ChangeEventArgs e)
+    {
+        var v = e.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(v)) return;
+
+        EnsureSlot0();
+        doctor.Slots[0].EndTime = TimeOnly.Parse(v);
+    }
+
+    private void EnsureSlot0()
+    {
+        if (doctor.Slots == null) doctor.Slots = new List<TimeSlots>();
+        if (doctor.Slots.Count == 0) doctor.Slots.Add(new TimeSlots());
+    }
+
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            if (!string.IsNullOrEmpty(ClientId))
-            {
-                if (doctor.Slots == null || doctor.Slots.Count == 0)
-                {
-                    doctor.Slots = new List<TimeSlots>()
-                    {
-                        new TimeSlots()
-                    };
-                }
-                // ✅ Fetch doctor using ClientId from URL
-                var existingDoctor = await DoctorService.GetDoctorByClientIdAsync(ClientId);
+            if (string.IsNullOrEmpty(ClientId))
+                return;
 
-                if (existingDoctor != null)
-                {
-                    doctor = existingDoctor;
-                    languagesInput = doctor.Languages != null ? string.Join(", ", doctor.Languages) : "";
-                    slotModesInput = doctor.SlotModes != null ? string.Join(", ", doctor.SlotModes) : "";
-                }
-                else
-                {
-                    Console.WriteLine($"⚠️ No doctor found for ClientId: {ClientId}");
-                }
+            // Ensure slot list exists before binding
+            EnsureSlot0();
+
+            var existingDoctor = await DoctorService.GetDoctorByClientIdAsync(ClientId);
+
+            if (existingDoctor != null)
+            {
+                doctor = existingDoctor;
+
+                // Ensure slot list exists after fetch too
+                EnsureSlot0();
+
+                languagesInput = doctor.Languages != null ? string.Join(", ", doctor.Languages) : "";
+                slotModesInput = doctor.SlotModes != null ? string.Join(", ", doctor.SlotModes) : "";
+            }
+            else
+            {
+                Console.WriteLine($"⚠️ No doctor found for ClientId: {ClientId}");
             }
         }
         catch (Exception ex)
@@ -225,6 +250,9 @@
     {
         try
         {
+            if (string.IsNullOrEmpty(ClientId))
+                return;
+
             await DoctorService.UpdateDoctorByClientIdAsync(ClientId!, doctor);
             Console.WriteLine("✅ Doctor profile updated successfully!");
             Navigation.NavigateTo("/dashboard");
@@ -235,6 +263,7 @@
         }
     }
 }
+
 <style>
     /* Center the card */
     .profile-wrapper {
@@ -289,9 +318,9 @@
         justify-content: center;
     }
 
-        .edit-avatar:hover {
-            background-color: #4720c8;
-        }
+    .edit-avatar:hover {
+        background-color: #4720c8;
+    }
 
     /* Form styling */
     .profile-form {
@@ -319,14 +348,9 @@
         transition: border 0.2s ease;
     }
 
-        .form-input:focus {
-            border-color: #5b2dfc;
-            box-shadow: 0 0 0 2px rgba(91,45,252,0.1);
-        }
-
-    .bio-textarea {
-        min-height: 80px;
-        resize: none;
+    .form-input:focus {
+        border-color: #5b2dfc;
+        box-shadow: 0 0 0 2px rgba(91,45,252,0.1);
     }
 
     /* Buttons */
@@ -355,9 +379,9 @@
         color: white;
     }
 
-        .save-btn:hover {
-            background-color: #4720c8;
-        }
+    .save-btn:hover {
+        background-color: #4720c8;
+    }
 
     .back-btn:hover {
         background-color: #e2e2e2;
