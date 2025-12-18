@@ -28,35 +28,55 @@ else
 }
 
 @code {
-    bool busy = true;
-    string error = "";
-    string? userId;
+    private bool busy = true;
+    private bool chartsRendered = false;
+    private string error = "";
+    private string? userId;
 
-    List<BPLog> bp = new();
-    List<GlucoseLog> glucose = new();
-    List<WeightLog> weight = new();
+    private List<BPLog> bp = new();
+    private List<GlucoseLog> glucose = new();
+    private List<WeightLog> weight = new();
 
-    protected override async Task OnInitializedAsync()
+    protected override Task OnInitializedAsync()
     {
-        try
-        {
-            busy = true;
-
-            userId = await JS.InvokeAsync<string?>("localStorage.getItem", "userId");
-            if (string.IsNullOrWhiteSpace(userId))
-                throw new Exception("UserId not found in localStorage. Please login again.");
-
-            bp = (await HealthApi.GetBPAsync(userId!)) ?? new();
-            glucose = (await HealthApi.GetGlucoseAsync(userId!)) ?? new();
-            weight = (await HealthApi.GetWeightAsync(userId!)) ?? new();
-        }
-        catch (Exception ex) { error = ex.Message; }
-        finally { busy = false; }
+        // Don't use JS interop here in Blazor Server
+        busy = true;
+        return Task.CompletedTask;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender || busy || !string.IsNullOrWhiteSpace(error)) return;
+        if (!firstRender) return;
+
+        try
+        {
+            userId = await JS.InvokeAsync<string?>("localStorage.getItem", "userId");
+            if (string.IsNullOrWhiteSpace(userId))
+                throw new Exception("UserId not found in localStorage. Please login again.");
+
+            bp = await HealthApi.GetBPAsync(userId) ?? new();
+            glucose = await HealthApi.GetGlucoseAsync(userId) ?? new();
+            weight = await HealthApi.GetWeightAsync(userId) ?? new();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+            StateHasChanged();
+        }
+
+        // Render charts AFTER state update
+        await Task.Yield();
+        await RenderChartsOnce();
+    }
+
+    private async Task RenderChartsOnce()
+    {
+        if (chartsRendered || busy || !string.IsNullOrWhiteSpace(error)) return;
+        chartsRendered = true;
 
         // BP
         var bpOrdered = bp.OrderBy(x => x.LoggedAt).ToList();

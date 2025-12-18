@@ -170,14 +170,16 @@
     }
 
     .sidebar {
-        width: 250px;
-        background: #2c3e50;
-        color: white;
-        display: flex;
-        flex-direction: column;
-        padding: 20px;
-        position: relative; /* so language menu anchors to sidebar */
-    }
+    width: 250px;
+    background: #2c3e50;
+    color: white;
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+    position: relative;
+    height: 100vh;
+    overflow: hidden;              /* ✅ prevents weird overflow */
+}
 
     .profile-section {
         text-align: center;
@@ -197,12 +199,15 @@
         color: #ddd;
     }
 
-    .sidebar-nav {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        margin-top: 20px;
-    }
+   .sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 20px;
+    flex: 1;                       /* ✅ take remaining space */
+    overflow-y: auto;              /* ✅ scroll if too many items */
+    padding-bottom: 12px;
+}
 
     .side-btn {
         background: transparent;
@@ -305,4 +310,11 @@
         padding: 20px;
         overflow-y: auto;
     }
+
+    .bottom-section {
+    margin-top: 0;                 /* ✅ no need for auto now */
+    padding-top: 12px;
+    border-top: 1px solid rgba(255,255,255,0.15);
+    background: #2c3e50;           /* ✅ avoids “floating” look */
+}
 </style>
