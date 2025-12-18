@@ -17,7 +17,7 @@
 @inject IExerciseService ExerciseService
 @inject IHydrationService HydrationService
 
-// 🔥 Priority-C services
+@* 🔥 Priority-C services *@
 @inject MetabolismApiService MetabolismService
 @inject IExercisePlanService ExercisePlanService
 
@@ -43,7 +43,7 @@ else if (currentClient is null)
 }
 else
 {
-    <!-- 🔥 METABOLISM SUMMARY -->
+    @* 🔥 METABOLISM SUMMARY *@
     @if (metabolism != null)
     {
         <div class="summary-card card">
@@ -79,7 +79,7 @@ else
         </div>
     }
 
-    <!-- 🔢 ENERGY SUMMARY (YOUR ORIGINAL CARD) -->
+    @* 🔢 ENERGY SUMMARY (YOUR ORIGINAL CARD) *@
     <div class="summary-card card">
         <h3>Today's Energy Summary (@selectedDate.ToString("dd MMM yyyy"))</h3>
         <p>
@@ -94,7 +94,7 @@ else
 
     <div class="dashboard-grid">
 
-        <!-- 🏋️ EXERCISE PLAN (Priority-C) -->
+        @* 🏋️ EXERCISE PLAN (Priority-C) *@
         @if (exercisePlan != null)
         {
             <div class="card">
@@ -126,7 +126,7 @@ else
             </div>
         }
 
-        <!-- 🏃 LEFT: EXERCISES (UNCHANGED CORE LOGIC) -->
+        @* 🏃 LEFT: EXERCISES (UNCHANGED CORE LOGIC) *@
         <div class="card">
             <h3>Today's Exercises</h3>
 
@@ -228,7 +228,7 @@ else
                                 </span>
                             </div>
                             <button class="btn-link danger"
-                                    @onclick="() => DeleteExerciseAsync(ex.Id)">
+                                    @onclick="() => DeleteExerciseAsync(ex.Id!)">
                                 remove
                             </button>
                         </li>
@@ -237,7 +237,7 @@ else
             }
         </div>
 
-        <!-- 💧 RIGHT: HYDRATION -->
+        @* 💧 RIGHT: HYDRATION *@
         <div class="card">
             <h3>Hydration Tracker (@selectedDate.ToString("dd MMM yyyy"))</h3>
 
@@ -326,22 +326,49 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
-        var email = auth.User.FindFirst(ClaimTypes.Email)?.Value;
+        try
+        {
+            isLoading = true;
+            errorMessage = null;
 
-        currentClient = await CService.GetClientByEmailAsync(email!);
-        currentUser = await UService.GetUserByClientIdAsync(currentClient!.Id!);
+            var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+            var email = auth.User.FindFirst(ClaimTypes.Email)?.Value
+                        ?? auth.User.FindFirst("email")?.Value;
 
-        await LoadDataAsync();
-        isLoading = false;
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                errorMessage = "Email not found. Please login again.";
+                return;
+            }
+
+            currentClient = await CService.GetClientByEmailAsync(email);
+            if (currentClient == null || string.IsNullOrWhiteSpace(currentClient.Id))
+            {
+                errorMessage = "Client profile not found.";
+                return;
+            }
+
+            currentUser = await UService.GetUserByClientIdAsync(currentClient.Id);
+
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
     }
 
     private async Task LoadDataAsync()
     {
-        mealsToday   = await MealService.GetTodayMealsAsync(currentClient!.Id!);
-        exerciseLogs = await ExerciseService.GetTodayAsync(currentClient.Id!);
+        mealsToday   = await MealService.GetTodayMealsAsync(currentClient!.Id!) ?? new();
+        exerciseLogs = await ExerciseService.GetTodayAsync(currentClient.Id!) ?? new();
         hydrationLog = await HydrationService.GetTodayAsync(currentClient.Id!);
 
+        // ✅ Priority-C
         metabolism   = await MetabolismService.GetSummaryAsync(currentClient.Id!);
         exercisePlan = await ExercisePlanService.GetTodayPlanAsync(currentClient.Id!);
 
@@ -350,20 +377,50 @@ else
     }
 
     private async Task SearchExercisesAsync()
-        => exerciseSuggestions = await ExerciseService.SearchExercisesAsync(exerciseSearch);
+    {
+        if (string.IsNullOrWhiteSpace(exerciseSearch) || exerciseSearch.Trim().Length < 2)
+        {
+            exerciseSuggestions.Clear();
+            return;
+        }
+
+        exerciseSuggestions = await ExerciseService.SearchExercisesAsync(exerciseSearch.Trim()) ?? new();
+    }
 
     private void OnSuggestionChanged(ChangeEventArgs e)
     {
-        selectedSuggestionIndex = int.Parse(e.Value!.ToString()!);
-        selectedSuggestion = exerciseSuggestions[selectedSuggestionIndex];
+        var raw = e.Value?.ToString();
+        if (!int.TryParse(raw, out var idx) || idx < 0 || idx >= exerciseSuggestions.Count)
+        {
+            selectedSuggestionIndex = -1;
+            selectedSuggestion = null;
+            exerciseForm.Name = "";
+            calculatedCaloriesBurned = 0;
+            return;
+        }
+
+        selectedSuggestionIndex = idx;
+        selectedSuggestion = exerciseSuggestions[idx];
         exerciseForm.Name = selectedSuggestion.Name;
-        calculatedCaloriesBurned =
-            selectedSuggestion.CaloriesPerMinute * int.Parse(durationText);
+
+        if (!int.TryParse(durationText?.Trim(), out var mins) || mins <= 0)
+        {
+            calculatedCaloriesBurned = 0;
+            return;
+        }
+
+        calculatedCaloriesBurned = selectedSuggestion.CaloriesPerMinute * mins;
     }
 
     private async Task AddExerciseAsync()
     {
         if (selectedSuggestion == null) return;
+
+        if (!int.TryParse(durationText?.Trim(), out var mins) || mins <= 0)
+        {
+            errorMessage = "Please enter a valid duration in minutes.";
+            return;
+        }
 
         isSavingExercise = true;
 
@@ -373,9 +430,8 @@ else
             Name = exerciseForm.Name,
             Type = exerciseForm.Type,
             Intensity = exerciseForm.Intensity,
-            DurationMinutes = int.Parse(durationText),
-            CaloriesBurned =
-                (int)(selectedSuggestion.CaloriesPerMinute * int.Parse(durationText)),
+            DurationMinutes = mins,
+            CaloriesBurned = (int)Math.Round(selectedSuggestion.CaloriesPerMinute * mins),
             Date = selectedDate,
             CreatedAt = DateTime.UtcNow
         });
@@ -398,7 +454,9 @@ else
 
     private async Task UpdateTargetAsync()
     {
+        isSavingHydration = true;
         await HydrationService.UpdateTargetAsync(currentClient!.Id!, targetMl);
         await LoadDataAsync();
+        isSavingHydration = false;
     }
 }

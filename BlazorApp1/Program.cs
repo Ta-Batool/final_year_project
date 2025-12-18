@@ -193,6 +193,10 @@ builder.Services.AddHttpClient("Api", c =>
     c.BaseAddress = new Uri(apiBaseUrl);
 });
 
+builder.Services.AddScoped<IExercisePlanService, ExercisePlanService>();
+
+builder.Services.AddScoped<MetabolismApiService>();
+
 builder.Services.AddScoped(sp =>
     sp.GetRequiredService<IHttpClientFactory>().CreateClient("Api"));
 
