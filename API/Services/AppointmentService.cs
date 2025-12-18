@@ -2,6 +2,7 @@
 using Model;
 using Microsoft.Extensions.Options;
 using API.MongoModel; // Your MongoDBSettings class
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -41,6 +42,30 @@ namespace API.Services
         public async Task<List<Appointment>> GetByDoctorIdAsync(string doctorId)
         {
             return await _appointments.Find(a => a.DoctorId == doctorId).ToListAsync();
+        }
+
+        // ✅ NEW: Get all doctor appointments for a specific DATE (used by availability)
+        public async Task<List<Appointment>> GetByDoctorAndDateAsync(string doctorId, DateTime date)
+        {
+            var start = date.Date;
+            var end = start.AddDays(1);
+
+            return await _appointments.Find(a =>
+                a.DoctorId == doctorId &&
+                a.Start >= start &&
+                a.Start < end
+            ).ToListAsync();
+        }
+
+        // ✅ NEW: check if doctor has any overlap in a time range (used by booking)
+        public async Task<bool> HasOverlapAsync(string doctorId, DateTime start, DateTime end)
+        {
+            return await _appointments.Find(a =>
+                a.DoctorId == doctorId &&
+                a.Status != "Cancelled" &&
+                a.Start < end &&
+                a.End > start
+            ).AnyAsync();
         }
 
         // ✅ Create new appointment
