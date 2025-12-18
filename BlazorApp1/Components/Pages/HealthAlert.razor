@@ -2,12 +2,10 @@
 @attribute [Authorize]
 @layout BlazorApp1.Components.Layout.UserDashboardLayout
 
-
 @using Microsoft.AspNetCore.Authorization
 @using BlazorApp1.Service
 @using Model
-@inject AuthenticationStateProvider AuthStateProvider
-@inject ClientApiService ClientApi
+@inject IJSRuntime JS
 @inject HealthApiService HealthApi
 
 <h2>🚨 Health Alerts</h2>
@@ -22,9 +20,7 @@ else if (!string.IsNullOrWhiteSpace(error))
 }
 else if (alerts.Count == 0)
 {
-    <div class="ok-card">
-        ✅ No abnormal readings found in latest logs.
-    </div>
+    <div class="ok-card">✅ No abnormal readings found in latest logs.</div>
 }
 else
 {
@@ -34,7 +30,7 @@ else
             <div class="alert-card @a.SeverityClass">
                 <div class="title">
                     <strong>@a.Title</strong>
-                    <span class="time">@a.Time.ToString("yyyy-MM-dd hh:mm tt")</span>
+                    <span class="time">@a.Time.ToLocalTime().ToString("yyyy-MM-dd hh:mm tt")</span>
                 </div>
                 <div class="msg">@a.Message</div>
             </div>
@@ -49,14 +45,13 @@ else
 
     List<AlertItem> alerts = new();
 
-    // --- thresholds (you can tune later) ---
     const int BP_SYS_HIGH = 140;
     const int BP_DIA_HIGH = 90;
 
-    const int GLUCOSE_HIGH = 180;     // mg/dL
+    const int GLUCOSE_HIGH = 180;
     const int GLUCOSE_LOW = 70;
 
-    const double WEIGHT_SPIKE_KG = 2.0; // sudden change
+    const double WEIGHT_SPIKE_KG = 2.0;
 
     protected override async Task OnInitializedAsync()
     {
@@ -64,68 +59,39 @@ else
         {
             busy = true;
 
-            var auth = await AuthStateProvider.GetAuthenticationStateAsync();
-            var email = auth.User?.Claims?.FirstOrDefault(c => c.Type.Contains("email"))?.Value;
-
-            var client = await ClientApi.GetClientByEmailAsync(email!);
-            userId = client?.UserId ?? client?.Id;
-
+            userId = await JS.InvokeAsync<string?>("localStorage.getItem", "userId");
             if (string.IsNullOrWhiteSpace(userId))
-                throw new Exception("UserId not found.");
+                throw new Exception("UserId not found in localStorage. Please login again.");
 
-            // Load latest logs
-            var bp = (await HealthApi.GetBPAsync(userId)) ?? new();
-            var g  = (await HealthApi.GetGlucoseAsync(userId)) ?? new();
-            var w  = (await HealthApi.GetWeightAsync(userId)) ?? new();
+            var bp = (await HealthApi.GetBPAsync(userId!)) ?? new();
+            var g  = (await HealthApi.GetGlucoseAsync(userId!)) ?? new();
+            var w  = (await HealthApi.GetWeightAsync(userId!)) ?? new();
 
-            // We assume API returns latest first. If not, sort:
             bp = bp.OrderByDescending(x => x.LoggedAt).ToList();
             g  = g.OrderByDescending(x => x.LoggedAt).ToList();
             w  = w.OrderByDescending(x => x.LoggedAt).ToList();
 
-            // ---- BP alert (latest entry) ----
             var latestBp = bp.FirstOrDefault();
-            if (latestBp != null)
+            if (latestBp != null && (latestBp.Systolic >= BP_SYS_HIGH || latestBp.Diastolic >= BP_DIA_HIGH))
             {
-                if (latestBp.Systolic >= BP_SYS_HIGH || latestBp.Diastolic >= BP_DIA_HIGH)
+                alerts.Add(new AlertItem
                 {
-                    alerts.Add(new AlertItem
-                    {
-                        Title = "High Blood Pressure",
-                        Message = $"BP is {latestBp.Systolic}/{latestBp.Diastolic}. (Threshold {BP_SYS_HIGH}/{BP_DIA_HIGH})",
-                        Time = latestBp.LoggedAt,
-                        Severity = "danger"
-                    });
-                }
+                    Title = "High Blood Pressure",
+                    Message = $"BP is {latestBp.Systolic}/{latestBp.Diastolic}. (Threshold {BP_SYS_HIGH}/{BP_DIA_HIGH})",
+                    Time = latestBp.LoggedAt,
+                    Severity = "danger"
+                });
             }
 
-            // ---- Glucose alert (latest entry) ----
             var latestG = g.FirstOrDefault();
             if (latestG != null)
             {
                 if (latestG.Value >= GLUCOSE_HIGH)
-                {
-                    alerts.Add(new AlertItem
-                    {
-                        Title = "High Glucose",
-                        Message = $"Glucose is {latestG.Value}. (High ≥ {GLUCOSE_HIGH})",
-                        Time = latestG.LoggedAt,
-                        Severity = "danger"
-                    });
-                }
+                    alerts.Add(new AlertItem { Title="High Glucose", Message=$"Glucose is {latestG.Value}. (High ≥ {GLUCOSE_HIGH})", Time=latestG.LoggedAt, Severity="danger" });
                 else if (latestG.Value <= GLUCOSE_LOW)
-                {
-                    alerts.Add(new AlertItem
-                    {
-                        Title = "Low Glucose",
-                        Message = $"Glucose is {latestG.Value}. (Low ≤ {GLUCOSE_LOW})",
-                        Time = latestG.LoggedAt,
-                        Severity = "warn"
-                    });
-                }
+                    alerts.Add(new AlertItem { Title="Low Glucose", Message=$"Glucose is {latestG.Value}. (Low ≤ {GLUCOSE_LOW})", Time=latestG.LoggedAt, Severity="warn" });
             }
 
-            // ---- Weight spike alert (compare latest 2) ----
             if (w.Count >= 2)
             {
                 var latestW = w[0];
@@ -144,17 +110,10 @@ else
                 }
             }
 
-            // newest alerts first
             alerts = alerts.OrderByDescending(a => a.Time).ToList();
         }
-        catch (Exception ex)
-        {
-            error = ex.Message;
-        }
-        finally
-        {
-            busy = false;
-        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { busy = false; }
     }
 
     class AlertItem
@@ -163,53 +122,17 @@ else
         public string Message { get; set; } = "";
         public DateTime Time { get; set; }
         public string Severity { get; set; } = "warn";
-
         public string SeverityClass => Severity == "danger" ? "danger" : "warn";
     }
 }
 
 <style>
-    .ok-card{
-        background:#ecfdf5;
-        border:1px solid #a7f3d0;
-        padding:12px;
-        border-radius:10px;
-        max-width:900px;
-    }
-
-    .alerts{
-        display:flex;
-        flex-direction:column;
-        gap:10px;
-        max-width:900px;
-    }
-
-    .alert-card{
-        background:#fff;
-        border-radius:12px;
-        padding:12px;
-        box-shadow:0 2px 8px rgba(0,0,0,0.08);
-        border-left: 6px solid #f59e0b;
-    }
-
-    .alert-card.danger{
-        border-left-color:#ef4444;
-    }
-    .alert-card.warn{
-        border-left-color:#f59e0b;
-    }
-
-    .title{
-        display:flex;
-        justify-content:space-between;
-        align-items:center;
-    }
-    .time{
-        font-size:12px;
-        color:#666;
-    }
-    .msg{
-        margin-top:6px;
-        color:#222;
-    }
+    .ok-card{ background:#ecfdf5; border:1px solid #a7f3d0; padding:12px; border-radius:10px; max-width:900px; }
+    .alerts{ display:flex; flex-direction:column; gap:10px; max-width:900px; }
+    .alert-card{ background:#fff; border-radius:12px; padding:12px; box-shadow:0 2px 8px rgba(0,0,0,0.08); border-left:6px solid #f59e0b; }
+    .alert-card.danger{ border-left-color:#ef4444; }
+    .alert-card.warn{ border-left-color:#f59e0b; }
+    .title{ display:flex; justify-content:space-between; align-items:center; }
+    .time{ font-size:12px; color:#666; }
+    .msg{ margin-top:6px; color:#222; }
 </style>

@@ -5,8 +5,7 @@
 @using Microsoft.AspNetCore.Authorization
 @using BlazorApp1.Service
 @using Model
-@inject AuthenticationStateProvider AuthStateProvider
-@inject ClientApiService ClientApi
+@inject IJSRuntime JS
 @inject HealthApiService HealthApi
 
 <h2>📒 Health Logs</h2>
@@ -202,23 +201,19 @@ else
     private string error = "";
     private string? userId;
 
-    // Lists (Model classes)
     private List<BPLog> bpLogs = new();
     private List<GlucoseLog> glucoseLogs = new();
     private List<WeightLog> weightLogs = new();
 
-    // BP form
     private int bpSystolic = 120;
     private int bpDiastolic = 80;
     private int? bpPulse = null;
     private string bpNotes = "";
 
-    // Glucose form
     private int glucoseValue = 90;
     private string glucoseType = "Fasting";
     private string glucoseNotes = "";
 
-    // Weight form
     private double weightVal = 70;
     private double? weightBodyFat = null;
     private string weightNotes = "";
@@ -229,16 +224,10 @@ else
         {
             busy = true;
 
-            // ✅ consistent userId resolution (same as HealthAlert/HealthCharts)
-            var auth = await AuthStateProvider.GetAuthenticationStateAsync();
-            var email = auth.User?.Claims?.FirstOrDefault(c => c.Type.Contains("email"))?.Value;
-
-            var client = await ClientApi.GetClientByEmailAsync(email!);
-            userId = client?.UserId ?? client?.Id;
-
+            userId = await JS.InvokeAsync<string?>("localStorage.getItem", "userId");
             if (string.IsNullOrWhiteSpace(userId))
             {
-                error = "UserId not found. Please login again.";
+                error = "UserId not found in localStorage. Please login again.";
                 return;
             }
 
@@ -263,8 +252,6 @@ else
         {
             busyAction = true;
             error = "";
-
-            if (string.IsNullOrWhiteSpace(userId)) throw new Exception("Missing userId");
 
             await HealthApi.AddBPAsync(new BPLog
             {
@@ -292,8 +279,6 @@ else
             busyAction = true;
             error = "";
 
-            if (string.IsNullOrWhiteSpace(userId)) throw new Exception("Missing userId");
-
             await HealthApi.AddGlucoseAsync(new GlucoseLog
             {
                 UserId = userId!,
@@ -317,8 +302,6 @@ else
         {
             busyAction = true;
             error = "";
-
-            if (string.IsNullOrWhiteSpace(userId)) throw new Exception("Missing userId");
 
             await HealthApi.AddWeightAsync(new WeightLog
             {

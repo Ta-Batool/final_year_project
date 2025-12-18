@@ -2,14 +2,10 @@
 @attribute [Authorize]
 @layout BlazorApp1.Components.Layout.UserDashboardLayout
 
-
 @using Microsoft.AspNetCore.Authorization
 @using BlazorApp1.Service
 @using Model
 @inject IJSRuntime JS
-
-@inject AuthenticationStateProvider AuthStateProvider
-@inject ClientApiService ClientApi
 @inject HealthApiService HealthApi
 
 <h2>📊 Health Charts</h2>
@@ -25,24 +21,15 @@ else if (!string.IsNullOrWhiteSpace(error))
 else
 {
     <div class="grid">
-        <div class="card">
-            <canvas id="bpChart"></canvas>
-        </div>
-
-        <div class="card">
-            <canvas id="glucoseChart"></canvas>
-        </div>
-
-        <div class="card">
-            <canvas id="weightChart"></canvas>
-        </div>
+        <div class="card"><canvas id="bpChart"></canvas></div>
+        <div class="card"><canvas id="glucoseChart"></canvas></div>
+        <div class="card"><canvas id="weightChart"></canvas></div>
     </div>
 }
 
 @code {
     bool busy = true;
     string error = "";
-
     string? userId;
 
     List<BPLog> bp = new();
@@ -55,40 +42,24 @@ else
         {
             busy = true;
 
-            // ✅ resolve current userId using your existing pattern
-            var auth = await AuthStateProvider.GetAuthenticationStateAsync();
-            var email = auth.User?.Claims?.FirstOrDefault(c => c.Type.Contains("email"))?.Value;
-
-            var client = await ClientApi.GetClientByEmailAsync(email!);
-            userId = client?.UserId ?? client?.Id;
-
+            userId = await JS.InvokeAsync<string?>("localStorage.getItem", "userId");
             if (string.IsNullOrWhiteSpace(userId))
-                throw new Exception("UserId not found.");
+                throw new Exception("UserId not found in localStorage. Please login again.");
 
-            // ✅ fetch logs (latest first, we will reverse for chart)
-            bp = (await HealthApi.GetBPAsync(userId)) ?? new();
-            glucose = (await HealthApi.GetGlucoseAsync(userId)) ?? new();
-            weight = (await HealthApi.GetWeightAsync(userId)) ?? new();
+            bp = (await HealthApi.GetBPAsync(userId!)) ?? new();
+            glucose = (await HealthApi.GetGlucoseAsync(userId!)) ?? new();
+            weight = (await HealthApi.GetWeightAsync(userId!)) ?? new();
         }
-        catch (Exception ex)
-        {
-            error = ex.Message;
-        }
-        finally
-        {
-            busy = false;
-        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { busy = false; }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender) return;
-        if (busy) return;
-        if (!string.IsNullOrWhiteSpace(error)) return;
+        if (!firstRender || busy || !string.IsNullOrWhiteSpace(error)) return;
 
-        // ---- BP Chart ----
         var bpOrdered = bp.OrderBy(x => x.LoggedAt).ToList();
-        var bpLabels = bpOrdered.Select(x => x.LoggedAt.ToString("MM-dd HH:mm")).ToList();
+        var bpLabels = bpOrdered.Select(x => x.LoggedAt.ToLocalTime().ToString("MM-dd HH:mm")).ToList();
         var systolic = bpOrdered.Select(x => (double)x.Systolic).ToList();
         var diastolic = bpOrdered.Select(x => (double)x.Diastolic).ToList();
 
@@ -102,9 +73,8 @@ else
                 new { label = "Diastolic", data = diastolic, tension = 0.25 }
             });
 
-        // ---- Glucose Chart ----
         var gOrdered = glucose.OrderBy(x => x.LoggedAt).ToList();
-        var gLabels = gOrdered.Select(x => x.LoggedAt.ToString("MM-dd HH:mm")).ToList();
+        var gLabels = gOrdered.Select(x => x.LoggedAt.ToLocalTime().ToString("MM-dd HH:mm")).ToList();
         var gVals = gOrdered.Select(x => (double)x.Value).ToList();
 
         await JS.InvokeVoidAsync("healthCharts.renderLineChart",
@@ -116,9 +86,8 @@ else
                 new { label = "Glucose", data = gVals, tension = 0.25 }
             });
 
-        // ---- Weight Chart ----
         var wOrdered = weight.OrderBy(x => x.LoggedAt).ToList();
-        var wLabels = wOrdered.Select(x => x.LoggedAt.ToString("MM-dd HH:mm")).ToList();
+        var wLabels = wOrdered.Select(x => x.LoggedAt.ToLocalTime().ToString("MM-dd HH:mm")).ToList();
         var wVals = wOrdered.Select(x => (double)x.Value).ToList();
 
         await JS.InvokeVoidAsync("healthCharts.renderLineChart",
@@ -133,16 +102,6 @@ else
 }
 
 <style>
-    .grid{
-        display:grid;
-        grid-template-columns: 1fr;
-        gap: 14px;
-        max-width: 1000px;
-    }
-    .card{
-        background:#fff;
-        border-radius:12px;
-        padding:14px;
-        box-shadow:0 2px 8px rgba(0,0,0,0.08);
-    }
+    .grid{ display:grid; grid-template-columns: 1fr; gap: 14px; max-width: 1000px; }
+    .card{ background:#fff; border-radius:12px; padding:14px; box-shadow:0 2px 8px rgba(0,0,0,0.08); }
 </style>
