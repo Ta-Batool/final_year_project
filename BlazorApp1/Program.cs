@@ -75,6 +75,11 @@ var apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? "http://localhost:5092/"
 // ─── Domain services (typed HttpClients) ────────────────────────────────────────
 builder.Services.AddScoped<BlazorApp1.Service.DoctorPatientsApiService>();
 
+builder.Services.AddHttpClient<HealthApiService>(client =>
+{
+    client.BaseAddress = new Uri("ApiBaseUrl");
+});
+
 builder.Services.AddHttpClient<IDService, DService>(c =>
 {
     c.BaseAddress = new Uri(apiBaseUrl);

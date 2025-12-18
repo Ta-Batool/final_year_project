@@ -3,11 +3,10 @@
 @layout BlazorApp1.Components.Layout.UserDashboardLayout
 
 @using Microsoft.AspNetCore.Authorization
+@using BlazorApp1.Service
 @using Model
 @inject IJSRuntime JS
-@inject BPLogApiService BPApi
-@inject GlucoseLogApiService GlucoseApi
-@inject WeightLogApiService WeightApi
+@inject HealthApiService HealthApi
 
 <h2>📊 Health Charts</h2>
 
@@ -22,9 +21,9 @@ else if (!string.IsNullOrWhiteSpace(error))
 else
 {
     <div class="grid">
-        <div class="card"><canvas id="bpChart"></canvas></div>
-        <div class="card"><canvas id="glucoseChart"></canvas></div>
-        <div class="card"><canvas id="weightChart"></canvas></div>
+        <div class="card"><h5>Blood Pressure</h5><canvas id="bpChart"></canvas></div>
+        <div class="card"><h5>Glucose</h5><canvas id="glucoseChart"></canvas></div>
+        <div class="card"><h5>Weight</h5><canvas id="weightChart"></canvas></div>
     </div>
 }
 
@@ -41,13 +40,15 @@ else
     {
         try
         {
+            busy = true;
+
             userId = await JS.InvokeAsync<string?>("localStorage.getItem", "userId");
             if (string.IsNullOrWhiteSpace(userId))
-                throw new Exception("UserId not found.");
+                throw new Exception("UserId not found in localStorage. Please login again.");
 
-            bp = await BPApi.GetByUserAsync(userId) ?? new();
-            glucose = await GlucoseApi.GetByUserAsync(userId) ?? new();
-            weight = await WeightApi.GetByUserAsync(userId) ?? new();
+            bp = (await HealthApi.GetBPAsync(userId!)) ?? new();
+            glucose = (await HealthApi.GetGlucoseAsync(userId!)) ?? new();
+            weight = (await HealthApi.GetWeightAsync(userId!)) ?? new();
         }
         catch (Exception ex) { error = ex.Message; }
         finally { busy = false; }
@@ -57,16 +58,54 @@ else
     {
         if (!firstRender || busy || !string.IsNullOrWhiteSpace(error)) return;
 
+        // BP
+        var bpOrdered = bp.OrderBy(x => x.LoggedAt).ToList();
+        var bpLabels = bpOrdered.Select(x => x.LoggedAt.ToLocalTime().ToString("MM-dd HH:mm")).ToList();
+        var systolic = bpOrdered.Select(x => (double)x.Systolic).ToList();
+        var diastolic = bpOrdered.Select(x => (double)x.Diastolic).ToList();
+
+        await JS.InvokeVoidAsync("healthCharts.renderLineChart",
+            "bpChart",
+            "Blood Pressure (Systolic/Diastolic)",
+            bpLabels,
+            new object[]
+            {
+                new { label = "Systolic", data = systolic, tension = 0.25 },
+                new { label = "Diastolic", data = diastolic, tension = 0.25 }
+            });
+
+        // Glucose
+        var gOrdered = glucose.OrderBy(x => x.LoggedAt).ToList();
+        var gLabels = gOrdered.Select(x => x.LoggedAt.ToLocalTime().ToString("MM-dd HH:mm")).ToList();
+        var gVals = gOrdered.Select(x => (double)x.ValueMgDl).ToList();
+
         await JS.InvokeVoidAsync("healthCharts.renderLineChart",
             "glucoseChart",
-            "Glucose",
-            glucose.OrderBy(x => x.LoggedAt).Select(x => x.LoggedAt.ToString("MM-dd")).ToList(),
-            new[] { new { label = "Glucose", data = glucose.Select(x => (double)x.ValueMgDl) } });
+            "Glucose (mg/dL)",
+            gLabels,
+            new object[]
+            {
+                new { label = "Glucose", data = gVals, tension = 0.25 }
+            });
+
+        // Weight
+        var wOrdered = weight.OrderBy(x => x.LoggedAt).ToList();
+        var wLabels = wOrdered.Select(x => x.LoggedAt.ToLocalTime().ToString("MM-dd HH:mm")).ToList();
+        var wVals = wOrdered.Select(x => (double)x.WeightKg).ToList();
 
         await JS.InvokeVoidAsync("healthCharts.renderLineChart",
             "weightChart",
-            "Weight",
-            weight.OrderBy(x => x.LoggedAt).Select(x => x.LoggedAt.ToString("MM-dd")).ToList(),
-            new[] { new { label = "Weight", data = weight.Select(x => x.WeightKg) } });
+            "Weight (kg)",
+            wLabels,
+            new object[]
+            {
+                new { label = "Weight", data = wVals, tension = 0.25 }
+            });
     }
 }
+
+<style>
+    .grid{ display:grid; grid-template-columns: 1fr; gap: 14px; max-width: 1000px; }
+    .card{ background:#fff; border-radius:12px; padding:14px; box-shadow:0 2px 8px rgba(0,0,0,0.08); }
+    h5{ margin:0 0 10px 0; font-weight:600; }
+</style>
