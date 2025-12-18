@@ -3,7 +3,6 @@
 @layout UserDashboardLayout
 
 @using Microsoft.AspNetCore.Authorization
-@using BlazorApp1.Components.Layout
 @using BlazorApp1.Service
 @using Model
 @inject IJSRuntime JS
@@ -29,7 +28,7 @@ else
 
         <div class="form-group">
             <label>Select Date</label>
-            <input type="date" class="form-control" @bind="dateStr" />
+            <input type="date" class="form-control" value="@dateStr" @onchange="OnDateChanged" />
         </div>
 
         <div class="form-group">
@@ -92,12 +91,19 @@ else
     private string notes = "";
 
     private DateTime selectedDate = DateTime.Today;
+
     private AvailabilityResponseDto? availability;
 
-    private string dateStr
+    private string dateStr => selectedDate.ToString("yyyy-MM-dd");
+
+    private void OnDateChanged(ChangeEventArgs e)
     {
-        get => selectedDate.ToString("yyyy-MM-dd");
-        set => selectedDate = DateTime.Parse(value);
+        var v = e.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(v) && DateTime.TryParse(v, out var d))
+        {
+            selectedDate = d.Date;
+            availability = null; // reset slots when date changes
+        }
     }
 
     protected override async Task OnInitializedAsync()
@@ -111,6 +117,7 @@ else
                 return;
             }
 
+            // Optional: show doctor name
             var doc = await DoctorService.GetDoctorByIdAsync(DoctorId);
             if (doc != null && !string.IsNullOrWhiteSpace(doc.Name))
                 doctorName = doc.Name!;
@@ -131,6 +138,8 @@ else
         {
             error = "";
             busy = true;
+
+            // ✅ PASS DateTime, NOT string
             availability = await ApptApi.GetAvailabilityAsync(DoctorId, selectedDate, slotMinutes);
         }
         catch (Exception ex)
@@ -163,7 +172,7 @@ else
 
             await ApptApi.BookAsync(req);
 
-            // ✅ Your patient appointments page route is /my-appointments
+            // ✅ Your patient appointments page route:
             Nav.NavigateTo("/my-appointments", forceLoad: true);
         }
         catch (Exception ex)
