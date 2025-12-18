@@ -10,17 +10,27 @@ using Microsoft.Extensions.Hosting;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Razor / Blazor
+//
+// ─────────────────────────────────────────────────────────────
+// Razor + Blazor Server
+// ─────────────────────────────────────────────────────────────
+//
 builder.Services.AddRazorPages()
     .WithRazorPagesRoot("/Components/Pages");
 
-builder.Services.AddServerSideBlazor();
-builder.Services.AddScoped<HealthApiService>();
-builder.Services.AddScoped<GlucoseLogApiService>();
-builder.Services.AddScoped<WeightLogApiService>();
+builder.Services
+    .AddServerSideBlazor()
+    .AddCircuitOptions(o =>
+    {
+        // 🔍 CRITICAL: shows real exception instead of killing circuit silently
+        o.DetailedErrors = true;
+    });
 
-
-// 🔐 Authentication + Google OAuth
+//
+// ─────────────────────────────────────────────────────────────
+// 🔐 Authentication (Cookies + Google OAuth)
+// ─────────────────────────────────────────────────────────────
+//
 builder.Services
     .AddAuthentication(options =>
     {
@@ -31,6 +41,7 @@ builder.Services
     {
         options.LoginPath = "/login-google";
         options.LogoutPath = "/logout";
+        options.Cookie.Name = ".FypAuth";
 
         if (builder.Environment.IsDevelopment())
         {
@@ -42,16 +53,14 @@ builder.Services
             options.Cookie.SameSite = SameSiteMode.None;
             options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
         }
-
-        options.Cookie.Name = ".FypAuth";
     })
     .AddGoogle(options =>
     {
         options.ClientId = builder.Configuration["Authentication:Google:ClientId"] ?? "";
         options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"] ?? "";
         options.CallbackPath = "/google-callback";
-
         options.SaveTokens = true;
+
         options.ClaimActions.MapJsonKey("urn:google:picture", "picture", "url");
 
         if (builder.Environment.IsDevelopment())
@@ -67,17 +76,39 @@ builder.Services
     });
 
 builder.Services.AddAuthorization();
-builder.Services.AddScoped<BlazorApp1.Service.AppointmentApiService>();
 
-// 🌐 API base URL  (make sure this points to your API service on Render in production)
-var apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? "http://localhost:5092/";
+//
+// ─────────────────────────────────────────────────────────────
+// 🌐 API BASE URL  (THIS WAS BROKEN BEFORE ❌)
+// ─────────────────────────────────────────────────────────────
+//
+var apiBaseUrl =
+    builder.Configuration["ApiBaseUrl"]
+    ?? "http://localhost:5092/"; // local backend
 
-// ─── Domain services (typed HttpClients) ────────────────────────────────────────
-builder.Services.AddScoped<BlazorApp1.Service.DoctorPatientsApiService>();
+//
+// ─────────────────────────────────────────────────────────────
+// 🧠 Domain Services (DI)
+// ─────────────────────────────────────────────────────────────
+//
+builder.Services.AddScoped<HealthApiService>();
+builder.Services.AddScoped<GlucoseLogApiService>();
+builder.Services.AddScoped<WeightLogApiService>();
+builder.Services.AddScoped<AppointmentApiService>();
+builder.Services.AddScoped<DoctorPatientsApiService>();
 
-builder.Services.AddHttpClient<HealthApiService>(client =>
+//
+// ─────────────────────────────────────────────────────────────
+// ✅ Typed HttpClients (FIXED BaseAddress)
+// ─────────────────────────────────────────────────────────────
+//
+
+// ❌ BEFORE: new Uri("ApiBaseUrl")  ← WRONG (string literal)
+// ✅ NOW:    new Uri(apiBaseUrl)
+
+builder.Services.AddHttpClient<HealthApiService>(c =>
 {
-    client.BaseAddress = new Uri("ApiBaseUrl");
+    c.BaseAddress = new Uri(apiBaseUrl);
 });
 
 builder.Services.AddHttpClient<IDService, DService>(c =>
@@ -120,60 +151,63 @@ builder.Services.AddHttpClient<IMedicationService, MedicationService>(c =>
     c.BaseAddress = new Uri(apiBaseUrl);
 });
 
-// 📨 Chat / Messages API client  ✅ NEW
 builder.Services.AddHttpClient<MessageClientService>(c =>
 {
     c.BaseAddress = new Uri(apiBaseUrl);
-});
-
-
-// 🔁 TRANSLATION SERVICE (Google Cloud)
-builder.Services.AddHttpClient<ITranslationService, TranslationService>();
-
-// Fallback HttpClient (for any direct HttpClient injection)
-builder.Services.AddScoped(sp => new HttpClient
-{
-    BaseAddress = new Uri(apiBaseUrl)
 });
 
 builder.Services.AddHttpClient<ConversationClientService>(c =>
 {
     c.BaseAddress = new Uri(apiBaseUrl);
 });
-builder.Services.AddHttpClient<ICalorieNinjaService, CalorieNinjaService>(client =>
-{
-    client.BaseAddress = new Uri("https://api.nal.usda.gov/fdc/v1/");
-});
-
-// Generic HttpClient pointing to API for misc calls (like AI chat)
-builder.Services.AddHttpClient("Api", client =>
-{
-    client.BaseAddress = new Uri(apiBaseUrl);
-});
-
-builder.Services.AddScoped(sp =>
-    sp.GetRequiredService<IHttpClientFactory>().CreateClient("Api"));
 
 builder.Services.AddHttpClient<IExerciseService, ExerciseService>(c =>
 {
     c.BaseAddress = new Uri(apiBaseUrl);
 });
 
-
 builder.Services.AddHttpClient<IHydrationService, HydrationService>(c =>
 {
     c.BaseAddress = new Uri(apiBaseUrl);
 });
 
+//
+// ─────────────────────────────────────────────────────────────
+// 🧾 External APIs
+// ─────────────────────────────────────────────────────────────
+//
+builder.Services.AddHttpClient<ITranslationService, TranslationService>();
 
+builder.Services.AddHttpClient<ICalorieNinjaService, CalorieNinjaService>(c =>
+{
+    c.BaseAddress = new Uri("https://api.nal.usda.gov/fdc/v1/");
+});
 
+//
+// ─────────────────────────────────────────────────────────────
+// 🔁 Generic HttpClient (fallback)
+// ─────────────────────────────────────────────────────────────
+//
+builder.Services.AddHttpClient("Api", c =>
+{
+    c.BaseAddress = new Uri(apiBaseUrl);
+});
 
+builder.Services.AddScoped(sp =>
+    sp.GetRequiredService<IHttpClientFactory>().CreateClient("Api"));
+
+//
+// ─────────────────────────────────────────────────────────────
+// 🚀 APP PIPELINE
+// ─────────────────────────────────────────────────────────────
+//
 var app = builder.Build();
 
-// Forwarded headers (Render / reverse proxy)
 app.UseForwardedHeaders(new ForwardedHeadersOptions
 {
-    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+    ForwardedHeaders =
+        ForwardedHeaders.XForwardedFor |
+        ForwardedHeaders.XForwardedProto
 });
 
 if (!app.Environment.IsDevelopment())
@@ -191,40 +225,62 @@ app.UseAuthorization();
 
 app.MapBlazorHub();
 
-// 🔁 TRANSLATION API ENDPOINT
-app.MapPost("/api/translate", async (TranslateRequest req, ITranslationService translator) =>
+//
+// ─────────────────────────────────────────────────────────────
+// 🌍 Minimal API Endpoints
+// ─────────────────────────────────────────────────────────────
+//
+app.MapPost("/api/translate", async (
+    TranslateRequest req,
+    ITranslationService translator) =>
 {
-    var translated = await translator.TranslateAsync(req.TargetLanguage, req.Texts.ToArray());
+    var translated = await translator.TranslateAsync(
+        req.TargetLanguage,
+        req.Texts.ToArray()
+    );
+
     return Results.Ok(new { texts = translated });
 });
 
-app.MapFallbackToPage("/_Host");
-
+//
+// ─────────────────────────────────────────────────────────────
 // OAuth endpoints
-app.MapGet("/login-google", async (HttpContext context) =>
+// ─────────────────────────────────────────────────────────────
+//
+app.MapGet("/login-google", async (HttpContext ctx) =>
 {
-    await context.ChallengeAsync(GoogleDefaults.AuthenticationScheme, new AuthenticationProperties
-    {
-        RedirectUri = "/google-callback"
-    });
+    await ctx.ChallengeAsync(
+        GoogleDefaults.AuthenticationScheme,
+        new AuthenticationProperties
+        {
+            RedirectUri = "/google-callback"
+        });
 });
 
-app.MapGet("/register-google", async (HttpContext httpContext) =>
+app.MapGet("/register-google", async (HttpContext ctx) =>
 {
-    await httpContext.ChallengeAsync(GoogleDefaults.AuthenticationScheme, new AuthenticationProperties
-    {
-        RedirectUri = "/dashboard?registered=true"
-    });
+    await ctx.ChallengeAsync(
+        GoogleDefaults.AuthenticationScheme,
+        new AuthenticationProperties
+        {
+            RedirectUri = "/dashboard?registered=true"
+        });
 });
 
-app.MapGet("/logout", async (HttpContext context) =>
+app.MapGet("/logout", async (HttpContext ctx) =>
 {
-    await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-    context.Response.Redirect("/");
+    await ctx.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    ctx.Response.Redirect("/");
 });
 
+app.MapFallbackToPage("/_Host");
 app.Run();
 
+//
+// ─────────────────────────────────────────────────────────────
+// DTOs
+// ─────────────────────────────────────────────────────────────
+//
 public class TranslateRequest
 {
     public string TargetLanguage { get; set; } = "ur";

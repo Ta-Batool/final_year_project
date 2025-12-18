@@ -16,9 +16,9 @@
 }
 
 <div class="tabs">
-    <button class="tab-btn @(tab=="bp" ? "active" : "")" @onclick='() => tab = "bp"'>BP</button>
-    <button class="tab-btn @(tab=="glucose" ? "active" : "")" @onclick='() => tab = "glucose"'>Glucose</button>
-    <button class="tab-btn @(tab=="weight" ? "active" : "")" @onclick='() => tab = "weight"'>Weight</button>
+    <button class="tab-btn @(tab=="bp" ? "active" : "")" @onclick='() => SwitchTab("bp")'>BP</button>
+    <button class="tab-btn @(tab=="glucose" ? "active" : "")" @onclick='() => SwitchTab("glucose")'>Glucose</button>
+    <button class="tab-btn @(tab=="weight" ? "active" : "")" @onclick='() => SwitchTab("weight")'>Weight</button>
 </div>
 
 @if (busy)
@@ -27,157 +27,345 @@
 }
 else
 {
-    @if (tab == "bp")
+    @if (string.IsNullOrWhiteSpace(userId))
     {
-        <div class="card">
-            <h4>Add BP Log</h4>
-
-            <div class="grid">
-                <input type="number" class="form-control" placeholder="Systolic" @bind="bpSystolic" />
-                <input type="number" class="form-control" placeholder="Diastolic" @bind="bpDiastolic" />
-                <input type="number" class="form-control" placeholder="Pulse (optional)" @bind="bpPulse" />
-                <input class="form-control" placeholder="Notes" @bind="bpNotes" />
-            </div>
-
-            <button class="btn-primary" @onclick="AddBP">Save BP</button>
-        </div>
+        <p class="text-muted">You are not logged in (missing userId).</p>
     }
-
-    else if (tab == "glucose")
+    else
     {
-        <div class="card">
-            <h4>Add Glucose Log</h4>
+        @if (tab == "bp")
+        {
+            <div class="card">
+                <h4>Add BP Log</h4>
 
-            <div class="grid">
-                <input type="number" class="form-control" placeholder="Value (mg/dL)" @bind="glucoseValue" />
-                <select class="form-control" @bind="glucoseType">
-                    <option>Fasting</option>
-                    <option>Random</option>
-                    <option>PostMeal</option>
-                </select>
-                <input class="form-control" placeholder="Notes" @bind="glucoseNotes" />
+                <div class="grid">
+                    <input type="number" class="form-control" placeholder="Systolic" @bind="bpSystolic" />
+                    <input type="number" class="form-control" placeholder="Diastolic" @bind="bpDiastolic" />
+                    <input type="number" class="form-control" placeholder="Pulse (optional)" @bind="bpPulse" />
+                    <input class="form-control" placeholder="Notes" @bind="bpNotes" />
+                </div>
+
+                <button class="btn-primary" @onclick="AddBP" disabled="@actionBusy">
+                    @(actionBusy ? "Saving..." : "Save BP")
+                </button>
             </div>
 
-            <button class="btn-primary" @onclick="AddGlucose">Save Glucose</button>
-        </div>
-    }
+            <div class="card mt">
+                <h4>Recent BP Logs</h4>
 
-    else if (tab == "weight")
-    {
-        <div class="card">
-            <h4>Add Weight Log</h4>
+                @if (bpLogs is null || bpLogs.Count == 0)
+                {
+                    <p class="text-muted">No BP logs yet.</p>
+                }
+                else
+                {
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Systolic</th>
+                                <th>Diastolic</th>
+                                <th>Pulse</th>
+                                <th>Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var x in bpLogs)
+                            {
+                                <tr>
+                                    <td>@FormatDate(x.LoggedAt)</td>
+                                    <td>@x.Systolic</td>
+                                    <td>@x.Diastolic</td>
+                                    <td>@(x.Pulse?.ToString() ?? "-")</td>
+                                    <td>@(x.Notes ?? "")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        }
+        else if (tab == "glucose")
+        {
+            <div class="card">
+                <h4>Add Glucose Log</h4>
 
-            <div class="grid">
-                <input type="number" step="0.1" class="form-control" placeholder="Weight (kg)" @bind="weightVal" />
-                <input class="form-control" placeholder="Notes" @bind="weightNotes" />
+                <div class="grid">
+                    <input type="number" class="form-control" placeholder="Value (mg/dL)" @bind="glucoseValue" />
+                    <select class="form-control" @bind="glucoseType">
+                        <option value="Fasting">Fasting</option>
+                        <option value="Random">Random</option>
+                        <option value="PostMeal">PostMeal</option>
+                    </select>
+                    <input class="form-control" placeholder="Notes" @bind="glucoseNotes" />
+                </div>
+
+                <button class="btn-primary" @onclick="AddGlucose" disabled="@actionBusy">
+                    @(actionBusy ? "Saving..." : "Save Glucose")
+                </button>
             </div>
 
-            <button class="btn-primary" @onclick="AddWeight">Save Weight</button>
-        </div>
+            <div class="card mt">
+                <h4>Recent Glucose Logs</h4>
 
-        <div class="card mt">
-            <h4>Recent Weight Logs</h4>
+                @if (glucoseLogs is null || glucoseLogs.Count == 0)
+                {
+                    <p class="text-muted">No glucose logs yet.</p>
+                }
+                else
+                {
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Value</th>
+                                <th>Type</th>
+                                <th>Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var x in glucoseLogs)
+                            {
+                                <tr>
+                                    <td>@FormatDate(x.LoggedAt)</td>
+                                    <td>@x.ValueMgDl</td>
+                                    <td>@x.Type</td>
+                                    <td>@(x.Notes ?? "")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        }
+        else if (tab == "weight")
+        {
+            <div class="card">
+                <h4>Add Weight Log</h4>
 
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Weight (kg)</th>
-                        <th>Notes</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var x in weightLogs)
-                    {
-                        <tr>
-                            <td>@x.LoggedAt.ToLocalTime()</td>
-                            <td>@x.WeightKg</td>
-                            <td>@x.Notes</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
+                <div class="grid">
+                    <input type="number" step="0.1" class="form-control" placeholder="Weight (kg)" @bind="weightVal" />
+                    <input class="form-control" placeholder="Notes" @bind="weightNotes" />
+                </div>
+
+                <button class="btn-primary" @onclick="AddWeight" disabled="@actionBusy">
+                    @(actionBusy ? "Saving..." : "Save Weight")
+                </button>
+            </div>
+
+            <div class="card mt">
+                <h4>Recent Weight Logs</h4>
+
+                @if (weightLogs is null || weightLogs.Count == 0)
+                {
+                    <p class="text-muted">No weight logs yet.</p>
+                }
+                else
+                {
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Weight (kg)</th>
+                                <th>Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var x in weightLogs)
+                            {
+                                <tr>
+                                    <td>@FormatDate(x.LoggedAt)</td>
+                                    <td>@x.WeightKg</td>
+                                    <td>@(x.Notes ?? "")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        }
     }
 }
 
 @code {
-    string tab = "bp";
-    bool busy = true;
-    string? userId;
-    string error = "";
+    private string tab = "bp";
+    private bool busy = true;
+    private bool actionBusy = false;
 
-    List<BPLog> bpLogs = new();
-    List<GlucoseLog> glucoseLogs = new();
-    List<WeightLog> weightLogs = new();
+    private string? userId;
+    private string error = "";
 
-    int bpSystolic = 120;
-    int bpDiastolic = 80;
-    int? bpPulse;
-    string bpNotes = "";
+    private List<BPLog> bpLogs = new();
+    private List<GlucoseLog> glucoseLogs = new();
+    private List<WeightLog> weightLogs = new();
 
-    int glucoseValue = 90;
-    string glucoseType = "Fasting";
-    string glucoseNotes = "";
+    private int bpSystolic = 120;
+    private int bpDiastolic = 80;
+    private int? bpPulse;
+    private string bpNotes = "";
 
-    double weightVal = 70;
-    string weightNotes = "";
+    private int glucoseValue = 90;
+    private string glucoseType = "Fasting";
+    private string glucoseNotes = "";
 
-    protected override async Task OnInitializedAsync()
+    private double weightVal = 70;
+    private string weightNotes = "";
+
+    protected override Task OnInitializedAsync()
     {
-        userId = await JS.InvokeAsync<string?>("localStorage.getItem", "userId");
-        if (string.IsNullOrWhiteSpace(userId))
+        // IMPORTANT (Blazor Server): don't do JS interop here
+        busy = true;
+        return Task.CompletedTask;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        try
         {
-            error = "User not logged in.";
-            return;
+            // ✅ JS Interop is safe here
+            userId = await JS.InvokeAsync<string?>("localStorage.getItem", "userId");
+
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                error = "User not logged in. (userId missing in localStorage)";
+                return;
+            }
+
+            await ReloadAll();
         }
-
-        await ReloadAll();
-        busy = false;
-    }
-
-    async Task ReloadAll()
-    {
-        bpLogs = await HealthApi.GetBPAsync(userId!) ?? new();
-        glucoseLogs = await HealthApi.GetGlucoseAsync(userId!) ?? new();
-        weightLogs = await HealthApi.GetWeightAsync(userId!) ?? new();
-    }
-
-    async Task AddBP()
-    {
-        await HealthApi.AddBPAsync(new BPLog
+        catch (Exception ex)
         {
-            UserId = userId!,
-            Systolic = bpSystolic,
-            Diastolic = bpDiastolic,
-            Pulse = bpPulse,
-            Notes = bpNotes
-        });
-        await ReloadAll();
+            error = $"Initialization failed: {ex.Message}";
+        }
+        finally
+        {
+            busy = false;
+            StateHasChanged();
+        }
     }
 
-    async Task AddGlucose()
+    private void SwitchTab(string t)
     {
-        await HealthApi.AddGlucoseAsync(new GlucoseLog
-        {
-            UserId = userId!,
-            ValueMgDl = glucoseValue,
-            Type = glucoseType,
-            Notes = glucoseNotes
-        });
-        await ReloadAll();
+        tab = t;
     }
 
-    async Task AddWeight()
+    private async Task ReloadAll()
     {
-        await HealthApi.AddWeightAsync(new WeightLog
+        if (string.IsNullOrWhiteSpace(userId)) return;
+
+        try
         {
-            UserId = userId!,
-            WeightKg = weightVal,
-            Notes = weightNotes
-        });
-        await ReloadAll();
+            bpLogs = await HealthApi.GetBPAsync(userId) ?? new();
+            glucoseLogs = await HealthApi.GetGlucoseAsync(userId) ?? new();
+            weightLogs = await HealthApi.GetWeightAsync(userId) ?? new();
+
+            // optional: sort newest first if you want
+            bpLogs = bpLogs.OrderByDescending(x => x.LoggedAt).ToList();
+            glucoseLogs = glucoseLogs.OrderByDescending(x => x.LoggedAt).ToList();
+            weightLogs = weightLogs.OrderByDescending(x => x.LoggedAt).ToList();
+        }
+        catch (Exception ex)
+        {
+            error = $"Failed to load logs: {ex.Message}";
+            bpLogs = new();
+            glucoseLogs = new();
+            weightLogs = new();
+        }
+    }
+
+    private async Task AddBP()
+    {
+        if (string.IsNullOrWhiteSpace(userId)) { error = "Not logged in."; return; }
+
+        actionBusy = true;
+        error = "";
+
+        try
+        {
+            await HealthApi.AddBPAsync(new BPLog
+            {
+                UserId = userId,
+                Systolic = bpSystolic,
+                Diastolic = bpDiastolic,
+                Pulse = bpPulse,
+                Notes = bpNotes
+            });
+
+            await ReloadAll();
+        }
+        catch (Exception ex)
+        {
+            error = $"Failed to save BP: {ex.Message}";
+        }
+        finally
+        {
+            actionBusy = false;
+        }
+    }
+
+    private async Task AddGlucose()
+    {
+        if (string.IsNullOrWhiteSpace(userId)) { error = "Not logged in."; return; }
+
+        actionBusy = true;
+        error = "";
+
+        try
+        {
+            await HealthApi.AddGlucoseAsync(new GlucoseLog
+            {
+                UserId = userId,
+                ValueMgDl = glucoseValue,
+                Type = glucoseType,
+                Notes = glucoseNotes
+            });
+
+            await ReloadAll();
+        }
+        catch (Exception ex)
+        {
+            error = $"Failed to save glucose: {ex.Message}";
+        }
+        finally
+        {
+            actionBusy = false;
+        }
+    }
+
+    private async Task AddWeight()
+    {
+        if (string.IsNullOrWhiteSpace(userId)) { error = "Not logged in."; return; }
+
+        actionBusy = true;
+        error = "";
+
+        try
+        {
+            await HealthApi.AddWeightAsync(new WeightLog
+            {
+                UserId = userId,
+                WeightKg = weightVal,
+                Notes = weightNotes
+            });
+
+            await ReloadAll();
+        }
+        catch (Exception ex)
+        {
+            error = $"Failed to save weight: {ex.Message}";
+        }
+        finally
+        {
+            actionBusy = false;
+        }
+    }
+
+    private static string FormatDate(DateTime dt)
+    {
+        // avoids exceptions and gives consistent display
+        try { return dt.ToLocalTime().ToString("yyyy-MM-dd hh:mm tt"); }
+        catch { return dt.ToString(); }
     }
 }
-
-
