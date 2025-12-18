@@ -27,6 +27,7 @@
 }
 else
 {
+    @* ---------------- BP ---------------- *@
     @if (tab == "bp")
     {
         <div class="card">
@@ -59,13 +60,20 @@ else
         <div class="card mt">
             <h4>Recent BP Logs</h4>
 
-            @if (bpLogs.Count == 0) { <p>No BP logs yet.</p> }
+            @if (bpLogs.Count == 0)
+            {
+                <p>No BP logs yet.</p>
+            }
             else
             {
                 <table class="table">
                     <thead>
                         <tr>
-                            <th>Date</th><th>Systolic</th><th>Diastolic</th><th>Pulse</th><th>Notes</th>
+                            <th>Date</th>
+                            <th>Systolic</th>
+                            <th>Diastolic</th>
+                            <th>Pulse</th>
+                            <th>Notes</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -75,7 +83,7 @@ else
                                 <td>@x.LoggedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
                                 <td>@x.Systolic</td>
                                 <td>@x.Diastolic</td>
-                                <td>@(x.Pulse ?? 0)</td>
+                                <td>@x.Pulse</td>
                                 <td>@x.Notes</td>
                             </tr>
                         }
@@ -84,6 +92,8 @@ else
             }
         </div>
     }
+
+    @* ---------------- GLUCOSE ---------------- *@
     else if (tab == "glucose")
     {
         <div class="card">
@@ -116,30 +126,31 @@ else
         <div class="card mt">
             <h4>Recent Glucose Logs</h4>
 
-            @if (glucoseLogs.Count == 0) { <p>No glucose logs yet.</p> }
-            else
-            {
-                <table class="table">
-                    <thead>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Value</th>
+                        <th>Type</th>
+                        <th>Notes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var x in glucoseLogs)
+                    {
                         <tr>
-                            <th>Date</th><th>Value</th><th>Type</th><th>Notes</th>
+                            <td>@x.LoggedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                            <td>@x.ValueMgDl</td>
+                            <td>@x.Type</td>
+                            <td>@x.Notes</td>
                         </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var x in glucoseLogs)
-                        {
-                            <tr>
-                                <td>@x.LoggedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
-                                <td>@x.ValueMgDl</td>
-                                <td>@x.Type</td>
-                                <td>@x.Notes</td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            }
+                    }
+                </tbody>
+            </table>
         </div>
     }
+
+    @* ---------------- WEIGHT ---------------- *@
     else if (tab == "weight")
     {
         <div class="card">
@@ -148,11 +159,11 @@ else
             <div class="grid">
                 <div>
                     <label>Weight (kg)</label>
-                    <input type="number" class="form-control" step="0.1" @bind="weightVal" />
+                    <input type="number" step="0.1" class="form-control" @bind="weightVal" />
                 </div>
                 <div>
                     <label>Body Fat % (optional)</label>
-                    <input type="number" class="form-control" step="0.1" @bind="weightBodyFat" />
+                    <input type="number" step="0.1" class="form-control" @bind="weightBodyFat" />
                 </div>
                 <div>
                     <label>Notes</label>
@@ -168,28 +179,27 @@ else
         <div class="card mt">
             <h4>Recent Weight Logs</h4>
 
-            @if (weightLogs.Count == 0) { <p>No weight logs yet.</p> }
-            else
-            {
-                <table class="table">
-                    <thead>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Weight</th>
+                        <th>Body Fat %</th>
+                        <th>Notes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var x in weightLogs)
+                    {
                         <tr>
-                            <th>Date</th><th>Weight</th><th>BodyFat %</th><th>Notes</th>
+                            <td>@x.LoggedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                            <td>@x.WeightKg</td>
+                            <td>@(x.BodyFatPercent ?? 0)</td>
+                            <td>@x.Notes</td>
                         </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var x in weightLogs)
-                        {
-                            <tr>
-                                <td>@x.LoggedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
-                                <td>@x.WeightKg</td>
-                                <td>@(x.BodyFatPercentage ?? 0)</td>
-                                <td>@x.Notes</td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            }
+                    }
+                </tbody>
+            </table>
         </div>
     }
 }
@@ -220,124 +230,84 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        try
+        userId = await JS.InvokeAsync<string?>("localStorage.getItem", "userId");
+        if (string.IsNullOrWhiteSpace(userId))
         {
-            busy = true;
-
-            userId = await JS.InvokeAsync<string?>("localStorage.getItem", "userId");
-            if (string.IsNullOrWhiteSpace(userId))
-            {
-                error = "UserId not found in localStorage. Please login again.";
-                return;
-            }
-
-            await ReloadAll();
+            error = "UserId not found. Please login again.";
+            return;
         }
-        catch (Exception ex) { error = ex.Message; }
-        finally { busy = false; }
+
+        await ReloadAll();
+        busy = false;
     }
 
     private async Task ReloadAll()
     {
-        if (string.IsNullOrWhiteSpace(userId)) return;
-
         bpLogs = (await HealthApi.GetBPAsync(userId!)) ?? new();
         glucoseLogs = (await HealthApi.GetGlucoseAsync(userId!)) ?? new();
         weightLogs = (await HealthApi.GetWeightAsync(userId!)) ?? new();
-
-        // Optional: show newest first
-        bpLogs = bpLogs.OrderByDescending(x => x.LoggedAt).ToList();
-        glucoseLogs = glucoseLogs.OrderByDescending(x => x.LoggedAt).ToList();
-        weightLogs = weightLogs.OrderByDescending(x => x.LoggedAt).ToList();
     }
 
     private async Task AddBP()
     {
-        try
+        busyAction = true;
+        await HealthApi.AddBPAsync(new BPLog
         {
-            busyAction = true;
-            error = "";
-
-            await HealthApi.AddBPAsync(new BPLog
-            {
-                UserId = userId!,
-                Systolic = bpSystolic,
-                Diastolic = bpDiastolic,
-                Pulse = bpPulse,
-                Notes = bpNotes,
-                LoggedAt = DateTime.UtcNow
-            });
-
-            bpNotes = "";
-            bpPulse = null;
-            await ReloadAll();
-            tab = "bp";
-        }
-        catch (Exception ex) { error = ex.Message; }
-        finally { busyAction = false; }
+            UserId = userId!,
+            Systolic = bpSystolic,
+            Diastolic = bpDiastolic,
+            Pulse = bpPulse,
+            Notes = bpNotes,
+            LoggedAt = DateTime.UtcNow
+        });
+        await ReloadAll();
+        busyAction = false;
     }
 
     private async Task AddGlucose()
     {
-        try
+        busyAction = true;
+        await HealthApi.AddGlucoseAsync(new GlucoseLog
         {
-            busyAction = true;
-            error = "";
-
-            await HealthApi.AddGlucoseAsync(new GlucoseLog
-            {
-                UserId = userId!,
-                ValueMgDl = glucoseValue,
-                Type = glucoseType,
-                Notes = glucoseNotes,
-                LoggedAt = DateTime.UtcNow
-            });
-
-            glucoseNotes = "";
-            await ReloadAll();
-            tab = "glucose";
-        }
-        catch (Exception ex) { error = ex.Message; }
-        finally { busyAction = false; }
+            UserId = userId!,
+            ValueMgDl = glucoseValue,
+            Type = glucoseType,
+            Notes = glucoseNotes,
+            LoggedAt = DateTime.UtcNow
+        });
+        await ReloadAll();
+        busyAction = false;
     }
 
     private async Task AddWeight()
     {
-        try
+        busyAction = true;
+        await HealthApi.AddWeightAsync(new WeightLog
         {
-            busyAction = true;
-            error = "";
-
-            await HealthApi.AddWeightAsync(new WeightLog
-            {
-                UserId = userId!,
-                WeightKg = weightVal,
-                BodyFatPercentage = weightBodyFat,
-                Notes = weightNotes,
-                LoggedAt = DateTime.UtcNow
-            });
-
-            weightNotes = "";
-            weightBodyFat = null;
-            await ReloadAll();
-            tab = "weight";
-        }
-        catch (Exception ex) { error = ex.Message; }
-        finally { busyAction = false; }
+            UserId = userId!,
+            WeightKg = weightVal,
+            BodyFatPercent = weightBodyFat,
+            Notes = weightNotes,
+            LoggedAt = DateTime.UtcNow
+        });
+        await ReloadAll();
+        busyAction = false;
     }
 }
 
 <style>
-    .tabs { display:flex; gap:10px; margin-bottom:14px; }
-    .tab-btn { padding:8px 12px; border:1px solid #ccc; background:#fff; border-radius:8px; cursor:pointer; }
-    .tab-btn.active { background:#3b3bbf; color:#fff; border-color:#3b3bbf; }
+.tabs { display:flex; gap:10px; margin-bottom:14px; }
+.tab-btn { padding:8px 12px; border:1px solid #ccc; background:#fff; border-radius:8px; cursor:pointer; }
+.tab-btn.active { background:#3b3bbf; color:#fff; }
 
-    .card { background:#fff; padding:16px; border-radius:12px; box-shadow:0 2px 6px rgba(0,0,0,.08); max-width: 1000px; }
-    .mt { margin-top:16px; }
+.card { background:#fff; padding:16px; border-radius:12px; box-shadow:0 2px 6px rgba(0,0,0,.08); max-width:1000px; }
+.mt { margin-top:16px; }
 
-    .grid { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:12px; }
-    .form-control { width:100%; padding:8px; border:1px solid #ccc; border-radius:8px; }
-    .btn-primary { margin-top:12px; background:#3b3bbf; color:#fff; border:none; border-radius:8px; padding:10px 14px; cursor:pointer; }
+.grid { display:grid; grid-template-columns: repeat(2,1fr); gap:12px; }
+.form-control { width:100%; padding:8px; border-radius:8px; border:1px solid #ccc; }
+.btn-primary { margin-top:12px; background:#3b3bbf; color:#fff; border:none; padding:10px 14px; border-radius:8px; }
 
-    @media(max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+@media (max-width: 900px) {
+    .grid { grid-template-columns: 1fr; }
+}
 </style>
