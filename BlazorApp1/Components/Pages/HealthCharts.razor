@@ -1,79 +1,148 @@
 @page "/health-charts"
 @attribute [Authorize]
-@layout UserDashboardLayout
+@layout BlazorApp1.Components.Layout.UserDashboardLayout
+
 
 @using Microsoft.AspNetCore.Authorization
 @using BlazorApp1.Service
+@using Model
 @inject IJSRuntime JS
-@inject BPLogApiService BPApi
-@inject GlucoseLogApiService GlucoseApi
-@inject WeightLogApiService WeightApi
+
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ClientApiService ClientApi
+@inject HealthApiService HealthApi
 
 <h2>📊 Health Charts</h2>
-
-@if (!string.IsNullOrWhiteSpace(error))
-{
-    <div class="alert alert-danger">@error</div>
-}
 
 @if (busy)
 {
     <p>Loading charts...</p>
 }
+else if (!string.IsNullOrWhiteSpace(error))
+{
+    <div class="alert alert-danger">@error</div>
+}
 else
 {
-    <div class="card">
-        <h4>Blood Pressure</h4>
-        <canvas id="bpChart" height="120"></canvas>
-    </div>
+    <div class="grid">
+        <div class="card">
+            <canvas id="bpChart"></canvas>
+        </div>
 
-    <div class="card mt">
-        <h4>Glucose</h4>
-        <canvas id="glucoseChart" height="120"></canvas>
-    </div>
+        <div class="card">
+            <canvas id="glucoseChart"></canvas>
+        </div>
 
-    <div class="card mt">
-        <h4>Weight</h4>
-        <canvas id="weightChart" height="120"></canvas>
+        <div class="card">
+            <canvas id="weightChart"></canvas>
+        </div>
     </div>
 }
 
 @code {
-    private bool busy = true;
-    private string error = "";
-    private string? userId;
+    bool busy = true;
+    string error = "";
+
+    string? userId;
+
+    List<BPLog> bp = new();
+    List<GlucoseLog> glucose = new();
+    List<WeightLog> weight = new();
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
             busy = true;
-            userId = await JS.InvokeAsync<string?>("localStorage.getItem", "userId");
+
+            // ✅ resolve current userId using your existing pattern
+            var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+            var email = auth.User?.Claims?.FirstOrDefault(c => c.Type.Contains("email"))?.Value;
+
+            var client = await ClientApi.GetClientByEmailAsync(email!);
+            userId = client?.UserId ?? client?.Id;
+
             if (string.IsNullOrWhiteSpace(userId))
-            {
-                error = "UserId not found. Please login again.";
-                return;
-            }
+                throw new Exception("UserId not found.");
 
-            var bp = await BPApi.GetByUserAsync(userId) ?? new();
-            var gl = await GlucoseApi.GetByUserAsync(userId) ?? new();
-            var wt = await WeightApi.GetByUserAsync(userId) ?? new();
-
-            // Keep only latest 30 points, oldest -> newest
-            var bp30 = bp.Take(30).Reverse().ToList();
-            var gl30 = gl.Take(30).Reverse().ToList();
-            var wt30 = wt.Take(30).Reverse().ToList();
-
-            await JS.InvokeVoidAsync("healthCharts.renderBP", bp30);
-            await JS.InvokeVoidAsync("healthCharts.renderGlucose", gl30);
-            await JS.InvokeVoidAsync("healthCharts.renderWeight", wt30);
+            // ✅ fetch logs (latest first, we will reverse for chart)
+            bp = (await HealthApi.GetBPAsync(userId)) ?? new();
+            glucose = (await HealthApi.GetGlucoseAsync(userId)) ?? new();
+            weight = (await HealthApi.GetWeightAsync(userId)) ?? new();
         }
-        catch (Exception ex) { error = ex.Message; }
-        finally { busy = false; }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        if (busy) return;
+        if (!string.IsNullOrWhiteSpace(error)) return;
+
+        // ---- BP Chart ----
+        var bpOrdered = bp.OrderBy(x => x.LoggedAt).ToList();
+        var bpLabels = bpOrdered.Select(x => x.LoggedAt.ToString("MM-dd HH:mm")).ToList();
+        var systolic = bpOrdered.Select(x => (double)x.Systolic).ToList();
+        var diastolic = bpOrdered.Select(x => (double)x.Diastolic).ToList();
+
+        await JS.InvokeVoidAsync("healthCharts.renderLineChart",
+            "bpChart",
+            "Blood Pressure (Systolic/Diastolic)",
+            bpLabels,
+            new object[]
+            {
+                new { label = "Systolic", data = systolic, tension = 0.25 },
+                new { label = "Diastolic", data = diastolic, tension = 0.25 }
+            });
+
+        // ---- Glucose Chart ----
+        var gOrdered = glucose.OrderBy(x => x.LoggedAt).ToList();
+        var gLabels = gOrdered.Select(x => x.LoggedAt.ToString("MM-dd HH:mm")).ToList();
+        var gVals = gOrdered.Select(x => (double)x.Value).ToList();
+
+        await JS.InvokeVoidAsync("healthCharts.renderLineChart",
+            "glucoseChart",
+            "Glucose",
+            gLabels,
+            new object[]
+            {
+                new { label = "Glucose", data = gVals, tension = 0.25 }
+            });
+
+        // ---- Weight Chart ----
+        var wOrdered = weight.OrderBy(x => x.LoggedAt).ToList();
+        var wLabels = wOrdered.Select(x => x.LoggedAt.ToString("MM-dd HH:mm")).ToList();
+        var wVals = wOrdered.Select(x => (double)x.Value).ToList();
+
+        await JS.InvokeVoidAsync("healthCharts.renderLineChart",
+            "weightChart",
+            "Weight",
+            wLabels,
+            new object[]
+            {
+                new { label = "Weight", data = wVals, tension = 0.25 }
+            });
     }
 }
 
 <style>
-    .card { background:#fff; padding:16px; border-radius:12px; box-shadow:0 2px 6px rgba(0,0,0,.08); max-width: 1000px; }
-    .mt { margin-top:16px; }
+    .grid{
+        display:grid;
+        grid-template-columns: 1fr;
+        gap: 14px;
+        max-width: 1000px;
+    }
+    .card{
+        background:#fff;
+        border-radius:12px;
+        padding:14px;
+        box-shadow:0 2px 8px rgba(0,0,0,0.08);
+    }
 </style>

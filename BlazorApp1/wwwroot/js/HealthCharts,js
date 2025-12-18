@@ -1,65 +1,40 @@
 window.healthCharts = (function () {
-  let bpChart, glucoseChart, weightChart;
+  const charts = {}; // store chart instances by canvasId
 
-  function toLabels(list) {
-    return (list || []).map(x => new Date(x.loggedAt).toLocaleDateString());
+  function destroy(canvasId) {
+    if (charts[canvasId]) {
+      charts[canvasId].destroy();
+      delete charts[canvasId];
+    }
   }
 
-  function destroy(chart) {
-    if (chart) chart.destroy();
-  }
-
-  function renderBP(list) {
-    const labels = toLabels(list);
-    const sys = (list || []).map(x => x.systolic);
-    const dia = (list || []).map(x => x.diastolic);
-
-    const ctx = document.getElementById("bpChart");
+  function renderLineChart(canvasId, title, labels, datasets) {
+    const ctx = document.getElementById(canvasId);
     if (!ctx) return;
 
-    destroy(bpChart);
+    destroy(canvasId);
 
-    bpChart = new Chart(ctx, {
+    charts[canvasId] = new Chart(ctx, {
       type: "line",
       data: {
-        labels,
-        datasets: [
-          { label: "Systolic", data: sys },
-          { label: "Diastolic", data: dia }
-        ]
+        labels: labels,
+        datasets: datasets
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: true },
+          title: { display: true, text: title }
+        },
+        scales: {
+          y: { beginAtZero: false }
+        }
       }
     });
   }
 
-  function renderGlucose(list) {
-    const labels = toLabels(list);
-    const values = (list || []).map(x => x.value);
-
-    const ctx = document.getElementById("glucoseChart");
-    if (!ctx) return;
-
-    destroy(glucoseChart);
-
-    glucoseChart = new Chart(ctx, {
-      type: "line",
-      data: { labels, datasets: [{ label: "Glucose", data: values }] }
-    });
-  }
-
-  function renderWeight(list) {
-    const labels = toLabels(list);
-    const values = (list || []).map(x => x.weightKg);
-
-    const ctx = document.getElementById("weightChart");
-    if (!ctx) return;
-
-    destroy(weightChart);
-
-    weightChart = new Chart(ctx, {
-      type: "line",
-      data: { labels, datasets: [{ label: "Weight (kg)", data: values }] }
-    });
-  }
-
-  return { renderBP, renderGlucose, renderWeight };
+  return {
+    renderLineChart,
+    destroy
+  };
 })();

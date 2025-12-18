@@ -1,13 +1,13 @@
 @page "/health-logs"
 @attribute [Authorize]
-@layout UserDashboardLayout
+@layout BlazorApp1.Components.Layout.UserDashboardLayout
 
 @using Microsoft.AspNetCore.Authorization
 @using BlazorApp1.Service
-@inject IJSRuntime JS
-@inject BPLogApiService BPApi
-@inject GlucoseLogApiService GlucoseApi
-@inject WeightLogApiService WeightApi
+@using Model
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ClientApiService ClientApi
+@inject HealthApiService HealthApi
 
 <h2>📒 Health Logs</h2>
 
@@ -17,9 +17,9 @@
 }
 
 <div class="tabs">
-    <button class="tab-btn @(tab=="bp" ? "active" : "")" @onclick="() => tab = "bp"">BP</button>
-    <button class="tab-btn @(tab=="glucose" ? "active" : "")" @onclick="() => tab = "glucose"">Glucose</button>
-    <button class="tab-btn @(tab=="weight" ? "active" : "")" @onclick="() => tab = "weight"">Weight</button>
+    <button class="tab-btn @(tab=="bp" ? "active" : "")" @onclick='() => tab = "bp"'>BP</button>
+    <button class="tab-btn @(tab=="glucose" ? "active" : "")" @onclick='() => tab = "glucose"'>Glucose</button>
+    <button class="tab-btn @(tab=="weight" ? "active" : "")" @onclick='() => tab = "weight"'>Weight</button>
 </div>
 
 @if (busy)
@@ -73,7 +73,7 @@ else
                         @foreach (var x in bpLogs)
                         {
                             <tr>
-                                <td>@x.LoggedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                                <td>@x.LoggedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
                                 <td>@x.Systolic</td>
                                 <td>@x.Diastolic</td>
                                 <td>@(x.Pulse ?? 0)</td>
@@ -130,7 +130,7 @@ else
                         @foreach (var x in glucoseLogs)
                         {
                             <tr>
-                                <td>@x.LoggedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                                <td>@x.LoggedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
                                 <td>@x.Value</td>
                                 <td>@x.Type</td>
                                 <td>@x.Notes</td>
@@ -149,7 +149,7 @@ else
             <div class="grid">
                 <div>
                     <label>Weight (kg)</label>
-                    <input type="number" class="form-control" step="0.1" @bind="weightKg" />
+                    <input type="number" class="form-control" step="0.1" @bind="weightVal" />
                 </div>
                 <div>
                     <label>Body Fat % (optional)</label>
@@ -175,15 +175,15 @@ else
                 <table class="table">
                     <thead>
                         <tr>
-                            <th>Date</th><th>Weight (kg)</th><th>BodyFat %</th><th>Notes</th>
+                            <th>Date</th><th>Weight</th><th>BodyFat %</th><th>Notes</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach (var x in weightLogs)
                         {
                             <tr>
-                                <td>@x.LoggedAt.ToString("yyyy-MM-dd HH:mm")</td>
-                                <td>@x.WeightKg</td>
+                                <td>@x.LoggedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                                <td>@x.Value</td>
                                 <td>@(x.BodyFatPercent ?? 0)</td>
                                 <td>@x.Notes</td>
                             </tr>
@@ -202,10 +202,10 @@ else
     private string error = "";
     private string? userId;
 
-    // Lists
-    private List<BPLogDto> bpLogs = new();
-    private List<GlucoseLogDto> glucoseLogs = new();
-    private List<WeightLogDto> weightLogs = new();
+    // Lists (Model classes)
+    private List<BPLog> bpLogs = new();
+    private List<GlucoseLog> glucoseLogs = new();
+    private List<WeightLog> weightLogs = new();
 
     // BP form
     private int bpSystolic = 120;
@@ -219,7 +219,7 @@ else
     private string glucoseNotes = "";
 
     // Weight form
-    private double weightKg = 70;
+    private double weightVal = 70;
     private double? weightBodyFat = null;
     private string weightNotes = "";
 
@@ -228,32 +228,33 @@ else
         try
         {
             busy = true;
-            userId = await JS.InvokeAsync<string?>("localStorage.getItem", "userId");
+
+            // ✅ consistent userId resolution (same as HealthAlert/HealthCharts)
+            var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+            var email = auth.User?.Claims?.FirstOrDefault(c => c.Type.Contains("email"))?.Value;
+
+            var client = await ClientApi.GetClientByEmailAsync(email!);
+            userId = client?.UserId ?? client?.Id;
+
             if (string.IsNullOrWhiteSpace(userId))
             {
-                error = "UserId not found in localStorage. Please login again.";
+                error = "UserId not found. Please login again.";
                 return;
             }
 
             await ReloadAll();
         }
-        catch (Exception ex)
-        {
-            error = ex.Message;
-        }
-        finally
-        {
-            busy = false;
-        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { busy = false; }
     }
 
     private async Task ReloadAll()
     {
         if (string.IsNullOrWhiteSpace(userId)) return;
 
-        bpLogs = await BPApi.GetByUserAsync(userId) ?? new();
-        glucoseLogs = await GlucoseApi.GetByUserAsync(userId) ?? new();
-        weightLogs = await WeightApi.GetByUserAsync(userId) ?? new();
+        bpLogs = (await HealthApi.GetBPAsync(userId!)) ?? new();
+        glucoseLogs = (await HealthApi.GetGlucoseAsync(userId!)) ?? new();
+        weightLogs = (await HealthApi.GetWeightAsync(userId!)) ?? new();
     }
 
     private async Task AddBP()
@@ -265,8 +266,18 @@ else
 
             if (string.IsNullOrWhiteSpace(userId)) throw new Exception("Missing userId");
 
-            await BPApi.CreateAsync(new CreateBPLogRequest(userId!, bpSystolic, bpDiastolic, bpPulse, bpNotes));
+            await HealthApi.AddBPAsync(new BPLog
+            {
+                UserId = userId!,
+                Systolic = bpSystolic,
+                Diastolic = bpDiastolic,
+                Pulse = bpPulse,
+                Notes = bpNotes,
+                LoggedAt = DateTime.UtcNow
+            });
+
             bpNotes = "";
+            bpPulse = null;
             await ReloadAll();
             tab = "bp";
         }
@@ -283,7 +294,15 @@ else
 
             if (string.IsNullOrWhiteSpace(userId)) throw new Exception("Missing userId");
 
-            await GlucoseApi.CreateAsync(new CreateGlucoseLogRequest(userId!, glucoseValue, glucoseType, glucoseNotes));
+            await HealthApi.AddGlucoseAsync(new GlucoseLog
+            {
+                UserId = userId!,
+                Value = glucoseValue,
+                Type = glucoseType,
+                Notes = glucoseNotes,
+                LoggedAt = DateTime.UtcNow
+            });
+
             glucoseNotes = "";
             await ReloadAll();
             tab = "glucose";
@@ -301,8 +320,17 @@ else
 
             if (string.IsNullOrWhiteSpace(userId)) throw new Exception("Missing userId");
 
-            await WeightApi.CreateAsync(new CreateWeightLogRequest(userId!, weightKg, weightBodyFat, weightNotes));
+            await HealthApi.AddWeightAsync(new WeightLog
+            {
+                UserId = userId!,
+                Value = weightVal,
+                BodyFatPercent = weightBodyFat,
+                Notes = weightNotes,
+                LoggedAt = DateTime.UtcNow
+            });
+
             weightNotes = "";
+            weightBodyFat = null;
             await ReloadAll();
             tab = "weight";
         }
