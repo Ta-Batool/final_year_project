@@ -1,68 +1,100 @@
 @page "/book/{DoctorId}"
-
-@layout UserDashboardLayout
-@using BlazorApp1.Components.Layout
 @attribute [Authorize]
+@layout UserDashboardLayout
 
+@using Microsoft.AspNetCore.Authorization
+@using BlazorApp1.Components.Layout
 @using BlazorApp1.Service
-@inject IAService AppointmentService
+@using Model
 @inject IJSRuntime JS
 @inject NavigationManager Nav
+@inject AppointmentApiService ApptApi
+@inject IDService DoctorService
 
-<h2>Book Appointment</h2>
+<h2>📅 Book Appointment</h2>
 
-@if (!string.IsNullOrEmpty(error))
+@if (!string.IsNullOrWhiteSpace(error))
 {
     <div class="alert alert-danger">@error</div>
 }
 
-<div class="card p-3 mb-3">
-    <label>Select Date</label>
-    <input type="date" class="form-control" @bind="dateStr" />
-
-    <label class="mt-2">Slot Minutes</label>
-    <input type="number" class="form-control" @bind="slotMinutes" min="10" step="5" />
-
-    <label class="mt-2">Duration Minutes</label>
-    <input type="number" class="form-control" @bind="durationMinutes" min="10" step="5" />
-
-    <label class="mt-2">Notes</label>
-    <textarea class="form-control" @bind="notes"></textarea>
-
-    <button class="btn btn-primary mt-3" @onclick="LoadSlots">Load Slots</button>
-</div>
-
-@if (availability?.AvailableSlots?.Count > 0)
+@if (isLoading)
 {
-    <h4>Available Slots</h4>
-    <div class="list-group">
-        @foreach (var s in availability.AvailableSlots)
+    <p>Loading...</p>
+}
+else
+{
+    <div class="card">
+        <p><strong>Doctor:</strong> @doctorName</p>
+
+        <div class="form-group">
+            <label>Select Date</label>
+            <input type="date" class="form-control" @bind="dateStr" />
+        </div>
+
+        <div class="form-group">
+            <label>Slot Size (minutes)</label>
+            <input type="number" class="form-control" @bind="slotMinutes" min="10" step="5" />
+        </div>
+
+        <div class="form-group">
+            <label>Appointment Duration (minutes)</label>
+            <input type="number" class="form-control" @bind="durationMinutes" min="10" step="5" />
+        </div>
+
+        <div class="form-group">
+            <label>Notes (optional)</label>
+            <textarea class="form-control" @bind="notes"></textarea>
+        </div>
+
+        <button class="btn-primary" @onclick="LoadAvailability" disabled="@busy">
+            @(busy ? "Loading..." : "Load Available Slots")
+        </button>
+    </div>
+
+    <div class="card mt">
+        <h3>Available Slots</h3>
+
+        @if (availability == null)
         {
-            <button class="list-group-item list-group-item-action"
-                    @onclick="() => Book(s)">
-                @s.Start.ToString("hh:mm tt") - @s.End.ToString("hh:mm tt")
-            </button>
+            <p>Select date and click “Load Available Slots”.</p>
+        }
+        else if (availability.AvailableSlots == null || availability.AvailableSlots.Count == 0)
+        {
+            <p>No slots available for this date.</p>
+        }
+        else
+        {
+            <div class="slots">
+                @foreach (var s in availability.AvailableSlots)
+                {
+                    <button class="slot-btn" @onclick="() => BookSlot(s)" disabled="@busy">
+                        @s.Start.ToString("hh:mm tt") - @s.End.ToString("hh:mm tt")
+                    </button>
+                }
+            </div>
         }
     </div>
-}
-else if (availability != null)
-{
-    <p>No slots found for this day.</p>
 }
 
 @code {
     [Parameter] public string DoctorId { get; set; } = "";
 
-    string? userId;
-    string error = "";
-    AvailabilityResponseDto? availability;
+    private bool isLoading = true;
+    private bool busy = false;
+    private string error = "";
 
-    int slotMinutes = 30;
-    int durationMinutes = 30;
-    string notes = "";
-    DateTime selectedDate = DateTime.Today;
+    private string? userId;
+    private string doctorName = "Doctor";
 
-    string dateStr
+    private int slotMinutes = 30;
+    private int durationMinutes = 30;
+    private string notes = "";
+
+    private DateTime selectedDate = DateTime.Today;
+    private AvailabilityResponseDto? availability;
+
+    private string dateStr
     {
         get => selectedDate.ToString("yyyy-MM-dd");
         set => selectedDate = DateTime.Parse(value);
@@ -70,29 +102,56 @@ else if (availability != null)
 
     protected override async Task OnInitializedAsync()
     {
-        userId = await JS.InvokeAsync<string?>("localStorage.getItem", "userId");
-        if (string.IsNullOrWhiteSpace(userId))
-            error = "User ID not found. Please login again.";
-    }
-
-    async Task LoadSlots()
-    {
         try
         {
-            error = "";
-            availability = await AppointmentService.GetAvailabilityAsync(DoctorId, selectedDate, slotMinutes);
+            userId = await JS.InvokeAsync<string?>("localStorage.getItem", "userId");
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                error = "User ID not found. Please login again.";
+                return;
+            }
+
+            var doc = await DoctorService.GetDoctorByIdAsync(DoctorId);
+            if (doc != null && !string.IsNullOrWhiteSpace(doc.Name))
+                doctorName = doc.Name!;
         }
         catch (Exception ex)
         {
             error = ex.Message;
         }
+        finally
+        {
+            isLoading = false;
+        }
     }
 
-    async Task Book(TimeSlotDto slot)
+    private async Task LoadAvailability()
     {
         try
         {
-            if (string.IsNullOrWhiteSpace(userId)) return;
+            error = "";
+            busy = true;
+            availability = await ApptApi.GetAvailabilityAsync(DoctorId, selectedDate, slotMinutes);
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task BookSlot(TimeSlotDto slot)
+    {
+        try
+        {
+            error = "";
+            busy = true;
+
+            if (string.IsNullOrWhiteSpace(userId))
+                throw new Exception("UserId missing");
 
             var req = new BookAppointmentRequest(
                 PatientUserId: userId!,
@@ -102,13 +161,68 @@ else if (availability != null)
                 Notes: notes
             );
 
-            await AppointmentService.BookAppointmentAsync(req);
+            await ApptApi.BookAsync(req);
 
-            Nav.NavigateTo("/myappointments"); // create/list patient appointments page if you want
+            // ✅ Your patient appointments page route is /my-appointments
+            Nav.NavigateTo("/my-appointments", forceLoad: true);
         }
         catch (Exception ex)
         {
             error = ex.Message;
         }
+        finally
+        {
+            busy = false;
+        }
     }
 }
+
+<style>
+    .card {
+        background: #fff;
+        padding: 16px;
+        border-radius: 12px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        max-width: 900px;
+    }
+
+    .mt { margin-top: 16px; }
+    .form-group { margin-bottom: 10px; }
+
+    .form-control {
+        width: 100%;
+        padding: 8px;
+        border-radius: 8px;
+        border: 1px solid #ccc;
+    }
+
+    .btn-primary {
+        background: #3b3bbf;
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        padding: 10px 14px;
+        cursor: pointer;
+    }
+
+    .slots {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 10px;
+    }
+
+    .slot-btn {
+        border: 1px solid #3b3bbf;
+        background: #fff;
+        color: #3b3bbf;
+        border-radius: 10px;
+        padding: 8px 12px;
+        cursor: pointer;
+    }
+
+    .slot-btn:hover {
+        background: #3b3bbf;
+        color: #fff;
+    }
+</style>
