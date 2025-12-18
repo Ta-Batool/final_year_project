@@ -11,45 +11,35 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BlazorApp1</title>
-
-    <!-- REQUIRED -->
     <base href="~/" />
-
-    <!-- Bootstrap (if you use it anywhere) -->
-    <link href="css/bootstrap/bootstrap.min.css" rel="stylesheet" />
-
-    <!-- Global site styles -->
-    <link href="css/site.css" rel="stylesheet" />
-
-    <!-- Component CSS isolation -->
     <link href="BlazorApp1.styles.css" rel="stylesheet" />
-
-    <!-- Icons -->
     <link rel="stylesheet"
           href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link href="/app.css" rel="stylesheet" />
 </head>
-
 <body>
     <app>
-        <component type="typeof(BlazorApp1.Components.App)"
-                   render-mode="ServerPrerendered" />
+        <component type="typeof(BlazorApp1.Components.App)" render-mode="ServerPrerendered" />
     </app>
 
     <!-- Blazor runtime -->
     <script src="_framework/blazor.server.js"></script>
 
-    <!-- SignalR (for calls/chat) -->
+    <!-- ✅ ADD THIS: SignalR JS client (needed by CallManager.js) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.5/signalr.min.js"
             crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
-    <!-- Chart.js (REQUIRED for health charts) -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-    <!-- Health charts interop -->
-    <script src="js/healthCharts.js"></script>
-
-    <!-- Other JS -->
+    <!-- Your custom JS files -->
     <script src="js/translation.js"></script>
+  
+
     <script src="js/VoiceRecorder.js"></script>
+   <!-- <script src="js/CallManager.js"></script> -->
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="js/healthCharts.js"></script>
+    <link href="css/health-logs.css" rel="stylesheet" />
+
+
 </body>
 </html>
