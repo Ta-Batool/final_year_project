@@ -7,8 +7,11 @@
 @using Model
 @inject IJSRuntime JS
 @inject HealthApiService HealthApi
+@inject MetabolismApiService MetabolismService
+@inject IMealService MealService
+@inject IExerciseService ExerciseService
 
-<h2>📊 Health Charts</h2>
+<h2>📊 Health & Metabolism Charts</h2>
 
 @if (busy)
 {
@@ -21,9 +24,35 @@ else if (!string.IsNullOrWhiteSpace(error))
 else
 {
     <div class="grid">
-        <div class="card"><h5>Blood Pressure</h5><canvas id="bpChart"></canvas></div>
-        <div class="card"><h5>Glucose</h5><canvas id="glucoseChart"></canvas></div>
-        <div class="card"><h5>Weight</h5><canvas id="weightChart"></canvas></div>
+        <div class="card">
+            <h5>Blood Pressure</h5>
+            <canvas id="bpChart"></canvas>
+        </div>
+
+        <div class="card">
+            <h5>Glucose</h5>
+            <canvas id="glucoseChart"></canvas>
+        </div>
+
+        <div class="card">
+            <h5>Weight</h5>
+            <canvas id="weightChart"></canvas>
+        </div>
+
+        <div class="card">
+            <h5>BMR Trend</h5>
+            <canvas id="bmrChart"></canvas>
+        </div>
+
+        <div class="card">
+            <h5>Maintenance Calories</h5>
+            <canvas id="maintenanceChart"></canvas>
+        </div>
+
+        <div class="card">
+            <h5>Net Calories</h5>
+            <canvas id="netCaloriesChart"></canvas>
+        </div>
     </div>
 }
 
@@ -37,9 +66,14 @@ else
     private List<GlucoseLog> glucose = new();
     private List<WeightLog> weight = new();
 
+    // 🔥 Priority-C derived data
+    private List<DateTime> metabolismDates = new();
+    private List<double> bmrValues = new();
+    private List<double> maintenanceValues = new();
+    private List<double> netCaloriesValues = new();
+
     protected override Task OnInitializedAsync()
     {
-        // Don't use JS interop here in Blazor Server
         busy = true;
         return Task.CompletedTask;
     }
@@ -52,11 +86,15 @@ else
         {
             userId = await JS.InvokeAsync<string?>("localStorage.getItem", "userId");
             if (string.IsNullOrWhiteSpace(userId))
-                throw new Exception("UserId not found in localStorage. Please login again.");
+                throw new Exception("User not logged in.");
 
+            // Existing logs
             bp = await HealthApi.GetBPAsync(userId) ?? new();
             glucose = await HealthApi.GetGlucoseAsync(userId) ?? new();
             weight = await HealthApi.GetWeightAsync(userId) ?? new();
+
+            // 🔥 Build metabolism timeline from weight history
+            await BuildMetabolismTimeline();
         }
         catch (Exception ex)
         {
@@ -68,9 +106,40 @@ else
             StateHasChanged();
         }
 
-        // Render charts AFTER state update
         await Task.Yield();
         await RenderChartsOnce();
+    }
+
+    // 🔥 CORE LOGIC — connects weight → BMR → maintenance → net calories
+    private async Task BuildMetabolismTimeline()
+    {
+        metabolismDates.Clear();
+        bmrValues.Clear();
+        maintenanceValues.Clear();
+        netCaloriesValues.Clear();
+
+        var orderedWeights = weight
+            .OrderBy(w => w.LoggedAt)
+            .ToList();
+
+        foreach (var w in orderedWeights)
+        {
+            var summary = await MetabolismService.GetSummaryForDateAsync(userId!, w.LoggedAt.Date);
+            if (summary == null) continue;
+
+            metabolismDates.Add(w.LoggedAt.Date);
+            bmrValues.Add(summary.Bmr);
+            maintenanceValues.Add(summary.MaintenanceCalories);
+
+            // net calories = food − exercise (same date)
+            var meals = await MealService.GetMealsByDateAsync(userId!, w.LoggedAt.Date);
+            var exercises = await ExerciseService.GetByDateAsync(userId!, w.LoggedAt.Date);
+
+            var eaten = meals.Sum(m => m.Calories ?? 0);
+            var burned = exercises.Sum(e => e.CaloriesBurned ?? 0);
+
+            netCaloriesValues.Add(eaten - burned);
+        }
     }
 
     private async Task RenderChartsOnce()
@@ -78,54 +147,89 @@ else
         if (chartsRendered || busy || !string.IsNullOrWhiteSpace(error)) return;
         chartsRendered = true;
 
-        // BP
+        // ---------- BP ----------
         var bpOrdered = bp.OrderBy(x => x.LoggedAt).ToList();
-        var bpLabels = bpOrdered.Select(x => x.LoggedAt.ToLocalTime().ToString("MM-dd HH:mm")).ToList();
-        var systolic = bpOrdered.Select(x => (double)x.Systolic).ToList();
-        var diastolic = bpOrdered.Select(x => (double)x.Diastolic).ToList();
-
         await JS.InvokeVoidAsync("healthCharts.renderLineChart",
             "bpChart",
-            "Blood Pressure (Systolic/Diastolic)",
-            bpLabels,
+            "Blood Pressure",
+            bpOrdered.Select(x => x.LoggedAt.ToLocalTime().ToString("MM-dd")).ToList(),
             new object[]
             {
-                new { label = "Systolic", data = systolic, tension = 0.25 },
-                new { label = "Diastolic", data = diastolic, tension = 0.25 }
+                new { label = "Systolic", data = bpOrdered.Select(x => (double)x.Systolic).ToList() },
+                new { label = "Diastolic", data = bpOrdered.Select(x => (double)x.Diastolic).ToList() }
             });
 
-        // Glucose
+        // ---------- Glucose ----------
         var gOrdered = glucose.OrderBy(x => x.LoggedAt).ToList();
-        var gLabels = gOrdered.Select(x => x.LoggedAt.ToLocalTime().ToString("MM-dd HH:mm")).ToList();
-        var gVals = gOrdered.Select(x => (double)x.ValueMgDl).ToList();
-
         await JS.InvokeVoidAsync("healthCharts.renderLineChart",
             "glucoseChart",
-            "Glucose (mg/dL)",
-            gLabels,
+            "Glucose",
+            gOrdered.Select(x => x.LoggedAt.ToLocalTime().ToString("MM-dd")).ToList(),
             new object[]
             {
-                new { label = "Glucose", data = gVals, tension = 0.25 }
+                new { label = "Glucose", data = gOrdered.Select(x => (double)x.ValueMgDl).ToList() }
             });
 
-        // Weight
+        // ---------- Weight ----------
         var wOrdered = weight.OrderBy(x => x.LoggedAt).ToList();
-        var wLabels = wOrdered.Select(x => x.LoggedAt.ToLocalTime().ToString("MM-dd HH:mm")).ToList();
-        var wVals = wOrdered.Select(x => (double)x.WeightKg).ToList();
-
         await JS.InvokeVoidAsync("healthCharts.renderLineChart",
             "weightChart",
             "Weight (kg)",
-            wLabels,
+            wOrdered.Select(x => x.LoggedAt.ToLocalTime().ToString("MM-dd")).ToList(),
             new object[]
             {
-                new { label = "Weight", data = wVals, tension = 0.25 }
+                new { label = "Weight", data = wOrdered.Select(x => (double)x.WeightKg).ToList() }
+            });
+
+        // ---------- BMR ----------
+        await JS.InvokeVoidAsync("healthCharts.renderLineChart",
+            "bmrChart",
+            "BMR",
+            metabolismDates.Select(d => d.ToString("MM-dd")).ToList(),
+            new object[]
+            {
+                new { label = "BMR", data = bmrValues }
+            });
+
+        // ---------- Maintenance ----------
+        await JS.InvokeVoidAsync("healthCharts.renderLineChart",
+            "maintenanceChart",
+            "Maintenance Calories",
+            metabolismDates.Select(d => d.ToString("MM-dd")).ToList(),
+            new object[]
+            {
+                new { label = "Maintenance", data = maintenanceValues }
+            });
+
+        // ---------- Net Calories ----------
+        await JS.InvokeVoidAsync("healthCharts.renderLineChart",
+            "netCaloriesChart",
+            "Net Calories",
+            metabolismDates.Select(d => d.ToString("MM-dd")).ToList(),
+            new object[]
+            {
+                new { label = "Net Calories", data = netCaloriesValues }
             });
     }
 }
 
 <style>
-    .grid{ display:grid; grid-template-columns: 1fr; gap: 14px; max-width: 1000px; }
-    .card{ background:#fff; border-radius:12px; padding:14px; box-shadow:0 2px 8px rgba(0,0,0,0.08); }
-    h5{ margin:0 0 10px 0; font-weight:600; }
+    .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 16px;
+        max-width: 1200px;
+    }
+
+    .card {
+        background: #fff;
+        border-radius: 14px;
+        padding: 14px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    h5 {
+        margin: 0 0 10px;
+        font-weight: 600;
+    }
 </style>

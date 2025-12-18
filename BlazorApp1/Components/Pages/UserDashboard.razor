@@ -18,6 +18,7 @@
 @inject IMealService MealService
 @inject IMedicationHttpService MedicationService
 @inject ICalorieNinjaService CalorieService
+@inject MetabolismApiService Metabolism
 @inject NavigationManager Navigation
 
 @if (isLoading)
@@ -159,6 +160,107 @@ else
                 </div>
             </div>
 
+            <!-- ✅ NEW: Daily Metabolism + Daily Check-in (Priority C) -->
+            @if (currentClient is not null && currentDoctor is null)  @* only show to patients *@
+            {
+                <div class="card">
+                    <h3>🔥 Daily Metabolism</h3>
+
+                    @if (metabolismLoading)
+                    {
+                        <p class="muted">Loading metabolism...</p>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(metabolismError))
+                    {
+                        <p class="error">Metabolism error: @metabolismError</p>
+                        <p class="hint">Tip: Add a weight log and ensure your profile has height, gender, DOB, activity level.</p>
+                    }
+                    else if (metabolism != null)
+                    {
+                        <div class="report-item">
+                            <b>BMR:</b>
+                            <span>@metabolism.bmr kcal</span>
+                        </div>
+                        <div class="report-item">
+                            <b>Maintenance:</b>
+                            <span>@metabolism.maintenanceCalories kcal</span>
+                        </div>
+
+                        <hr />
+
+                        <div class="report-item">
+                            <b>Consumed (today):</b>
+                            <span>@metabolism.caloriesConsumed kcal</span>
+                        </div>
+                        <div class="report-item">
+                            <b>Burned (today):</b>
+                            <span>@metabolism.caloriesBurned kcal</span>
+                        </div>
+                        <div class="report-item">
+                            <b>Net:</b>
+                            <span>@metabolism.netCalories kcal</span>
+                        </div>
+
+                        <p class="small-text">
+                            @if (((string)metabolism.status) == "Deficit")
+                            {
+                                <span style="color: #16a34a; font-weight:600;">
+                                    You are in a calorie deficit today.
+                                </span>
+                            }
+                            else if (((string)metabolism.status) == "Surplus")
+                            {
+                                <span style="color: #ef4444; font-weight:600;">
+                                    You are in a calorie surplus today.
+                                </span>
+                            }
+                            else
+                            {
+                                <span style="color: #111827; font-weight:600;">
+                                    You are at maintenance today.
+                                </span>
+                            }
+                        </p>
+                    }
+                </div>
+
+                <div class="card">
+                    <h3>✅ Daily Check-in</h3>
+                    <p class="muted">Quick daily habits (UI-level for now).</p>
+
+                    <div class="checklist">
+                        <label class="checkitem">
+                            <input type="checkbox" @bind="checkMealsLogged" />
+                            Meals logged
+                        </label>
+
+                        <label class="checkitem">
+                            <input type="checkbox" @bind="checkExerciseDone" />
+                            Exercise done
+                        </label>
+
+                        <label class="checkitem">
+                            <input type="checkbox" @bind="checkMedsTaken" />
+                            Medications taken
+                        </label>
+
+                        <label class="checkitem">
+                            <input type="checkbox" @bind="checkWaterDone" />
+                            Water goal done
+                        </label>
+                    </div>
+
+                    <div class="field mt-2">
+                        <label>Water (ml)</label>
+                        <input class="input" type="number" @bind="waterMl" />
+                    </div>
+
+                    <p class="hint">
+                        (Next step) We’ll persist this via DailyChecklist API so doctors can see compliance.
+                    </p>
+                </div>
+            }
+
             <!-- Medication card -->
             <div class="card meds-summary-card">
                 <h3>Today’s Medication</h3>
@@ -275,6 +377,18 @@ else
     private bool showSuggestions;
     private CancellationTokenSource? _suggestCts;
 
+    // ✅ NEW: Metabolism state
+    private bool metabolismLoading = false;
+    private string? metabolismError;
+    private dynamic? metabolism;
+
+    // ✅ NEW: Daily check-in UI state (UI-only for now)
+    private bool checkMealsLogged;
+    private bool checkExerciseDone;
+    private bool checkMedsTaken;
+    private bool checkWaterDone;
+    private int waterMl = 0;
+
     protected override async Task OnInitializedAsync()
     {
         isLoading = true;
@@ -328,6 +442,17 @@ else
 
             // Build initial calendar view
             BuildCalendarDays();
+
+            // ✅ NEW: Load metabolism (patients only)
+            if (currentDoctor is null)
+            {
+                await LoadMetabolismAsync();
+            }
+
+            // ✅ NEW: Basic daily check-in default values
+            // (These are UI-level; later we will persist with DailyChecklist API)
+            checkMealsLogged = meals.Any();
+            checkMedsTaken = medsTaken > 0 && medsPending == 0;
         }
         catch (Exception ex)
         {
@@ -336,6 +461,27 @@ else
         finally
         {
             isLoading = false;
+        }
+    }
+
+    private async Task LoadMetabolismAsync()
+    {
+        if (currentClient == null) return;
+
+        metabolismLoading = true;
+        metabolismError = null;
+
+        try
+        {
+            metabolism = await Metabolism.GetSummaryAsync(currentClient.Id);
+        }
+        catch (Exception ex)
+        {
+            metabolismError = ex.Message;
+        }
+        finally
+        {
+            metabolismLoading = false;
         }
     }
 
@@ -422,6 +568,13 @@ else
         newMealType = "Breakfast";
         showSuggestions = false;
         foodSuggestions.Clear();
+
+        // ✅ NEW: refresh metabolism after adding meal (today consumption changes)
+        if (currentDoctor is null)
+        {
+            await LoadMetabolismAsync();
+            checkMealsLogged = meals.Any();
+        }
     }
 
     private async Task DeleteMealAsync(string? mealId)
@@ -431,6 +584,13 @@ else
 
         await MealService.DeleteMealAsync(mealId);
         await LoadMealsForDateAsync(currentClient.Id, selectedDate);
+
+        // ✅ NEW: refresh metabolism after deleting meal
+        if (currentDoctor is null)
+        {
+            await LoadMetabolismAsync();
+            checkMealsLogged = meals.Any();
+        }
     }
 
     private void Logout()
@@ -949,6 +1109,40 @@ else
         color: #374151;
     }
 
+    .small-text {
+        font-size: 12px;
+        color: #6b7280;
+        margin-top: 10px;
+        margin-bottom: 0;
+    }
+
+    .hint {
+        font-size: 12px;
+        color: #777;
+        margin-top: 10px;
+    }
+
+    .error {
+        color: #b00020;
+    }
+
+    .checklist {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 8px;
+    }
+
+    .checkitem {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        font-size: 13px;
+        color: #374151;
+    }
+
+    .mt-2 { margin-top: 10px; }
+
     /* Suggestions dropdown */
     .suggestions-list {
         list-style: none;
@@ -1007,4 +1201,3 @@ else
         }
     }
 </style>
-

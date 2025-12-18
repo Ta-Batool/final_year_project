@@ -1,29 +1,26 @@
-using API.MongoModel;
-using Microsoft.Extensions.Options;
-using Model;
-using MongoDB.Driver;
-using System;
-using System.Threading.Tasks;
-
-namespace API.Services
+public DietPlan GeneratePlan(string userId, double maintenance, double weightKg, string goal)
 {
-    public class DietPlanService
+    double targetCalories = goal switch
     {
-        private readonly IMongoCollection<DietPlan> _diet;
+        "Lose" => maintenance - 500,
+        "Gain" => maintenance + 300,
+        _ => maintenance
+    };
 
-        public DietPlanService(IOptions<MongoDBSettings> mongo)
-        {
-            var client = new MongoClient(mongo.Value.ConnectionString);
-            var db = client.GetDatabase(mongo.Value.DatabaseName);
-            _diet = db.GetCollection<DietPlan>("DietPlans");
-        }
+    double protein = weightKg * 1.6;
+    double fat = weightKg * 0.8;
+    double proteinCalories = protein * 4;
+    double fatCalories = fat * 9;
+    double carbCalories = targetCalories - (proteinCalories + fatCalories);
+    double carbs = carbCalories / 4;
 
-        public Task<DietPlan?> GetByUserAndDateAsync(string userId, DateTime date) =>
-            _diet.Find(x => x.UserId == userId && x.Date == date.Date).FirstOrDefaultAsync();
-
-        public Task CreateAsync(DietPlan plan) => _diet.InsertOneAsync(plan);
-
-        public Task UpdateAsync(string id, DietPlan plan) =>
-            _diet.ReplaceOneAsync(x => x.Id == id, plan);
-    }
+    return new DietPlan
+    {
+        UserId = userId,
+        TargetCalories = Math.Round(targetCalories),
+        ProteinGrams = Math.Round(protein),
+        FatGrams = Math.Round(fat),
+        CarbGrams = Math.Round(carbs),
+        CreatedAt = DateTime.UtcNow
+    };
 }

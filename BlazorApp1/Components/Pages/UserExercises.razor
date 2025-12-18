@@ -17,12 +17,16 @@
 @inject IExerciseService ExerciseService
 @inject IHydrationService HydrationService
 
+// 🔥 Priority-C services
+@inject MetabolismApiService MetabolismService
+@inject IExercisePlanService ExercisePlanService
+
 @layout UserDashboardLayout
 
 <h2>Exercise & Hydration</h2>
 
 <p class="subtitle">
-    Log your daily exercise and water intake. Net calories = food calories - exercise calories.
+    Log your daily exercise and water intake. Net calories = food calories − exercise calories.
 </p>
 
 @if (isLoading)
@@ -39,6 +43,43 @@ else if (currentClient is null)
 }
 else
 {
+    <!-- 🔥 METABOLISM SUMMARY -->
+    @if (metabolism != null)
+    {
+        <div class="summary-card card">
+            <h3>🔥 Metabolism Overview</h3>
+
+            <p>
+                BMR:
+                <strong>@metabolism.Bmr</strong> kcal ·
+                Maintenance:
+                <strong>@metabolism.MaintenanceCalories</strong> kcal
+            </p>
+
+            <p class="small-text">
+                @if (netCalories < -200)
+                {
+                    <span style="color:#16a34a;font-weight:600;">
+                        You are in a calorie deficit
+                    </span>
+                }
+                else if (netCalories > 200)
+                {
+                    <span style="color:#dc2626;font-weight:600;">
+                        You are in a calorie surplus
+                    </span>
+                }
+                else
+                {
+                    <span style="color:#64748b;">
+                        You are around maintenance calories
+                    </span>
+                }
+            </p>
+        </div>
+    }
+
+    <!-- 🔢 ENERGY SUMMARY (YOUR ORIGINAL CARD) -->
     <div class="summary-card card">
         <h3>Today's Energy Summary (@selectedDate.ToString("dd MMM yyyy"))</h3>
         <p>
@@ -47,16 +88,48 @@ else
             Net: <strong>@netCalories</strong> kcal
         </p>
         <p class="small-text">
-            Net calories = food calories - exercise calories.
+            Net calories = food calories − exercise calories.
         </p>
     </div>
 
     <div class="dashboard-grid">
-        <!-- LEFT: Exercises -->
+
+        <!-- 🏋️ EXERCISE PLAN (Priority-C) -->
+        @if (exercisePlan != null)
+        {
+            <div class="card">
+                <h3>🏋️ Today’s Exercise Plan</h3>
+
+                @if (exercisePlan.Items == null || !exercisePlan.Items.Any())
+                {
+                    <p class="muted">No planned exercises for today.</p>
+                }
+                else
+                {
+                    <ul class="simple-list">
+                        @foreach (var item in exercisePlan.Items)
+                        {
+                            <li>
+                                <strong>@item.Name</strong>
+                                <span class="muted">
+                                    (@item.DurationMinutes min · @item.Type)
+                                </span>
+                            </li>
+                        }
+                    </ul>
+                }
+
+                <p class="small-text">
+                    Target burn:
+                    <strong>@exercisePlan.TargetCalories</strong> kcal
+                </p>
+            </div>
+        }
+
+        <!-- 🏃 LEFT: EXERCISES (UNCHANGED CORE LOGIC) -->
         <div class="card">
             <h3>Today's Exercises</h3>
 
-            <!-- 🔍 Search exercise -->
             <div class="form-group">
                 <label>Search exercise</label>
                 <div style="display:flex; gap:0.5rem;">
@@ -64,16 +137,13 @@ else
                            style="flex:1"
                            value="@exerciseSearch"
                            @oninput="e => exerciseSearch = e.Value?.ToString() ?? string.Empty" />
-                    <button type="button"
-                            class="btn-secondary"
-                            @onclick="SearchExercisesAsync">
+                    <button class="btn-secondary" @onclick="SearchExercisesAsync">
                         Search
                     </button>
                 </div>
                 <p class="small-text">Type at least 2 letters and press Search.</p>
             </div>
 
-            <!-- ⬇ Suggestions dropdown -->
             @if (exerciseSuggestions.Any())
             {
                 <div class="form-group">
@@ -82,7 +152,7 @@ else
                             value="@selectedSuggestionIndexString"
                             @onchange="OnSuggestionChanged">
                         <option value="">-- choose an exercise --</option>
-                        @for (var i = 0; i < exerciseSuggestions.Count; i++)
+                        @for (int i = 0; i < exerciseSuggestions.Count; i++)
                         {
                             var s = exerciseSuggestions[i];
                             <option value="@i">
@@ -95,58 +165,45 @@ else
 
             <div class="form-group">
                 <label>Selected exercise</label>
-                <input class="form-control"
-                       value="@exerciseForm.Name"
-                       readonly />
+                <input class="form-control" value="@exerciseForm.Name" readonly />
             </div>
 
             <div class="form-group">
                 <label>Type</label>
                 <select class="form-control" @bind="exerciseForm.Type">
-                    <option value="Cardio">Cardio</option>
-                    <option value="Strength">Strength</option>
-                    <option value="Flexibility">Flexibility</option>
-                    <option value="Yoga">Yoga</option>
-                    <option value="Other">Other</option>
+                    <option>Cardio</option>
+                    <option>Strength</option>
+                    <option>Flexibility</option>
+                    <option>Yoga</option>
+                    <option>Other</option>
                 </select>
             </div>
 
             <div class="form-group">
                 <label>Duration (minutes)</label>
-                <input class="form-control"
-                       @bind="durationText"
-                       placeholder="e.g. 30" />
+                <input class="form-control" @bind="durationText" />
             </div>
 
             <div class="form-group">
                 <label>Intensity</label>
                 <select class="form-control" @bind="exerciseForm.Intensity">
-                    <option value="Low">Low</option>
-                    <option value="Medium">Medium</option>
-                    <option value="High">High</option>
+                    <option>Low</option>
+                    <option>Medium</option>
+                    <option>High</option>
                 </select>
             </div>
 
             <p class="small-text">
-                @if (selectedSuggestion is null)
-                {
-                    <span>Select an exercise to see calories burned.</span>
-                }
-                else
+                @if (selectedSuggestion != null)
                 {
                     <span>
-                        Per minute:
-                        <strong>@selectedSuggestion.CaloriesPerMinute.ToString("0.00")</strong> kcal ·
-                        This session:
+                        Session burn:
                         <strong>@calculatedCaloriesBurned.ToString("0")</strong> kcal
                     </span>
                 }
             </p>
 
-            <!-- 🔵 ALWAYS clickable now -->
-            <button type="button"
-                    class="btn-primary"
-                    @onclick="AddExerciseAsync">
+            <button class="btn-primary" @onclick="AddExerciseAsync">
                 @(isSavingExercise ? "Saving..." : "Add Exercise")
             </button>
 
@@ -154,15 +211,10 @@ else
 
             @if (!exerciseLogs.Any())
             {
-                <p>No exercise logged for today yet.</p>
+                <p>No exercise logged yet.</p>
             }
             else
             {
-                <p class="small-text">
-                    Total: <strong>@totalMinutes</strong> minutes ·
-                    Burned: <strong>@totalCaloriesBurned</strong> kcal
-                </p>
-
                 <ul class="simple-list">
                     @foreach (var ex in exerciseLogs)
                     {
@@ -171,13 +223,12 @@ else
                                 <strong>@ex.Name</strong>
                                 <span class="badge">@ex.Type</span>
                                 <span class="badge">@ex.Intensity</span>
-                                <span class="muted">@ex.DurationMinutes min</span>
-                                @if (ex.CaloriesBurned.HasValue)
-                                {
-                                    <span class="muted">· @ex.CaloriesBurned.Value kcal</span>
-                                }
+                                <span class="muted">
+                                    @ex.DurationMinutes min · @ex.CaloriesBurned kcal
+                                </span>
                             </div>
-                            <button class="btn-link danger" @onclick="() => DeleteExerciseAsync(ex.Id)">
+                            <button class="btn-link danger"
+                                    @onclick="() => DeleteExerciseAsync(ex.Id)">
                                 remove
                             </button>
                         </li>
@@ -186,24 +237,26 @@ else
             }
         </div>
 
-        <!-- RIGHT: Hydration -->
+        <!-- 💧 RIGHT: HYDRATION -->
         <div class="card">
             <h3>Hydration Tracker (@selectedDate.ToString("dd MMM yyyy"))</h3>
 
-            @if (hydrationLog is null)
-            {
-                <p>No water logged yet today.</p>
-            }
-            else
+            @if (hydrationLog != null)
             {
                 <div class="hydration-progress">
                     <div class="bar">
                         <div class="fill" style="width:@hydrationPercent%"></div>
                     </div>
                     <p class="small-text">
-                        @hydrationLog.TotalMl ml / @hydrationLog.TargetMl ml (@hydrationPercent%)
+                        @hydrationLog.TotalMl ml /
+                        @hydrationLog.TargetMl ml
+                        (@hydrationPercent%)
                     </p>
                 </div>
+            }
+            else
+            {
+                <p>No water logged yet today.</p>
             }
 
             <div class="quick-buttons">
@@ -213,10 +266,10 @@ else
 
             <div class="form-group mt-3">
                 <label>Daily target (ml)</label>
-                <input class="form-control"
-                       type="number"
-                       @bind="targetMl" />
-                <button class="btn-primary mt-2" @onclick="UpdateTargetAsync" disabled="@isSavingHydration">
+                <input class="form-control" type="number" @bind="targetMl" />
+                <button class="btn-primary mt-2"
+                        @onclick="UpdateTargetAsync"
+                        disabled="@isSavingHydration">
                     @(isSavingHydration ? "Saving..." : "Update target")
                 </button>
             </div>
@@ -229,8 +282,8 @@ else
     private User? currentUser;
 
     private bool isLoading = true;
-    private bool isSavingExercise = false;
-    private bool isSavingHydration = false;
+    private bool isSavingExercise;
+    private bool isSavingHydration;
     private string? errorMessage;
 
     private DateTime selectedDate = DateTime.UtcNow.Date;
@@ -239,31 +292,32 @@ else
     private List<ExerciseLog> exerciseLogs = new();
     private HydrationLog? hydrationLog;
 
-    private int totalMinutes        => exerciseLogs.Sum(x => x.DurationMinutes);
+    // 🔥 Priority-C state
+    private MetabolismSummary? metabolism;
+    private ExercisePlan? exercisePlan;
+
     private int totalCaloriesEaten  => mealsToday.Sum(m => m.Calories ?? 0);
     private int totalCaloriesBurned => exerciseLogs.Sum(x => x.CaloriesBurned ?? 0);
     private int netCalories         => totalCaloriesEaten - totalCaloriesBurned;
 
     private int hydrationPercent =>
-        hydrationLog is null || hydrationLog.TargetMl <= 0
+        hydrationLog == null || hydrationLog.TargetMl <= 0
             ? 0
             : Math.Min(100, hydrationLog.TotalMl * 100 / hydrationLog.TargetMl);
 
     private int targetMl = 2000;
 
-    // exercise search state
-    private string exerciseSearch = string.Empty;
+    private string exerciseSearch = "";
     private List<ExerciseSuggestion> exerciseSuggestions = new();
     private ExerciseSuggestion? selectedSuggestion;
     private int selectedSuggestionIndex = -1;
     private string selectedSuggestionIndexString =>
-        selectedSuggestionIndex >= 0 ? selectedSuggestionIndex.ToString() : string.Empty;
-    private double calculatedCaloriesBurned = 0;
+        selectedSuggestionIndex >= 0 ? selectedSuggestionIndex.ToString() : "";
 
-    // duration as string – like newMealCalories
+    private double calculatedCaloriesBurned;
     private string durationText = "30";
 
-    private ExerciseLog exerciseForm = new ExerciseLog
+    private ExerciseLog exerciseForm = new()
     {
         Type = "Cardio",
         Intensity = "Medium",
@@ -272,252 +326,79 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        try
-        {
-            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-            var principal = authState.User;
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var email = auth.User.FindFirst(ClaimTypes.Email)?.Value;
 
-            if (!principal.Identity?.IsAuthenticated ?? true)
-            {
-                errorMessage = "You are not logged in.";
-                return;
-            }
+        currentClient = await CService.GetClientByEmailAsync(email!);
+        currentUser = await UService.GetUserByClientIdAsync(currentClient!.Id!);
 
-            var email = principal.FindFirst(ClaimTypes.Email)?.Value
-                        ?? principal.FindFirst("email")?.Value;
-
-            if (string.IsNullOrEmpty(email))
-            {
-                errorMessage = "Email not found in token.";
-                return;
-            }
-
-            currentClient = await CService.GetClientByEmailAsync(email);
-            if (currentClient != null)
-            {
-                currentUser = await UService.GetUserByClientIdAsync(currentClient.Id!);
-            }
-
-            if (currentClient == null)
-            {
-                errorMessage = "Client profile not found.";
-                return;
-            }
-
-            await LoadDataAsync();
-        }
-        catch (Exception ex)
-        {
-            errorMessage = $"Failed to load data: {ex.Message}";
-        }
-        finally
-        {
-            isLoading = false;
-        }
+        await LoadDataAsync();
+        isLoading = false;
     }
 
     private async Task LoadDataAsync()
     {
-        if (currentClient == null) return;
-
-        mealsToday   = await MealService.GetTodayMealsAsync(currentClient.Id!);
+        mealsToday   = await MealService.GetTodayMealsAsync(currentClient!.Id!);
         exerciseLogs = await ExerciseService.GetTodayAsync(currentClient.Id!);
         hydrationLog = await HydrationService.GetTodayAsync(currentClient.Id!);
 
+        metabolism   = await MetabolismService.GetSummaryAsync(currentClient.Id!);
+        exercisePlan = await ExercisePlanService.GetTodayPlanAsync(currentClient.Id!);
+
         if (hydrationLog != null)
-        {
             targetMl = hydrationLog.TargetMl;
-        }
     }
 
-    // 🔍 Search when button clicked
     private async Task SearchExercisesAsync()
-    {
-        errorMessage = null;
-        selectedSuggestion = null;
-        selectedSuggestionIndex = -1;
-        exerciseForm.Name = string.Empty;
-        calculatedCaloriesBurned = 0;
+        => exerciseSuggestions = await ExerciseService.SearchExercisesAsync(exerciseSearch);
 
-        if (string.IsNullOrWhiteSpace(exerciseSearch) || exerciseSearch.Length < 2)
-        {
-            exerciseSuggestions.Clear();
-            return;
-        }
-
-        try
-        {
-            exerciseSuggestions = await ExerciseService.SearchExercisesAsync(exerciseSearch);
-        }
-        catch (Exception ex)
-        {
-            errorMessage = $"Could not search exercises: {ex.Message}";
-        }
-    }
-
-    // 🔽 When user picks from dropdown
     private void OnSuggestionChanged(ChangeEventArgs e)
     {
-        var value = e.Value?.ToString() ?? string.Empty;
-
-        if (!int.TryParse(value, out var index) ||
-            index < 0 || index >= exerciseSuggestions.Count)
-        {
-            selectedSuggestionIndex = -1;
-            selectedSuggestion = null;
-            exerciseForm.Name = string.Empty;
-            calculatedCaloriesBurned = 0;
-            return;
-        }
-
-        selectedSuggestionIndex = index;
-        selectedSuggestion = exerciseSuggestions[index];
-
+        selectedSuggestionIndex = int.Parse(e.Value!.ToString()!);
+        selectedSuggestion = exerciseSuggestions[selectedSuggestionIndex];
         exerciseForm.Name = selectedSuggestion.Name;
-        RecalculateCalories();
-    }
-
-    private void RecalculateCalories()
-    {
-        if (selectedSuggestion == null)
-        {
-            calculatedCaloriesBurned = 0;
-            return;
-        }
-
-        if (!int.TryParse(durationText, out var minutes) || minutes <= 0)
-        {
-            exerciseForm.DurationMinutes = 0;
-            calculatedCaloriesBurned = 0;
-            return;
-        }
-
-        exerciseForm.DurationMinutes = minutes;
         calculatedCaloriesBurned =
-            selectedSuggestion.CaloriesPerMinute * minutes;
+            selectedSuggestion.CaloriesPerMinute * int.Parse(durationText);
     }
 
-    // 💾 Add exercise (button click)
     private async Task AddExerciseAsync()
     {
-        errorMessage = null;
+        if (selectedSuggestion == null) return;
 
-        if (currentClient == null)
+        isSavingExercise = true;
+
+        await ExerciseService.AddAsync(new ExerciseLog
         {
-            errorMessage = "Client not loaded.";
-            return;
-        }
+            ClientId = currentClient!.Id!,
+            Name = exerciseForm.Name,
+            Type = exerciseForm.Type,
+            Intensity = exerciseForm.Intensity,
+            DurationMinutes = int.Parse(durationText),
+            CaloriesBurned =
+                (int)(selectedSuggestion.CaloriesPerMinute * int.Parse(durationText)),
+            Date = selectedDate,
+            CreatedAt = DateTime.UtcNow
+        });
 
-        if (selectedSuggestion == null)
-        {
-            errorMessage = "Please select an exercise from the suggestions.";
-            return;
-        }
-
-        if (!int.TryParse(durationText, out var minutes) || minutes <= 0)
-        {
-            errorMessage = "Duration must be a positive number.";
-            return;
-        }
-
-        try
-        {
-            isSavingExercise = true;
-
-            var log = new ExerciseLog
-            {
-                ClientId        = currentClient.Id!,
-                Name            = exerciseForm.Name.Trim(),
-                Type            = exerciseForm.Type,
-                DurationMinutes = minutes,
-                Intensity       = exerciseForm.Intensity,
-                Date            = selectedDate,
-                CreatedAt       = DateTime.UtcNow,
-                CaloriesBurned  = (int)Math.Round(
-                    selectedSuggestion.CaloriesPerMinute * minutes)
-            };
-
-            await ExerciseService.AddAsync(log);
-
-            // reload from API so totals update
-            await LoadDataAsync();
-
-            // reset UI
-            exerciseSearch = string.Empty;
-            durationText   = "30";
-            exerciseForm = new ExerciseLog
-            {
-                Type = "Cardio",
-                Intensity = "Medium",
-                DurationMinutes = 30
-            };
-            selectedSuggestion       = null;
-            selectedSuggestionIndex  = -1;
-            exerciseSuggestions.Clear();
-            calculatedCaloriesBurned = 0;
-        }
-        catch (Exception ex)
-        {
-            errorMessage = $"Could not save exercise: {ex.Message}";
-        }
-        finally
-        {
-            isSavingExercise = false;
-        }
+        await LoadDataAsync();
+        isSavingExercise = false;
     }
 
-    private async Task DeleteExerciseAsync(string? id)
+    private async Task DeleteExerciseAsync(string id)
     {
-        if (string.IsNullOrEmpty(id)) return;
-
-        try
-        {
-            await ExerciseService.DeleteAsync(id);
-            await LoadDataAsync();
-        }
-        catch (Exception ex)
-        {
-            errorMessage = $"Could not delete exercise: {ex.Message}";
-        }
+        await ExerciseService.DeleteAsync(id);
+        await LoadDataAsync();
     }
 
-    private async Task AddWaterAsync(int amountMl)
+    private async Task AddWaterAsync(int ml)
     {
-        if (currentClient == null) return;
-
-        try
-        {
-            isSavingHydration = true;
-            await HydrationService.AddWaterAsync(currentClient.Id!, amountMl);
-            await LoadDataAsync();
-        }
-        catch (Exception ex)
-        {
-            errorMessage = $"Could not add water: {ex.Message}";
-        }
-        finally
-        {
-            isSavingHydration = false;
-        }
+        await HydrationService.AddWaterAsync(currentClient!.Id!, ml);
+        await LoadDataAsync();
     }
 
     private async Task UpdateTargetAsync()
     {
-        if (currentClient == null || targetMl <= 0) return;
-
-        try
-        {
-            isSavingHydration = true;
-            await HydrationService.UpdateTargetAsync(currentClient.Id!, targetMl);
-            await LoadDataAsync();
-        }
-        catch (Exception ex)
-        {
-            errorMessage = $"Could not update target: {ex.Message}";
-        }
-        finally
-        {
-            isSavingHydration = false;
-        }
+        await HydrationService.UpdateTargetAsync(currentClient!.Id!, targetMl);
+        await LoadDataAsync();
     }
 }

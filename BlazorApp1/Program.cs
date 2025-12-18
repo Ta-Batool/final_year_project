@@ -196,6 +196,12 @@ builder.Services.AddHttpClient("Api", c =>
 builder.Services.AddScoped(sp =>
     sp.GetRequiredService<IHttpClientFactory>().CreateClient("Api"));
 
+builder.Services.AddHttpClient<MetabolismApiService>(c =>
+{
+    c.BaseAddress = new Uri(apiBaseUrl);
+});
+
+
 //
 // ─────────────────────────────────────────────────────────────
 // 🚀 APP PIPELINE
