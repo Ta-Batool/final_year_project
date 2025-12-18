@@ -18,32 +18,40 @@
             <p class="specialization">@roleText</p>
         </div>
 
-        <nav class="sidebar-nav">
-            <button class="side-btn" @onclick="GoToProfile">
-                <i class="fas fa-user"></i> Edit Profile
-            </button>
-            <button class="side-btn" @onclick='() => Navigation.NavigateTo("/userdashboard")'>
-                <i class="fas fa-home"></i> Home
-            </button>
-            <button class="side-btn" @onclick='() => Navigation.NavigateTo("/selectdoctor")'>
-             <i class="fas fa-user-md"></i> Doctor
-            </button>
+                    <nav class="sidebar-nav">
+                <button class="side-btn" @onclick="GoToProfile">
+                    <i class="fas fa-user"></i> Edit Profile
+                </button>
 
-            <button class="side-btn" @onclick='() => Navigation.NavigateTo("/userexercises")'>
-                <i class="fas fa-dumbbell"></i> Exercises
-            </button>
-            <button class="side-btn" @onclick='() => Navigation.NavigateTo("/medication-compliance")'>
-            <i class="fas fa-pills"></i> Medication
-            </button>
+                <button class="side-btn" @onclick='() => Navigation.NavigateTo("/userdashboard")'>
+                    <i class="fas fa-home"></i> Home
+                </button>
 
+                <button class="side-btn" @onclick='() => Navigation.NavigateTo("/selectdoctor")'>
+                    <i class="fas fa-user-md"></i> Book Appointment
+                </button>
 
-            <button class="side-btn" @onclick='() => Navigation.NavigateTo("/usermessages")'>
-                <i class="fas fa-comments"></i> Messages
-            </button>
-            <button class="side-btn" @onclick='() => Navigation.NavigateTo("/userappointments")'>
-                <i class="fas fa-calendar-check"></i> Appointments
-            </button>
-        </nav>
+                <button class="side-btn" @onclick='() => Navigation.NavigateTo("/my-appointments")'>
+                    <i class="fas fa-calendar-check"></i> My Appointments
+                </button>
+
+                <button class="side-btn" @onclick='() => Navigation.NavigateTo("/userexercises")'>
+                    <i class="fas fa-dumbbell"></i> Exercises
+                </button>
+
+                <button class="side-btn" @onclick='() => Navigation.NavigateTo("/medication-compliance")'>
+                    <i class="fas fa-pills"></i> Medication
+                </button>
+
+                <button class="side-btn" @onclick='() => Navigation.NavigateTo("/usermessages")'>
+                    <i class="fas fa-comments"></i> Messages
+                </button>
+
+                @* Optional: keep old route if that page still exists *@
+                @* <button class="side-btn" @onclick='() => Navigation.NavigateTo("/userappointments")'>
+                    <i class="fas fa-calendar-check"></i> Appointments (Old)
+                </button> *@
+            </nav>
 
         <div class="bottom-section">
             <button class="settings-btn" @onclick="ToggleLanguageMenu">

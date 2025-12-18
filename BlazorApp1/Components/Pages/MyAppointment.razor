@@ -1,31 +1,45 @@
 @page "/my-appointments"
+@attribute [Authorize]
+@layout UserDashboardLayout
+
+@using Microsoft.AspNetCore.Authorization
+@using BlazorApp1.Components.Layout
 @using BlazorApp1.Service
+@using Model
 @inject AppointmentApiService ApptApi
-@inject AuthenticationStateProvider AuthStateProvider
-@inject ClientApiService ClientApi
+@inject IJSRuntime JS
 
-<h3>My Appointments</h3>
+<h3>📅 My Appointments</h3>
 
-@if (busy) { <p>Loading...</p> }
-else if (!string.IsNullOrWhiteSpace(error)) { <div class="alert alert-danger">@error</div> }
-else if (appointments == null || appointments.Count == 0) { <p>No appointments.</p> }
+@if (busy)
+{
+    <p>Loading appointments...</p>
+}
+else if (!string.IsNullOrWhiteSpace(error))
+{
+    <div class="alert alert-danger">@error</div>
+}
+else if (appointments == null || appointments.Count == 0)
+{
+    <p>No appointments found.</p>
+}
 else
 {
     <table class="table">
         <thead>
             <tr>
-                <th>Start</th>
-                <th>End</th>
+                <th>Date</th>
+                <th>Time</th>
                 <th>Status</th>
                 <th>Notes</th>
             </tr>
         </thead>
         <tbody>
-            @foreach (var a in appointments)
+            @foreach (var a in appointments.OrderBy(a => a.Start))
             {
                 <tr>
-                    <td>@a.Start.ToString("yyyy-MM-dd hh:mm tt")</td>
-                    <td>@a.End.ToString("yyyy-MM-dd hh:mm tt")</td>
+                    <td>@a.Start.ToString("yyyy-MM-dd")</td>
+                    <td>@a.Start.ToString("hh:mm tt")</td>
                     <td>@a.Status</td>
                     <td>@a.Notes</td>
                 </tr>
@@ -44,12 +58,14 @@ else
         try
         {
             busy = true;
-            var auth = await AuthStateProvider.GetAuthenticationStateAsync();
-            var email = auth.User?.Claims?.FirstOrDefault(c => c.Type.Contains("email"))?.Value;
-            var client = await ClientApi.GetClientByEmailAsync(email!);
 
-            var userId = client?.UserId ?? client?.Id;
-            appointments = await ApptApi.GetMyAppointmentsAsync(userId!);
+            // 🔑 Your app already uses localStorage userId everywhere
+            var userId = await JS.InvokeAsync<string?>("localStorage.getItem", "userId");
+
+            if (string.IsNullOrWhiteSpace(userId))
+                throw new Exception("User not logged in.");
+
+            appointments = await ApptApi.GetMyAppointmentsAsync(userId);
 
             busy = false;
         }
