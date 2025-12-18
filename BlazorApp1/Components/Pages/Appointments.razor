@@ -54,8 +54,13 @@
                         <td>@a.Notes</td>
                         <td>
                             <button class="btn" @onclick="@(() => OpenChat(a))">Chat</button>
+
                             <button class="btn" @onclick="@(() => Nav.NavigateTo($"/patientdetail/{a.UserClientId}"))">
                                 Details
+                            </button>
+
+                            <button class="btn" @onclick="@(() => Nav.NavigateTo($"/doctor/prescribe/{a.UserClientId}"))">
+                                Prescribe
                             </button>
                         </td>
                     </tr>
@@ -69,7 +74,7 @@
     private class DoctorAppointmentVm
     {
         public string Id { get; set; } = "";
-        public string? UserClientId { get; set; }
+        public string? UserClientId { get; set; } // NOTE: this is actually patient UserId (Mongo _id)
         public string PatientName { get; set; } = "";
         public DateTime Start { get; set; }
         public DateTime End { get; set; }
@@ -112,17 +117,25 @@
             {
                 string patientName = appt.PatientName ?? "Unknown";
 
+                // ✅ FIX: appt.UserId is Mongo User._id (NOT ClientId)
                 if (!string.IsNullOrWhiteSpace(appt.UserId))
                 {
-                    var user = await UserService.GetUserByClientIdAsync(appt.UserId);
-                    if (user != null && !string.IsNullOrWhiteSpace(user.Name))
-                        patientName = user.Name;
+                    try
+                    {
+                        var user = await UserService.GetUserByIdAsync(appt.UserId);
+                        if (user != null && !string.IsNullOrWhiteSpace(user.Name))
+                            patientName = user.Name;
+                    }
+                    catch
+                    {
+                        // ignore user lookup errors; keep default name
+                    }
                 }
 
                 appointments.Add(new DoctorAppointmentVm
                 {
                     Id = appt.Id ?? "",
-                    UserClientId = appt.UserId,
+                    UserClientId = appt.UserId, // patient UserId
                     PatientName = patientName,
                     Start = appt.Start,
                     End = appt.End,
@@ -198,6 +211,7 @@
         background: #3b3bbf;
         color: #fff;
         cursor: pointer;
+        margin-right: 6px;
     }
 
     .btn:hover {

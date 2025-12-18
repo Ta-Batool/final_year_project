@@ -88,6 +88,16 @@ else
                         <li class="med-item">
                             <div class="med-main">
                                 <strong>@row.Plan.Name</strong>
+
+                                @if (!string.IsNullOrWhiteSpace(row.Plan.PrescribedByDoctorId))
+                                {
+                                    <span class="badge prescribed">Prescribed</span>
+                                }
+                                else
+                                {
+                                    <span class="badge self">Self-added</span>
+                                }
+
                                 <span class="dose">@row.Plan.Dosage</span>
                                 <span class="time">@row.Plan.TimeOfDay</span>
                             </div>
@@ -130,7 +140,6 @@ else
 }
 
 @code {
-    // One row in the UI
     public class MedicationPlanRow
     {
         public MedicationPlan Plan { get; set; } = new MedicationPlan();
@@ -155,7 +164,6 @@ else
     {
         try
         {
-            // We stored userId in localStorage in GoogleCallBack.razor
             userId = await JS.InvokeAsync<string?>("localStorage.getItem", "userId");
 
             if (string.IsNullOrEmpty(userId))
@@ -164,13 +172,9 @@ else
                 return;
             }
 
-            // 1) Load all plans
             var plans = await MedicationService.GetPlansAsync(userId) ?? new List<MedicationPlan>();
-
-            // 2) Load today logs
             var logs = await MedicationService.GetTodayLogsAsync(userId) ?? new List<MedicationLog>();
 
-            // 3) Create UI rows and map logs -> rows
             planRows = plans.Select(p =>
             {
                 var row = new MedicationPlanRow { Plan = p };
@@ -220,7 +224,6 @@ else
                 });
             }
 
-            // reset form
             newPlan = new MedicationPlan
             {
                 StartDate = DateTime.UtcNow.Date
@@ -263,7 +266,6 @@ else
     {
         if (string.IsNullOrEmpty(row.LogId))
         {
-            // If no log for today, revert checkbox and show message
             row.IsTakenToday = !row.IsTakenToday;
             errorMessage = "No log entry found for today's dose.";
             return;
@@ -281,12 +283,8 @@ else
     }
 }
 
-
 <style>
-    .subtitle {
-        color: #777;
-        margin-bottom: 20px;
-    }
+    .subtitle { color: #777; margin-bottom: 20px; }
 
     .medication-grid {
         display: grid;
@@ -302,9 +300,7 @@ else
         box-shadow: 0 2px 6px rgba(0,0,0,0.08);
     }
 
-    .form-group {
-        margin-bottom: 10px;
-    }
+    .form-group { margin-bottom: 10px; }
 
     .form-control {
         width: 100%;
@@ -324,37 +320,21 @@ else
         font-size: 14px;
     }
 
-    .btn-primary[disabled] {
-        opacity: 0.6;
-        cursor: default;
-    }
+    .btn-primary[disabled] { opacity: 0.6; cursor: default; }
 
-    .med-list {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-    }
+    .med-list { list-style: none; padding: 0; margin: 0; }
 
-    .med-item {
-        padding: 10px 8px;
-        border-bottom: 1px solid #eee;
-    }
+    .med-item { padding: 10px 8px; border-bottom: 1px solid #eee; }
 
     .med-main {
         display: flex;
         gap: 12px;
         align-items: baseline;
+        flex-wrap: wrap;
     }
 
-    .med-main .dose {
-        color: #555;
-        font-size: 13px;
-    }
-
-    .med-main .time {
-        font-size: 12px;
-        color: #888;
-    }
+    .med-main .dose { color: #555; font-size: 13px; }
+    .med-main .time { font-size: 12px; color: #888; }
 
     .med-meta {
         margin-top: 4px;
@@ -382,7 +362,23 @@ else
         font-size: 13px;
     }
 
-    .summary-card {
-        margin-top: 10px;
+    .summary-card { margin-top: 10px; }
+
+    /* ✅ NEW badge styles */
+    .badge {
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    .badge.prescribed {
+        background: #d8f3ff;
+        color: #0b4a6f;
+    }
+
+    .badge.self {
+        background: #eee;
+        color: #444;
     }
 </style>

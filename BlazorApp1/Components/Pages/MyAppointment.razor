@@ -1,0 +1,62 @@
+@page "/my-appointments"
+@using BlazorApp1.Service
+@inject AppointmentApiService ApptApi
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ClientApiService ClientApi
+
+<h3>My Appointments</h3>
+
+@if (busy) { <p>Loading...</p> }
+else if (!string.IsNullOrWhiteSpace(error)) { <div class="alert alert-danger">@error</div> }
+else if (appointments == null || appointments.Count == 0) { <p>No appointments.</p> }
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Start</th>
+                <th>End</th>
+                <th>Status</th>
+                <th>Notes</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var a in appointments)
+            {
+                <tr>
+                    <td>@a.Start.ToString("yyyy-MM-dd hh:mm tt")</td>
+                    <td>@a.End.ToString("yyyy-MM-dd hh:mm tt")</td>
+                    <td>@a.Status</td>
+                    <td>@a.Notes</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    bool busy = true;
+    string error = "";
+    List<Appointment>? appointments;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            busy = true;
+            var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+            var email = auth.User?.Claims?.FirstOrDefault(c => c.Type.Contains("email"))?.Value;
+            var client = await ClientApi.GetClientByEmailAsync(email!);
+
+            var userId = client?.UserId ?? client?.Id;
+            appointments = await ApptApi.GetMyAppointmentsAsync(userId!);
+
+            busy = false;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            busy = false;
+        }
+    }
+}

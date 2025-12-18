@@ -9,9 +9,16 @@ namespace Model
         [BsonRepresentation(BsonType.ObjectId)]
         public string? Id { get; set; }
 
-        // Link to your existing User document
+        // ✅ Patient User Id
         [BsonRepresentation(BsonType.ObjectId)]
         public string UserId { get; set; } = string.Empty;
+
+        // ✅ NEW: Doctor who prescribed it (optional for self-added meds)
+        [BsonRepresentation(BsonType.ObjectId)]
+        public string? PrescribedByDoctorId { get; set; }
+
+        // ✅ NEW
+        public DateTime PrescribedAt { get; set; } = DateTime.UtcNow;
 
         // e.g. "Metformin"
         public string Name { get; set; } = string.Empty;
@@ -19,8 +26,7 @@ namespace Model
         // e.g. "500 mg after breakfast"
         public string Dosage { get; set; } = string.Empty;
 
-        // When in the day this should be taken (simplified: one time per plan)
-        // Example: "08:00", "20:00"
+        // "08:00", "20:00"
         public string TimeOfDay { get; set; } = string.Empty;
 
         public DateTime StartDate { get; set; } = DateTime.UtcNow.Date;

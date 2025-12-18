@@ -63,11 +63,13 @@ builder.Services
     });
 
 builder.Services.AddAuthorization();
+builder.Services.AddScoped<BlazorApp1.Service.AppointmentApiService>();
 
 // 🌐 API base URL  (make sure this points to your API service on Render in production)
 var apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? "http://localhost:5092/";
 
 // ─── Domain services (typed HttpClients) ────────────────────────────────────────
+builder.Services.AddScoped<BlazorApp1.Service.DoctorPatientsApiService>();
 
 builder.Services.AddHttpClient<IDService, DService>(c =>
 {

@@ -74,5 +74,22 @@ namespace BlazorApp1.Service
             var response = await _http.PutAsJsonAsync($"api/appointments/{id}/status", status);
             return response.IsSuccessStatusCode;
         }
+
+        public async Task<AvailabilityResponseDto?> GetAvailabilityAsync(string doctorId, DateTime date, int slotMinutes = 30)
+        {
+            var url = $"api/appointments/doctor/{doctorId}/availability?date={date:yyyy-MM-dd}&slotMinutes={slotMinutes}";
+            return await _http.GetFromJsonAsync<AvailabilityResponseDto>(url);
+        }
+
+        public async Task<Appointment?> BookAppointmentAsync(BookAppointmentRequest req)
+        {
+            var res = await _http.PostAsJsonAsync("api/appointments/book", req);
+            if (!res.IsSuccessStatusCode)
+            {
+                var msg = await res.Content.ReadAsStringAsync();
+                throw new Exception($"{(int)res.StatusCode}: {msg}");
+            }
+            return await res.Content.ReadFromJsonAsync<Appointment>();
+        }
     }
 }

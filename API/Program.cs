@@ -27,8 +27,13 @@ builder.Services.AddSingleton<IConversationService, ConversationService>();
 builder.Services.AddHttpClient<IAiAssistantService, AiAssistantService>();
 builder.Services.AddSingleton<IExerciseService, ExerciseService>();
 builder.Services.AddSingleton<IHydrationService, HydrationService>();
-
+builder.Services.AddSingleton<DoctorPatientService>();
+builder.Services.AddSingleton<HealthLogService>();
+builder.Services.AddSingleton<DietPlanService>();
+builder.Services.AddSingleton<ExercisePlanService>();
+builder.Services.AddSingleton<DailyChecklistService>();
 builder.Services.AddHttpClient<ICaloriesBurnedApiService, CaloriesBurnedApiService>();
+
 
 
 // ✅ SignalR for WebRTC signalling

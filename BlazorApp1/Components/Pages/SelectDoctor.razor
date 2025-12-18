@@ -1,12 +1,14 @@
 ﻿@page "/selectdoctor"
-
 @page "/selectdoctor/{mode}"
 @layout UserDashboardLayout
+
 @using BlazorApp1.Components.Layout
 @using Model
+@using Microsoft.AspNetCore.Components
 @inject IDService DoctorService
 @inject NavigationManager Nav
-@inject IJSRuntime JS 
+@inject IJSRuntime JS
+
 <div class="doctor-page">
     <h2>👨‍⚕️ Select a Doctor</h2>
 
@@ -37,8 +39,9 @@
                         <td>@doc.Specialization</td>
                         <td>@doc.Phone</td>
                         <td>
-                            <button class="btn btn-select" @onclick="() => ChooseDoctor(doc.ClientId)">Select</button>
-
+                            <button class="btn btn-select" @onclick="() => ChooseDoctor(doc)">
+                                Select
+                            </button>
                         </td>
                     </tr>
                 }
@@ -48,7 +51,7 @@
 </div>
 
 @code {
-    [Parameter] public string? mode { get; set; }   // 👈 new
+    [Parameter] public string? mode { get; set; }
 
     private List<Doctor>? doctors;
     private bool isLoading = true;
@@ -69,12 +72,14 @@
         }
     }
 
-    private async Task ChooseDoctor(string doctorClientId)
+    private async Task ChooseDoctor(Doctor doc)
     {
-        // If called in "chat" mode → go to chat
+        // -------------------------
+        // MODE: chat
+        // -------------------------
         if (string.Equals(mode, "chat", StringComparison.OrdinalIgnoreCase))
         {
-            // read userId from localStorage
+            // Chat route in your app expects doctorClientId + userId
             var userId = await JS.InvokeAsync<string>("localStorage.getItem", "userId");
 
             if (string.IsNullOrWhiteSpace(userId))
@@ -83,13 +88,32 @@
                 return;
             }
 
-            Nav.NavigateTo($"/messages/{doctorClientId}/{userId}");
+            if (string.IsNullOrWhiteSpace(doc.ClientId))
+            {
+                Console.WriteLine("❌ Doctor ClientId missing. Cannot open chat.");
+                return;
+            }
+
+            Nav.NavigateTo($"/messages/{doc.ClientId}/{userId}");
+            return;
         }
-        else
+
+        // -------------------------
+        // MODE: appointments / booking (default)
+        // -------------------------
+        // For booking + availability, we MUST use Doctor.Id (Mongo _id)
+        if (string.IsNullOrWhiteSpace(doc.Id))
         {
-            // Default behaviour → used from appointments page
-            Nav.NavigateTo($"/userappointments?doctorId={doctorClientId}");
+            Console.WriteLine("❌ Doctor Id missing. Cannot book appointment.");
+            return;
         }
+
+        // Optional: store selected doctor id for later use
+        await JS.InvokeVoidAsync("localStorage.setItem", "selectedDoctorId", doc.Id);
+
+        // ✅ Go to your booking page that uses availability endpoints
+        // Make sure you have a page: @page "/book/{DoctorId}"
+        Nav.NavigateTo($"/book/{doc.Id}");
     }
 }
 
@@ -107,16 +131,16 @@
         box-shadow: 0 2px 6px rgba(0,0,0,0.1);
     }
 
-        .doctor-table th, .doctor-table td {
-            padding: 10px;
-            border-bottom: 1px solid #eee;
-        }
+    .doctor-table th, .doctor-table td {
+        padding: 10px;
+        border-bottom: 1px solid #eee;
+    }
 
-        .doctor-table th {
-            background: #3b3bbf;
-            color: white;
-            text-align: left;
-        }
+    .doctor-table th {
+        background: #3b3bbf;
+        color: white;
+        text-align: left;
+    }
 
     .btn-select {
         background: #27ae60;
@@ -127,7 +151,7 @@
         cursor: pointer;
     }
 
-        .btn-select:hover {
-            background: #219150;
-        }
+    .btn-select:hover {
+        background: #219150;
+    }
 </style>

@@ -12,5 +12,9 @@ namespace BlazorApp1.Service
         Task UpdateAppointmentAsync(string id, Appointment appointment);
         Task DeleteAppointmentAsync(string id);
         Task<bool> UpdateAppointmentStatusAsync(string id, string status);
+
+        Task<AvailabilityResponseDto?> GetAvailabilityAsync(string doctorId, DateTime date, int slotMinutes = 30);
+        Task<Appointment?> BookAppointmentAsync(BookAppointmentRequest req);
+
     }
 }
