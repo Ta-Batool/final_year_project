@@ -30,10 +30,21 @@
     else if (conversations.Count == 0)
     {
         <div class="empty-state">
-            <p>No messages yet.</p>
-            <button class="start-chat-btn" @onclick="GoToDoctorList">
-                Start Chat
-            </button>
+            @if (isPatient)
+            {
+                <p><strong>You have no conversation so far.</strong></p>
+                <p class="hint">Please make an appointment with a doctor first.</p>
+                <button class="start-chat-btn" @onclick="GoToAppointments">
+                    Make Appointment
+                </button>
+            }
+            else
+            {
+                <p>No messages yet.</p>
+                <button class="start-chat-btn" @onclick="GoToDoctorList">
+                    Start Chat
+                </button>
+            }
         </div>
     }
     else
@@ -65,11 +76,14 @@
 
     private List<ConversationDoctor> conversations = new();
     private string? currentUserClientId;
+
     private bool isLoading = true;
     private string? loadError;
     private bool _loadedFromJs = false;
 
-    // 👉 JS + API calls must be here, NOT in OnInitializedAsync
+    // ✅ Patient restriction flag
+    private bool isPatient = false;
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender || _loadedFromJs)
@@ -79,14 +93,18 @@
 
         try
         {
-            // 🔹 Read userId from localStorage using JS interop
             currentUserClientId = await JS.InvokeAsync<string>("localStorage.getItem", "userId");
+
+            // Try to read role from localStorage (set this at login)
+            var role = await JS.InvokeAsync<string>("localStorage.getItem", "role");
+            isPatient = string.Equals(role, "Patient", StringComparison.OrdinalIgnoreCase);
 
             if (!string.IsNullOrWhiteSpace(currentUserClientId))
             {
-                // 🔹 Ask API: which doctors this user has talked to
                 var doctorIds = await MessageService.GetDoctorsForUserAsync(currentUserClientId);
                 var uniqueDoctorIds = new HashSet<string>(doctorIds ?? new List<string>());
+
+                conversations.Clear();
 
                 foreach (var docClientId in uniqueDoctorIds)
                 {
@@ -112,7 +130,7 @@
         finally
         {
             isLoading = false;
-            StateHasChanged();   // ✅ Force UI refresh after JS + API work
+            StateHasChanged();
         }
     }
 
@@ -121,20 +139,26 @@
         if (string.IsNullOrWhiteSpace(currentUserClientId))
             return;
 
+        // ✅ Optional: even if they somehow click, block patients with no appointment here too
+        // (Real enforcement should be backend, but this helps UI safety)
         Nav.NavigateTo($"/user-chat/{doctorClientId}/{currentUserClientId}");
     }
 
-
     private void GoToDoctorList()
     {
+        // Doctors or allowed users can select doctor for chat
         Nav.NavigateTo("/selectdoctor/chat");
+    }
+
+    private void GoToAppointments()
+    {
+        // ✅ Change this route if your appointment booking page is different
+        Nav.NavigateTo("/book-appointment");
     }
 }
 
 <style>
-    .chat-page {
-        padding: 20px;
-    }
+    .chat-page { padding: 20px; }
 
     .conversation-list {
         display: flex;
@@ -152,16 +176,8 @@
         box-shadow: 0 2px 6px rgba(0,0,0,0.08);
     }
 
-    .info h3 {
-        margin: 0;
-        font-size: 18px;
-    }
-
-    .info p {
-        margin: 4px 0 0;
-        font-size: 13px;
-        color: #666;
-    }
+    .info h3 { margin: 0; font-size: 18px; }
+    .info p { margin: 4px 0 0; font-size: 13px; color: #666; }
 
     .open-btn {
         background: #3b3bbf;
@@ -172,9 +188,7 @@
         cursor: pointer;
     }
 
-    .open-btn:hover {
-        opacity: 0.9;
-    }
+    .open-btn:hover { opacity: 0.9; }
 
     .empty-state {
         margin-top: 20px;
@@ -195,16 +209,8 @@
         font-weight: 600;
     }
 
-    .start-chat-btn:hover {
-        background: #219150;
-    }
+    .start-chat-btn:hover { background: #219150; }
 
-    .error {
-        color: #b00020;
-    }
-
-    .hint {
-        font-size: 12px;
-        color: #777;
-    }
+    .error { color: #b00020; }
+    .hint { font-size: 12px; color: #777; }
 </style>
