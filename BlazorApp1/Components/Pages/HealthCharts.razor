@@ -3,10 +3,11 @@
 @layout BlazorApp1.Components.Layout.UserDashboardLayout
 
 @using Microsoft.AspNetCore.Authorization
-@using BlazorApp1.Service
 @using Model
 @inject IJSRuntime JS
-@inject HealthApiService HealthApi
+@inject BPLogApiService BPApi
+@inject GlucoseLogApiService GlucoseApi
+@inject WeightLogApiService WeightApi
 
 <h2>📊 Health Charts</h2>
 
@@ -40,15 +41,13 @@ else
     {
         try
         {
-            busy = true;
-
             userId = await JS.InvokeAsync<string?>("localStorage.getItem", "userId");
             if (string.IsNullOrWhiteSpace(userId))
-                throw new Exception("UserId not found in localStorage. Please login again.");
+                throw new Exception("UserId not found.");
 
-            bp = (await HealthApi.GetBPAsync(userId!)) ?? new();
-            glucose = (await HealthApi.GetGlucoseAsync(userId!)) ?? new();
-            weight = (await HealthApi.GetWeightAsync(userId!)) ?? new();
+            bp = await BPApi.GetByUserAsync(userId) ?? new();
+            glucose = await GlucoseApi.GetByUserAsync(userId) ?? new();
+            weight = await WeightApi.GetByUserAsync(userId) ?? new();
         }
         catch (Exception ex) { error = ex.Message; }
         finally { busy = false; }
@@ -58,50 +57,16 @@ else
     {
         if (!firstRender || busy || !string.IsNullOrWhiteSpace(error)) return;
 
-        var bpOrdered = bp.OrderBy(x => x.LoggedAt).ToList();
-        var bpLabels = bpOrdered.Select(x => x.LoggedAt.ToLocalTime().ToString("MM-dd HH:mm")).ToList();
-        var systolic = bpOrdered.Select(x => (double)x.Systolic).ToList();
-        var diastolic = bpOrdered.Select(x => (double)x.Diastolic).ToList();
-
-        await JS.InvokeVoidAsync("healthCharts.renderLineChart",
-            "bpChart",
-            "Blood Pressure (Systolic/Diastolic)",
-            bpLabels,
-            new object[]
-            {
-                new { label = "Systolic", data = systolic, tension = 0.25 },
-                new { label = "Diastolic", data = diastolic, tension = 0.25 }
-            });
-
-        var gOrdered = glucose.OrderBy(x => x.LoggedAt).ToList();
-        var gLabels = gOrdered.Select(x => x.LoggedAt.ToLocalTime().ToString("MM-dd HH:mm")).ToList();
-        var gVals = gOrdered.Select(x => (double)x.Value).ToList();
-
         await JS.InvokeVoidAsync("healthCharts.renderLineChart",
             "glucoseChart",
             "Glucose",
-            gLabels,
-            new object[]
-            {
-                new { label = "Glucose", data = gVals, tension = 0.25 }
-            });
-
-        var wOrdered = weight.OrderBy(x => x.LoggedAt).ToList();
-        var wLabels = wOrdered.Select(x => x.LoggedAt.ToLocalTime().ToString("MM-dd HH:mm")).ToList();
-        var wVals = wOrdered.Select(x => (double)x.Value).ToList();
+            glucose.OrderBy(x => x.LoggedAt).Select(x => x.LoggedAt.ToString("MM-dd")).ToList(),
+            new[] { new { label = "Glucose", data = glucose.Select(x => (double)x.ValueMgDl) } });
 
         await JS.InvokeVoidAsync("healthCharts.renderLineChart",
             "weightChart",
             "Weight",
-            wLabels,
-            new object[]
-            {
-                new { label = "Weight", data = wVals, tension = 0.25 }
-            });
+            weight.OrderBy(x => x.LoggedAt).Select(x => x.LoggedAt.ToString("MM-dd")).ToList(),
+            new[] { new { label = "Weight", data = weight.Select(x => x.WeightKg) } });
     }
 }
-
-<style>
-    .grid{ display:grid; grid-template-columns: 1fr; gap: 14px; max-width: 1000px; }
-    .card{ background:#fff; border-radius:12px; padding:14px; box-shadow:0 2px 8px rgba(0,0,0,0.08); }
-</style>

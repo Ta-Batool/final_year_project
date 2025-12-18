@@ -3,10 +3,11 @@
 @layout BlazorApp1.Components.Layout.UserDashboardLayout
 
 @using Microsoft.AspNetCore.Authorization
-@using BlazorApp1.Service
 @using Model
 @inject IJSRuntime JS
-@inject HealthApiService HealthApi
+@inject BPLogApiService BPApi
+@inject GlucoseLogApiService GlucoseApi
+@inject WeightLogApiService WeightApi
 
 <h2>🚨 Health Alerts</h2>
 
@@ -42,15 +43,12 @@ else
     bool busy = true;
     string error = "";
     string? userId;
-
     List<AlertItem> alerts = new();
 
     const int BP_SYS_HIGH = 140;
     const int BP_DIA_HIGH = 90;
-
     const int GLUCOSE_HIGH = 180;
     const int GLUCOSE_LOW = 70;
-
     const double WEIGHT_SPIKE_KG = 2.0;
 
     protected override async Task OnInitializedAsync()
@@ -58,26 +56,26 @@ else
         try
         {
             busy = true;
-
             userId = await JS.InvokeAsync<string?>("localStorage.getItem", "userId");
             if (string.IsNullOrWhiteSpace(userId))
-                throw new Exception("UserId not found in localStorage. Please login again.");
+                throw new Exception("UserId not found.");
 
-            var bp = (await HealthApi.GetBPAsync(userId!)) ?? new();
-            var g  = (await HealthApi.GetGlucoseAsync(userId!)) ?? new();
-            var w  = (await HealthApi.GetWeightAsync(userId!)) ?? new();
+            var bp = (await BPApi.GetByUserAsync(userId)) ?? new();
+            var g  = (await GlucoseApi.GetByUserAsync(userId)) ?? new();
+            var w  = (await WeightApi.GetByUserAsync(userId)) ?? new();
 
             bp = bp.OrderByDescending(x => x.LoggedAt).ToList();
             g  = g.OrderByDescending(x => x.LoggedAt).ToList();
             w  = w.OrderByDescending(x => x.LoggedAt).ToList();
 
             var latestBp = bp.FirstOrDefault();
-            if (latestBp != null && (latestBp.Systolic >= BP_SYS_HIGH || latestBp.Diastolic >= BP_DIA_HIGH))
+            if (latestBp != null &&
+                (latestBp.Systolic >= BP_SYS_HIGH || latestBp.Diastolic >= BP_DIA_HIGH))
             {
                 alerts.Add(new AlertItem
                 {
                     Title = "High Blood Pressure",
-                    Message = $"BP is {latestBp.Systolic}/{latestBp.Diastolic}. (Threshold {BP_SYS_HIGH}/{BP_DIA_HIGH})",
+                    Message = $"BP is {latestBp.Systolic}/{latestBp.Diastolic}.",
                     Time = latestBp.LoggedAt,
                     Severity = "danger"
                 });
@@ -86,31 +84,38 @@ else
             var latestG = g.FirstOrDefault();
             if (latestG != null)
             {
-                if (latestG.Value >= GLUCOSE_HIGH)
-                    alerts.Add(new AlertItem { Title="High Glucose", Message=$"Glucose is {latestG.Value}. (High ≥ {GLUCOSE_HIGH})", Time=latestG.LoggedAt, Severity="danger" });
-                else if (latestG.Value <= GLUCOSE_LOW)
-                    alerts.Add(new AlertItem { Title="Low Glucose", Message=$"Glucose is {latestG.Value}. (Low ≤ {GLUCOSE_LOW})", Time=latestG.LoggedAt, Severity="warn" });
+                if (latestG.ValueMgDl >= GLUCOSE_HIGH)
+                    alerts.Add(new AlertItem
+                    {
+                        Title = "High Glucose",
+                        Message = $"Glucose is {latestG.ValueMgDl} mg/dL",
+                        Time = latestG.LoggedAt,
+                        Severity = "danger"
+                    });
+                else if (latestG.ValueMgDl <= GLUCOSE_LOW)
+                    alerts.Add(new AlertItem
+                    {
+                        Title = "Low Glucose",
+                        Message = $"Glucose is {latestG.ValueMgDl} mg/dL",
+                        Time = latestG.LoggedAt,
+                        Severity = "warn"
+                    });
             }
 
             if (w.Count >= 2)
             {
-                var latestW = w[0];
-                var prevW = w[1];
-
-                var diff = Math.Abs(latestW.Value - prevW.Value);
+                var diff = Math.Abs(w[0].WeightKg - w[1].WeightKg);
                 if (diff >= WEIGHT_SPIKE_KG)
                 {
                     alerts.Add(new AlertItem
                     {
                         Title = "Sudden Weight Change",
-                        Message = $"Weight changed by {diff:0.0} kg since last log. ({prevW.Value} → {latestW.Value})",
-                        Time = latestW.LoggedAt,
+                        Message = $"Weight changed by {diff:0.0} kg",
+                        Time = w[0].LoggedAt,
                         Severity = "warn"
                     });
                 }
             }
-
-            alerts = alerts.OrderByDescending(a => a.Time).ToList();
         }
         catch (Exception ex) { error = ex.Message; }
         finally { busy = false; }
@@ -125,14 +130,3 @@ else
         public string SeverityClass => Severity == "danger" ? "danger" : "warn";
     }
 }
-
-<style>
-    .ok-card{ background:#ecfdf5; border:1px solid #a7f3d0; padding:12px; border-radius:10px; max-width:900px; }
-    .alerts{ display:flex; flex-direction:column; gap:10px; max-width:900px; }
-    .alert-card{ background:#fff; border-radius:12px; padding:12px; box-shadow:0 2px 8px rgba(0,0,0,0.08); border-left:6px solid #f59e0b; }
-    .alert-card.danger{ border-left-color:#ef4444; }
-    .alert-card.warn{ border-left-color:#f59e0b; }
-    .title{ display:flex; justify-content:space-between; align-items:center; }
-    .time{ font-size:12px; color:#666; }
-    .msg{ margin-top:6px; color:#222; }
-</style>
