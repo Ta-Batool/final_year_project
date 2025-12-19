@@ -179,36 +179,36 @@ else
                     {
                         <div class="report-item">
                             <b>BMR:</b>
-                            <span>@metabolism.bmr kcal</span>
+                            <span>@metabolism.Bmr kcal</span>
                         </div>
                         <div class="report-item">
                             <b>Maintenance:</b>
-                            <span>@metabolism.maintenanceCalories kcal</span>
+                            <span>@metabolism.MaintenanceCalories kcal</span>
                         </div>
 
                         <hr />
 
                         <div class="report-item">
                             <b>Consumed (today):</b>
-                            <span>@metabolism.caloriesConsumed kcal</span>
+                            <span>@metabolism.CaloriesConsumed kcal</span>
                         </div>
                         <div class="report-item">
                             <b>Burned (today):</b>
-                            <span>@metabolism.caloriesBurned kcal</span>
+                            <span>@metabolism.CaloriesBurned kcal</span>
                         </div>
                         <div class="report-item">
                             <b>Net:</b>
-                            <span>@metabolism.netCalories kcal</span>
+                            <span>@metabolism.NetCalories kcal</span>
                         </div>
 
                         <p class="small-text">
-                            @if (((string)metabolism.status) == "Deficit")
+                            @if (MetabolismStatus == "Deficit")
                             {
                                 <span style="color: #16a34a; font-weight:600;">
                                     You are in a calorie deficit today.
                                 </span>
                             }
-                            else if (((string)metabolism.status) == "Surplus")
+                            else if (MetabolismStatus == "Surplus")
                             {
                                 <span style="color: #ef4444; font-weight:600;">
                                     You are in a calorie surplus today.
@@ -380,7 +380,9 @@ else
     // ✅ NEW: Metabolism state
     private bool metabolismLoading = false;
     private string? metabolismError;
-    private dynamic? metabolism;
+    private MetabolismSummary? metabolism;
+
+
 
     // ✅ NEW: Daily check-in UI state (UI-only for now)
     private bool checkMealsLogged;
@@ -388,6 +390,13 @@ else
     private bool checkMedsTaken;
     private bool checkWaterDone;
     private int waterMl = 0;
+
+
+
+    private string MetabolismStatus => metabolism is null
+        ? ""
+        : metabolism.DeficitOrSurplus < 0 ? "Deficit"
+        : (metabolism.DeficitOrSurplus > 0 ? "Surplus" : "Maintenance");
 
     protected override async Task OnInitializedAsync()
     {
