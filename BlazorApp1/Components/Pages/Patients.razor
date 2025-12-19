@@ -82,8 +82,17 @@
                             <div class="actions">
                                 <button class="btn call">📞 @p.Phone</button>
                                 <button class="btn" @onclick="@(async () => await OpenChat(p))">Chat</button>
-                                <button class="btn" @onclick="@(() => Nav.NavigateTo($"/patientdetail/{p.PatientUserId}"))">Details</button>
-                                <button class="btn primary" @onclick="@(() => Nav.NavigateTo($"/doctor/prescribe/{p.PatientUserId}"))">Prescribe</button>
+
+                                <!-- ✅ FIX: pass CLIENT ID -->
+                                <button class="btn" 
+                                        @onclick="@(() => Nav.NavigateTo($"/patientdetail/{p.PatientClientId}"))">
+                                    Details
+                                </button>
+
+                                <button class="btn primary" 
+                                        @onclick="@(() => Nav.NavigateTo($"/doctor/prescribe/{p.PatientClientId}"))">
+                                    Prescribe
+                                </button>
                             </div>
                         </div>
                     }
@@ -97,8 +106,10 @@
     private class PatientViewModel
     {
         public string AppointmentId { get; set; } = "";
-        public string PatientUserId { get; set; } = "";   // Mongo User._id
-        public string PatientClientId { get; set; } = ""; // ClientId (chat)
+
+        // ✅ Explicit separation
+        public string PatientMongoId { get; set; } = "";
+        public string PatientClientId { get; set; } = "";
 
         public string Name { get; set; } = "";
         public string Reason { get; set; } = "";
@@ -142,21 +153,26 @@
                         ?? new List<Appointment>();
 
             var today = DateTime.Today;
-            appts = appts.Where(a => a.Start.Date == today).OrderBy(a => a.Start).ToList();
+            appts = appts
+                .Where(a => a.Start.Date == today)
+                .OrderBy(a => a.Start)
+                .ToList();
 
             foreach (var appt in appts)
             {
                 if (string.IsNullOrWhiteSpace(appt.UserId)) continue;
 
-                var user = await UserService.GetUserByIdAsync(appt.UserId);
+                // ✅ FIX: resolve patient via CLIENT ID
+                var user = await UserService.GetUserByClientIdAsync(appt.UserId);
                 if (user == null) continue;
 
                 patients.Add(new PatientViewModel
                 {
                     AppointmentId = appt.Id ?? "",
-                    PatientUserId = appt.UserId,
+                    PatientMongoId = user.Id ?? "",
                     PatientClientId = user.ClientId ?? "",
-                    Name = !string.IsNullOrWhiteSpace(user.Name) ? user.Name : (appt.PatientName ?? "Unknown"),
+
+                    Name = user.Name ?? "Unknown",
                     Reason = string.IsNullOrWhiteSpace(user.Reason) ? (appt.Notes ?? "") : user.Reason!,
                     Time = appt.Start.ToShortTimeString(),
                     DOB = user.DOB,

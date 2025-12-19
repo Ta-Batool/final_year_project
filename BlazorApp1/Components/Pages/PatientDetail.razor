@@ -149,7 +149,7 @@
     [Parameter] public string patientUserId { get; set; } = string.Empty;
 
     private User? patient;
-    private string? patientClientId; // ✅ important for meal/med endpoints
+    private string? patientClientId;
     private List<Appointment> appointments = new();
     private List<Meal> mealsToday = new();
     private List<MedicationLog> todayLogs = new();
@@ -176,34 +176,33 @@
 
             var doctorMongoId = await JS.InvokeAsync<string>("localStorage.getItem", "doctorMongoId");
 
-            // 1) Patient profile (Mongo User._id)
-            patient = await UserService.GetUserByIdAsync(patientUserId);
+            // ✅ FIX 1: resolve patient via CLIENT ID
+            patient = await UserService.GetUserByClientIdAsync(patientUserId);
             if (patient == null)
             {
                 errorMessage = "Patient not found.";
                 return;
             }
 
-            // ✅ clientId is what many “logs” modules use
-            patientClientId = !string.IsNullOrWhiteSpace(patient.ClientId)
-                ? patient.ClientId
-                : patientUserId; // fallback only
+            patientClientId = patient.ClientId;
 
-            // 2) Appointments for this patient (filter to current doctor)
-            var allAppts = await AppointmentService.GetAppointmentsByUserAsync(patientUserId)
+            // ✅ FIX 2: appointments MUST use CLIENT ID
+            var allAppts = await AppointmentService.GetAppointmentsByUserAsync(patientClientId)
                            ?? new List<Appointment>();
 
             if (!string.IsNullOrWhiteSpace(doctorMongoId))
             {
-                allAppts = allAppts.Where(a => a.DoctorId == doctorMongoId).ToList();
+                allAppts = allAppts
+                    .Where(a => a.DoctorId == doctorMongoId)
+                    .ToList();
             }
 
-            appointments = allAppts.OrderByDescending(a => a.Start).Take(10).ToList();
+            appointments = allAppts
+                .OrderByDescending(a => a.Start)
+                .Take(10)
+                .ToList();
 
-            // 3) Today meals (use clientId safely)
             mealsToday = await MealService.GetTodayMealsAsync(patientClientId) ?? new List<Meal>();
-
-            // 4) Today medication logs (use clientId safely)
             todayLogs = await MedicationService.GetTodayLogsAsync(patientClientId) ?? new List<MedicationLog>();
 
             totalDoses = todayLogs.Count;
@@ -231,74 +230,8 @@
 
     private void GoPrescribe()
     {
-        // prescribe route uses Mongo User._id (patientUserId)
         Nav.NavigateTo($"/doctor/prescribe/{patientUserId}");
     }
 
     private void GoBack() => Nav.NavigateTo("/patients");
 }
-
-<style>
-    .page { max-width: 1100px; margin: 0 auto; }
-    .page-head { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; margin-bottom:14px; }
-    h2 { margin:0; color:#0f172a; }
-    .muted { color:#64748b; font-size:13px; margin-top:4px; }
-    .ghost {
-        border:1px solid rgba(0,0,0,0.08);
-        background:#fff;
-        padding:10px 12px;
-        border-radius:12px;
-        cursor:pointer;
-        font-weight:800;
-    }
-
-    .state {
-        background:#fff;
-        border:1px solid rgba(0,0,0,0.06);
-        border-radius:14px;
-        padding:14px;
-        box-shadow:0 2px 10px rgba(0,0,0,0.04);
-        font-weight:700;
-        color:#0f172a;
-    }
-    .state.error { color:#b91c1c; }
-
-    .grid-2 {
-        display:grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap:14px;
-        margin-bottom:14px;
-    }
-
-    .card {
-        background:#fff;
-        border:1px solid rgba(0,0,0,0.06);
-        border-radius:16px;
-        padding:14px;
-        box-shadow:0 2px 10px rgba(0,0,0,0.04);
-    }
-
-    .card-title { font-weight:900; color:#0f172a; font-size:16px; margin-bottom:10px; }
-    .kv { color:#334155; font-size:14px; margin:6px 0; }
-
-    .tags { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
-    .tag { background:#eef2ff; color:#3b3bbf; font-weight:900; font-size:12px; padding:6px 10px; border-radius:999px; }
-
-    .actions { display:flex; gap:10px; margin-top:12px; }
-    .btn { border:none; border-radius:12px; padding:10px 12px; cursor:pointer; background:#eef2ff; font-weight:900; }
-    .btn.primary { background:#3b3bbf; color:white; }
-
-    .mini { color:#64748b; font-weight:800; }
-
-    .table-wrap { border:1px solid rgba(0,0,0,0.06); border-radius:14px; overflow:hidden; }
-    .table { width:100%; border-collapse:collapse; }
-    .table th, .table td { padding:10px; border-bottom:1px solid #eef2f7; text-align:left; font-size:14px; }
-    .table th { background:#f8fafc; color:#334155; font-weight:900; }
-    .notes { color:#334155; }
-
-    .list { margin:0; padding-left:18px; }
-    .stats { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:10px; margin-top:10px; }
-    .box { background:#f8fafc; border:1px solid rgba(0,0,0,0.05); border-radius:14px; padding:10px; }
-    .k { font-size:12px; color:#64748b; font-weight:900; }
-    .v { font-size:18px; color:#0f172a; font-weight:900; margin-top:4px; }
-</style>
