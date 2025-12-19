@@ -1,4 +1,6 @@
-﻿using BlazorApp1.Service;
+﻿using System;
+using System.Collections.Generic;
+using BlazorApp1.Service;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
@@ -100,7 +102,7 @@ builder.Services.AddScoped(sp =>
 
 //
 // ─────────────────────────────────────────────────────────────
-// ✅ Typed HttpClients (your app services)
+// ✅ Typed HttpClients (your HTTP API services)
 // ─────────────────────────────────────────────────────────────
 //
 builder.Services.AddHttpClient<HealthApiService>(c => c.BaseAddress = new Uri(apiBaseUrl));
@@ -123,23 +125,17 @@ builder.Services.AddHttpClient<MessageClientService>(c => c.BaseAddress = new Ur
 builder.Services.AddHttpClient<ConversationClientService>(c => c.BaseAddress = new Uri(apiBaseUrl));
 
 //
-// ✅ THIS IS THE MISSING ONE THAT CRASHED YOUR APP
-// Make sure ExercisePlanService class exists and implements IExercisePlanService
+// ─────────────────────────────────────────────────────────────
+// ✅ NON-HTTP SERVICES (pure logic / orchestrators)
+// ─────────────────────────────────────────────────────────────
 //
-builder.Services.AddHttpClient<IExercisePlanService, ExercisePlanService>(c =>
-{
-    c.BaseAddress = new Uri(apiBaseUrl);
-});
 
-//
-// ─────────────────────────────────────────────────────────────
-// 🧠 Non-Http domain orchestrators (if they call other services)
-// ─────────────────────────────────────────────────────────────
-//
 // If MetabolismApiService uses IUService/IMealService/IExerciseService internally,
 // it should be AddScoped (NOT AddHttpClient).
-//
 builder.Services.AddScoped<MetabolismApiService>();
+
+// ✅ FIXED: ExercisePlanService is NOT HttpClient-based -> AddScoped
+builder.Services.AddScoped<IExercisePlanService, ExercisePlanService>();
 
 builder.Services.AddScoped<AppointmentApiService>();
 builder.Services.AddScoped<DoctorPatientsApiService>();
