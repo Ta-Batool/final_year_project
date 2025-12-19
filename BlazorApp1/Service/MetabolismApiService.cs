@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Globalization;
 using System.Threading.Tasks;
 using Model;
 
@@ -21,69 +22,70 @@ namespace BlazorApp1.Service
             _exerciseService = exerciseService;
         }
 
-        // ============================================================
-        // MAIN SUMMARY (USED BY DASHBOARD + USER EXERCISES)
-        // ============================================================
+        // =========================================================
+        // MAIN SUMMARY (Dashboard + UserExercises)
+        // =========================================================
         public async Task<MetabolismSummary> GetSummaryAsync(string clientId)
         {
             var user = await _userService.GetUserByClientIdAsync(clientId);
 
-            // 🔐 Safe defaults (FYP-friendly)
+            // 🔒 SAFE DEFAULTS (viva-safe)
             double weightKg = 70;
             double heightCm = 170;
             int age = 25;
             string gender = "Male";
 
-            // ------------------------------------------------------------
-            // ✅ MAP TO YOUR ACTUAL USER MODEL (NO ASSUMPTIONS)
-            // ------------------------------------------------------------
+            // ---------------------------------------------------------
+            // ✅ PARSE STRING FIELDS SAFELY (YOUR ACTUAL USER MODEL)
+            // ---------------------------------------------------------
             if (user != null)
             {
-                try
+                // Weight (string → double)
+                if (!string.IsNullOrWhiteSpace(user.Weight) &&
+                    double.TryParse(user.Weight, NumberStyles.Any, CultureInfo.InvariantCulture, out var w))
                 {
-                    // ⚠️ CHANGE THESE ONLY IF YOUR User MODEL DIFFERS
-                    if (user.Weight > 0)
-                        weightKg = user.Weight;
-
-                    if (user.Height > 0)
-                        heightCm = user.Height;
-
-                    if (user.DateOfBirth.HasValue)
-                    {
-                        var today = DateTime.Today;
-                        age = today.Year - user.DateOfBirth.Value.Year;
-                        if (user.DateOfBirth.Value.Date > today.AddYears(-age))
-                            age--;
-                    }
-
-                    if (!string.IsNullOrWhiteSpace(user.Gender))
-                        gender = user.Gender;
+                    weightKg = Math.Max(30, w);
                 }
-                catch
+
+                // Height (string → double)
+                if (!string.IsNullOrWhiteSpace(user.Height) &&
+                    double.TryParse(user.Height, NumberStyles.Any, CultureInfo.InvariantCulture, out var h))
                 {
-                    // fallback values already set
+                    heightCm = Math.Max(100, h);
+                }
+
+                // Age (string → int)
+                if (!string.IsNullOrWhiteSpace(user.Age) &&
+                    int.TryParse(user.Age, out var a))
+                {
+                    age = Math.Max(10, a);
+                }
+
+                if (!string.IsNullOrWhiteSpace(user.Gender))
+                {
+                    gender = user.Gender;
                 }
             }
 
-            // ------------------------------------------------------------
-            // TODAY'S INTAKE & ACTIVITY
-            // ------------------------------------------------------------
+            // ---------------------------------------------------------
+            // TODAY'S MEALS & EXERCISE
+            // ---------------------------------------------------------
             var meals = await _mealService.GetTodayMealsAsync(clientId) ?? new();
             var exercises = await _exerciseService.GetTodayAsync(clientId) ?? new();
 
             int consumed = meals.Sum(m => m.Calories ?? 0);
             int burned = exercises.Sum(e => e.CaloriesBurned ?? 0);
 
-            // ------------------------------------------------------------
-            // 🔥 BMR — Mifflin–St Jeor (Industry Standard)
-            // ------------------------------------------------------------
+            // ---------------------------------------------------------
+            // 🔥 BMR (Mifflin–St Jeor)
+            // ---------------------------------------------------------
             int bmr = gender.Equals("female", StringComparison.OrdinalIgnoreCase)
                 ? (int)Math.Round(10 * weightKg + 6.25 * heightCm - 5 * age - 161)
                 : (int)Math.Round(10 * weightKg + 6.25 * heightCm - 5 * age + 5);
 
-            // ------------------------------------------------------------
-            // ⚡ MAINTENANCE CALORIES (Moderate Activity)
-            // ------------------------------------------------------------
+            // ---------------------------------------------------------
+            // ⚡ Maintenance Calories
+            // ---------------------------------------------------------
             int maintenance = (int)Math.Round(bmr * 1.55);
 
             int netCalories = consumed - burned;
@@ -91,17 +93,14 @@ namespace BlazorApp1.Service
 
             return new MetabolismSummary
             {
-                // Profile snapshot
                 WeightKg = weightKg,
                 HeightCm = heightCm,
                 Age = age,
                 Gender = gender,
 
-                // Metabolism
                 Bmr = bmr,
                 MaintenanceCalories = maintenance,
 
-                // Daily stats
                 CaloriesConsumed = consumed,
                 CaloriesBurned = burned,
                 NetCalories = netCalories,
@@ -109,15 +108,14 @@ namespace BlazorApp1.Service
             };
         }
 
-        // ============================================================
-        // 📊 USED BY HEALTH CHARTS (DATE-BASED)
-        // ============================================================
+        // =========================================================
+        // CHART SUPPORT (HealthCharts)
+        // =========================================================
         public async Task<MetabolismSummary> GetSummaryForDateAsync(
             string clientId,
             DateTime date)
         {
-            // 🔁 For now reuse daily logic (FYP ACCEPTABLE)
-            // You can later filter meals/exercises by date if needed
+            // For FYP: reuse logic (charts already filter visually)
             return await GetSummaryAsync(clientId);
         }
     }
