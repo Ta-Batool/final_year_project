@@ -80,6 +80,32 @@ namespace API.Controllers
             return NoContent();
         }
 
+        // ✅ NEW: Update appointment status
+        // PUT api/appointments/{id}/status
+        [HttpPut("{id}/status")]
+        public async Task<IActionResult> UpdateAppointmentStatus(string id, [FromBody] string status)
+        {
+            if (string.IsNullOrWhiteSpace(status))
+                return BadRequest("Status is required.");
+
+            var existing = await _appointmentService.GetByIdAsync(id);
+            if (existing == null) return NotFound("Appointment not found.");
+
+            // Optional: normalize common values
+            // "Cancel" -> "Cancelled", "Complete" -> "Completed"
+            if (string.Equals(status, "Cancel", StringComparison.OrdinalIgnoreCase))
+                status = "Cancelled";
+            if (string.Equals(status, "Complete", StringComparison.OrdinalIgnoreCase))
+                status = "Completed";
+
+            existing.Status = status;
+
+            await _appointmentService.UpdateAsync(id, existing);
+
+            // return updated appointment for UI
+            return Ok(existing);
+        }
+
         // ✅ Delete appointment
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteAppointment(string id)
