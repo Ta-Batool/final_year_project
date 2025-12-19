@@ -110,9 +110,12 @@ else
                         @foreach (var item in exercisePlan.Items)
                         {
                             <li>
-                                <strong>@item.Name</strong>
+                                <strong>@item.Example</strong>
                                 <span class="muted">
-                                    (@item.DurationMinutes min · @item.Type)
+                                    (@item.Minutes min · @item.Type · @item.Intensity)
+                                </span>
+                                <span class="muted">
+                                    · ~@item.EstimatedCaloriesBurned kcal
                                 </span>
                             </li>
                         }
@@ -121,8 +124,13 @@ else
 
                 <p class="small-text">
                     Target burn:
-                    <strong>@exercisePlan.TargetCalories</strong> kcal
+                    <strong>@exercisePlan.TargetCaloriesToBurn</strong> kcal
                 </p>
+
+                @if (!string.IsNullOrWhiteSpace(exercisePlan.Notes))
+                {
+                    <p class="small-text">@exercisePlan.Notes</p>
+                }
             </div>
         }
 
@@ -294,7 +302,7 @@ else
 
     // 🔥 Priority-C state
     private MetabolismSummary? metabolism;
-    private ExercisePlan? exercisePlan;
+    private ExercisePlanResult? exercisePlan;
 
     private int totalCaloriesEaten  => mealsToday.Sum(m => m.Calories ?? 0);
     private int totalCaloriesBurned => exerciseLogs.Sum(x => x.CaloriesBurned ?? 0);
@@ -369,8 +377,13 @@ else
         hydrationLog = await HydrationService.GetTodayAsync(currentClient.Id!);
 
         // ✅ Priority-C
-        metabolism   = await MetabolismService.GetSummaryAsync(currentClient.Id!);
-        exercisePlan = await ExercisePlanService.GetTodayPlanAsync(currentClient.Id!);
+        metabolism = await MetabolismService.GetSummaryAsync(currentClient.Id!);
+
+        // IMPORTANT: your plan service builds plan from metabolism
+        if (metabolism != null)
+            exercisePlan = await ExercisePlanService.BuildPlanAsync(metabolism);
+        else
+            exercisePlan = null;
 
         if (hydrationLog != null)
             targetMl = hydrationLog.TargetMl;
