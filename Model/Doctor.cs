@@ -71,12 +71,18 @@ namespace Model
 
     }
 
-    public class TimeSlots
-    {
-        public string? Day { get; set; }
-        public TimeOnly? StartTime { get; set; }
-        public TimeOnly? EndTime { get; set; }
-    }
+            public class TimeSlots
+        {
+            // Weekly recurring slot (e.g. Monday)
+            public string? Day { get; set; }
+
+            // ✅ Date-specific slot (calendar). If set, this slot is ONLY for that date.
+            public DateTime? Date { get; set; }
+
+            public TimeOnly? StartTime { get; set; }
+            public TimeOnly? EndTime { get; set; }
+        }
+
 
    
 }

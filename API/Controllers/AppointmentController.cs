@@ -92,8 +92,11 @@ namespace API.Controllers
         }
 
         // ------------------------------------------------------------------
-        // ✅ NEW: Doctor Availability
+        // ✅ Doctor Availability
         // GET api/appointments/doctor/{doctorId}/availability?date=2025-12-18&slotMinutes=30
+        // Supports:
+        //  - Date-specific slots (TimeSlots.Date) preferred
+        //  - Weekly slots fallback (TimeSlots.Day)
         // ------------------------------------------------------------------
         [HttpGet("doctor/{doctorId}/availability")]
         public async Task<ActionResult<AvailabilityResponseDto>> GetDoctorAvailability(
@@ -109,19 +112,39 @@ namespace API.Controllers
 
             var dayName = date.DayOfWeek.ToString(); // e.g. "Monday"
 
-            var daySlots = doctor.Slots?
-                .Where(s => !string.IsNullOrWhiteSpace(s.Day) &&
-                            string.Equals(s.Day, dayName, StringComparison.OrdinalIgnoreCase))
+            // ✅ Prefer DATE-specific slots if present for that date
+            var dateSlots = doctor.Slots?
+                .Where(s => s.Date.HasValue &&
+                            s.Date.Value.Date == date.Date &&
+                            s.StartTime != null &&
+                            s.EndTime != null)
                 .ToList() ?? new List<TimeSlots>();
 
-            if (!daySlots.Any())
+            List<TimeSlots> activeSlots;
+
+            if (dateSlots.Any())
+            {
+                activeSlots = dateSlots;
+            }
+            else
+            {
+                // fallback to weekly day-based
+                activeSlots = doctor.Slots?
+                    .Where(s => !string.IsNullOrWhiteSpace(s.Day) &&
+                                string.Equals(s.Day, dayName, StringComparison.OrdinalIgnoreCase) &&
+                                s.StartTime != null &&
+                                s.EndTime != null)
+                    .ToList() ?? new List<TimeSlots>();
+            }
+
+            if (!activeSlots.Any())
                 return Ok(new AvailabilityResponseDto(doctorId, date.Date, slotMinutes, new()));
 
             var booked = await _appointmentService.GetByDoctorAndDateAsync(doctorId, date.Date);
 
             var available = new List<TimeSlotDto>();
 
-            foreach (var s in daySlots)
+            foreach (var s in activeSlots)
             {
                 if (s.StartTime == null || s.EndTime == null) continue;
 
@@ -151,8 +174,11 @@ namespace API.Controllers
         }
 
         // ------------------------------------------------------------------
-        // ✅ NEW: Book appointment (validates inside available hours + no overlap)
+        // ✅ Book appointment (validates inside available hours + no overlap)
         // POST api/appointments/book
+        // Validates:
+        //  - If date-specific slots exist for that date => must fit within them
+        //  - Else => must fit within weekly slots for that weekday
         // ------------------------------------------------------------------
         [HttpPost("book")]
         public async Task<IActionResult> Book([FromBody] BookAppointmentRequest req)
@@ -168,14 +194,36 @@ namespace API.Controllers
             var end = req.Start.AddMinutes(req.DurationMinutes);
             var dayName = req.Start.DayOfWeek.ToString();
 
-            // Validate within doctor's slots
-            var within = doctor.Slots != null && doctor.Slots.Any(s =>
-                !string.IsNullOrWhiteSpace(s.Day) &&
-                string.Equals(s.Day, dayName, StringComparison.OrdinalIgnoreCase) &&
-                s.StartTime != null && s.EndTime != null &&
-                req.Start.TimeOfDay >= s.StartTime.Value.ToTimeSpan() &&
-                end.TimeOfDay <= s.EndTime.Value.ToTimeSpan()
+            // ✅ If date slots exist for this date, enforce date-based validation
+            var hasDateSlots = doctor.Slots != null && doctor.Slots.Any(s =>
+                s.Date.HasValue &&
+                s.Date.Value.Date == req.Start.Date &&
+                s.StartTime != null &&
+                s.EndTime != null
             );
+
+            bool within;
+
+            if (hasDateSlots)
+            {
+                within = doctor.Slots!.Any(s =>
+                    s.Date.HasValue &&
+                    s.Date.Value.Date == req.Start.Date &&
+                    s.StartTime != null && s.EndTime != null &&
+                    req.Start.TimeOfDay >= s.StartTime.Value.ToTimeSpan() &&
+                    end.TimeOfDay <= s.EndTime.Value.ToTimeSpan()
+                );
+            }
+            else
+            {
+                within = doctor.Slots != null && doctor.Slots.Any(s =>
+                    !string.IsNullOrWhiteSpace(s.Day) &&
+                    string.Equals(s.Day, dayName, StringComparison.OrdinalIgnoreCase) &&
+                    s.StartTime != null && s.EndTime != null &&
+                    req.Start.TimeOfDay >= s.StartTime.Value.ToTimeSpan() &&
+                    end.TimeOfDay <= s.EndTime.Value.ToTimeSpan()
+                );
+            }
 
             if (!within)
                 return BadRequest("Selected time is outside doctor's available hours");

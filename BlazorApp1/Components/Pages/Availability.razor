@@ -11,7 +11,7 @@
     <div class="page-head">
         <div>
             <h2>Availability</h2>
-            <div class="muted">Add available time slots (saved to database, shown to patients).</div>
+            <div class="muted">Set weekly or date-specific availability (saved to database).</div>
         </div>
 
         <button class="ghost" @onclick="Save" disabled="@busy">
@@ -21,61 +21,48 @@
 
     @if (isLoading)
     {
-        <div class="state">Loading availability...</div>
+        <div class="state">Loading...</div>
     }
     else if (!string.IsNullOrWhiteSpace(error))
     {
         <div class="state error">@error</div>
     }
-    else if (string.IsNullOrWhiteSpace(doctorMongoId))
-    {
-        <div class="state error">Doctor ID not found. Please log in again.</div>
-    }
     else
     {
         <div class="card">
-            <div class="row">
-                <div class="field">
-                    <label>Day</label>
-                    <select class="select" @bind="selectedDay">
-                        @foreach (var d in days)
-                        {
-                            <option value="@d">@d</option>
-                        }
-                    </select>
-                </div>
-
-                <div class="field">
-                    <label>Start</label>
-                    <input class="input" type="time" @bind="startTime" />
-                </div>
-
-                <div class="field">
-                    <label>End</label>
-                    <input class="input" type="time" @bind="endTime" />
-                </div>
-
-                <div class="field">
-                    <label>&nbsp;</label>
-                    <button class="btn primary" type="button" @onclick="AddSlot" disabled="@busy">
-                        Add Slot
-                    </button>
-                </div>
+            <div class="tabs">
+                <button class="tab @(mode=="date" ? "active" : "")" @onclick="@(() => mode = "date")">Specific Date</button>
+                <button class="tab @(mode=="weekly" ? "active" : "")" @onclick="@(() => mode = "weekly")">Weekly</button>
             </div>
 
-            @if (!string.IsNullOrWhiteSpace(msg))
+            @if (mode == "date")
             {
-                <div class="msg">@msg</div>
-            }
-        </div>
+                <div class="row">
+                    <div class="field">
+                        <label>Date</label>
+                        <input class="input" type="date" value="@dateStr" @onchange="OnDateChanged" />
+                    </div>
 
-        <div class="grid">
-            @foreach (var d in days)
-            {
+                    <div class="field">
+                        <label>Start</label>
+                        <input class="input" type="time" @bind="startTime" />
+                    </div>
+
+                    <div class="field">
+                        <label>End</label>
+                        <input class="input" type="time" @bind="endTime" />
+                    </div>
+
+                    <div class="field">
+                        <label>&nbsp;</label>
+                        <button class="btn primary" type="button" @onclick="AddDateSlot" disabled="@busy">Add Slot</button>
+                    </div>
+                </div>
+
                 <div class="day">
-                    <div class="day-title">@d</div>
+                    <div class="day-title">Slots for @selectedDate.ToString("dd MMM yyyy")</div>
 
-                    @if (!slots.TryGetValue(d, out var list) || list.Count == 0)
+                    @if (!dateSlots.TryGetValue(selectedDate.Date, out var list) || list.Count == 0)
                     {
                         <div class="mini">No slots</div>
                     }
@@ -85,11 +72,69 @@
                         {
                             <div class="slot">
                                 <div class="t">@s</div>
-                                <button class="x" type="button" title="Remove" @onclick="@(() => RemoveSlot(d, s))" disabled="@busy">✕</button>
+                                <button class="x" type="button" title="Remove" @onclick="@(() => RemoveDateSlot(selectedDate.Date, s))" disabled="@busy">✕</button>
                             </div>
                         }
                     }
                 </div>
+            }
+            else
+            {
+                <div class="row">
+                    <div class="field">
+                        <label>Day</label>
+                        <select class="select" @bind="selectedDay">
+                            @foreach (var d in days)
+                            {
+                                <option value="@d">@d</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label>Start</label>
+                        <input class="input" type="time" @bind="startTime" />
+                    </div>
+
+                    <div class="field">
+                        <label>End</label>
+                        <input class="input" type="time" @bind="endTime" />
+                    </div>
+
+                    <div class="field">
+                        <label>&nbsp;</label>
+                        <button class="btn primary" type="button" @onclick="AddWeeklySlot" disabled="@busy">Add Slot</button>
+                    </div>
+                </div>
+
+                <div class="grid">
+                    @foreach (var d in days)
+                    {
+                        <div class="day">
+                            <div class="day-title">@d</div>
+
+                            @if (!weeklySlots.TryGetValue(d, out var list) || list.Count == 0)
+                            {
+                                <div class="mini">No slots</div>
+                            }
+                            else
+                            {
+                                @foreach (var s in list)
+                                {
+                                    <div class="slot">
+                                        <div class="t">@s</div>
+                                        <button class="x" type="button" title="Remove" @onclick="@(() => RemoveWeeklySlot(d, s))" disabled="@busy">✕</button>
+                                    </div>
+                                }
+                            }
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(msg))
+            {
+                <div class="msg">@msg</div>
             }
         </div>
     }
@@ -97,52 +142,52 @@
 
 @code {
     private string? doctorMongoId;
+    private Doctor? doctor;
 
     private bool isLoading = true;
     private bool busy = false;
     private string? msg;
     private string? error;
 
-    private Doctor? doctor;
+    private string mode = "date"; // default
 
     private readonly List<string> days = new()
     {
         "Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"
     };
 
-    private Dictionary<string, List<string>> slots = new();
+    private Dictionary<string, List<string>> weeklySlots = new();
+    private Dictionary<DateTime, List<string>> dateSlots = new();
 
     private string selectedDay = "Monday";
+    private DateTime selectedDate = DateTime.Today;
+
     private TimeOnly? startTime = new(9, 0);
     private TimeOnly? endTime = new(12, 0);
+
+    private string dateStr => selectedDate.ToString("yyyy-MM-dd");
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            // init dict
-            slots = new Dictionary<string, List<string>>();
-            foreach (var d in days) slots[d] = new List<string>();
+            foreach (var d in days) weeklySlots[d] = new List<string>();
 
             doctorMongoId = await JS.InvokeAsync<string>("localStorage.getItem", "doctorMongoId");
-
             if (string.IsNullOrWhiteSpace(doctorMongoId))
             {
                 error = "Doctor ID missing in localStorage. Please login again.";
                 return;
             }
 
-            // ✅ Load doctor from DB
             doctor = await DoctorService.GetDoctorByIdAsync(doctorMongoId);
-
             if (doctor == null)
             {
                 error = "Doctor not found in database.";
                 return;
             }
 
-            // ✅ Fill UI from doctor.Slots (DB)
-            LoadFromDoctorSlots();
+            LoadFromDoctor();
         }
         catch (Exception ex)
         {
@@ -154,65 +199,98 @@
         }
     }
 
-    private void LoadFromDoctorSlots()
+    private void LoadFromDoctor()
     {
-        foreach (var d in days) slots[d] = new List<string>();
+        foreach (var d in days) weeklySlots[d] = new List<string>();
+        dateSlots = new Dictionary<DateTime, List<string>>();
 
-        var list = doctor?.Slots ?? new List<TimeSlots>();
-
-        foreach (var s in list)
+        foreach (var s in doctor!.Slots ?? new List<TimeSlots>())
         {
-            if (string.IsNullOrWhiteSpace(s.Day) || s.StartTime == null || s.EndTime == null)
-                continue;
+            if (s.StartTime == null || s.EndTime == null) continue;
 
-            var day = NormalizeDay(s.Day!);
-            if (!slots.ContainsKey(day)) continue;
+            var txt = $"{s.StartTime:HH\\:mm} - {s.EndTime:HH\\:mm}";
 
-            var slotText = $"{s.StartTime:HH\\:mm} - {s.EndTime:HH\\:mm}";
-            if (!slots[day].Contains(slotText))
-                slots[day].Add(slotText);
+            if (s.Date.HasValue)
+            {
+                var key = s.Date.Value.Date;
+                if (!dateSlots.ContainsKey(key)) dateSlots[key] = new List<string>();
+                if (!dateSlots[key].Contains(txt)) dateSlots[key].Add(txt);
+                dateSlots[key] = dateSlots[key].OrderBy(x => x).ToList();
+            }
+            else if (!string.IsNullOrWhiteSpace(s.Day))
+            {
+                var day = NormalizeDay(s.Day!);
+                if (!weeklySlots.ContainsKey(day)) weeklySlots[day] = new List<string>();
+                if (!weeklySlots[day].Contains(txt)) weeklySlots[day].Add(txt);
+                weeklySlots[day] = weeklySlots[day].OrderBy(x => x).ToList();
+            }
         }
-
-        foreach (var d in days)
-            slots[d] = slots[d].OrderBy(x => x).ToList();
     }
 
-    private void AddSlot()
+    private void OnDateChanged(ChangeEventArgs e)
     {
-        msg = null;
-
-        if (startTime == null || endTime == null)
+        var v = e.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(v) && DateTime.TryParse(v, out var d))
         {
-            msg = "Select start and end time.";
-            return;
+            selectedDate = d.Date;
+            msg = null;
         }
+    }
 
-        if (endTime.Value <= startTime.Value)
+    private string? ValidateTimes()
+    {
+        if (startTime == null || endTime == null) return "Select start and end time.";
+        if (endTime.Value <= startTime.Value) return "End must be after start.";
+        return null;
+    }
+
+    private void AddDateSlot()
+    {
+        msg = ValidateTimes();
+        if (msg != null) return;
+
+        var slot = $"{startTime:HH\\:mm} - {endTime:HH\\:mm}";
+        var key = selectedDate.Date;
+
+        if (!dateSlots.ContainsKey(key)) dateSlots[key] = new List<string>();
+
+        if (!dateSlots[key].Contains(slot))
         {
-            msg = "End must be after start.";
-            return;
+            dateSlots[key].Add(slot);
+            dateSlots[key] = dateSlots[key].OrderBy(x => x).ToList();
+            msg = "Added.";
         }
+        else msg = "Slot already exists.";
+    }
+
+    private void AddWeeklySlot()
+    {
+        msg = ValidateTimes();
+        if (msg != null) return;
 
         var slot = $"{startTime:HH\\:mm} - {endTime:HH\\:mm}";
 
-        if (!slots.ContainsKey(selectedDay))
-            slots[selectedDay] = new List<string>();
+        if (!weeklySlots.ContainsKey(selectedDay)) weeklySlots[selectedDay] = new List<string>();
 
-        if (slots[selectedDay].Contains(slot))
+        if (!weeklySlots[selectedDay].Contains(slot))
         {
-            msg = "Slot already exists.";
-            return;
+            weeklySlots[selectedDay].Add(slot);
+            weeklySlots[selectedDay] = weeklySlots[selectedDay].OrderBy(x => x).ToList();
+            msg = "Added.";
         }
-
-        slots[selectedDay].Add(slot);
-        slots[selectedDay] = slots[selectedDay].OrderBy(x => x).ToList();
-        msg = "Added.";
+        else msg = "Slot already exists.";
     }
 
-    private void RemoveSlot(string day, string slot)
+    private void RemoveDateSlot(DateTime date, string slot)
     {
-        if (!slots.ContainsKey(day)) return;
-        slots[day].Remove(slot);
+        if (!dateSlots.ContainsKey(date)) return;
+        dateSlots[date].Remove(slot);
+    }
+
+    private void RemoveWeeklySlot(string day, string slot)
+    {
+        if (!weeklySlots.ContainsKey(day)) return;
+        weeklySlots[day].Remove(slot);
     }
 
     private async Task Save()
@@ -227,17 +305,16 @@
         {
             busy = true;
 
-            // ✅ Convert UI slots -> Doctor.Slots (DB model)
             var newSlots = new List<TimeSlots>();
 
+            // weekly
             foreach (var day in days)
             {
-                if (!slots.TryGetValue(day, out var dayList) || dayList.Count == 0)
+                if (!weeklySlots.TryGetValue(day, out var dayList) || dayList.Count == 0)
                     continue;
 
                 foreach (var s in dayList)
                 {
-                    // format: "HH:mm - HH:mm"
                     var parts = s.Split('-', StringSplitOptions.TrimEntries);
                     if (parts.Length != 2) continue;
 
@@ -248,16 +325,39 @@
                     newSlots.Add(new TimeSlots
                     {
                         Day = day,
+                        Date = null,
                         StartTime = st,
                         EndTime = en
                     });
                 }
             }
 
-            // update only Slots (keep rest of doctor profile)
+            // date-specific
+            foreach (var kv in dateSlots)
+            {
+                var date = kv.Key.Date;
+
+                foreach (var s in kv.Value)
+                {
+                    var parts = s.Split('-', StringSplitOptions.TrimEntries);
+                    if (parts.Length != 2) continue;
+
+                    if (!TimeOnly.TryParse(parts[0], out var st)) continue;
+                    if (!TimeOnly.TryParse(parts[1], out var en)) continue;
+                    if (en <= st) continue;
+
+                    newSlots.Add(new TimeSlots
+                    {
+                        Day = date.DayOfWeek.ToString(),
+                        Date = date,
+                        StartTime = st,
+                        EndTime = en
+                    });
+                }
+            }
+
             doctor.Slots = newSlots;
 
-            // ✅ Save to DB
             await DoctorService.UpdateDoctorAsync(doctorMongoId, doctor);
 
             msg = "Saved to database ✅ Patients will now see these slots.";
@@ -274,7 +374,6 @@
 
     private string NormalizeDay(string day)
     {
-        // make it match your days list: "Monday" etc
         day = day.Trim();
         return char.ToUpper(day[0]) + day.Substring(1).ToLower();
     }
@@ -292,6 +391,10 @@
 
     .card { background:#fff; border:1px solid rgba(0,0,0,0.06); border-radius:16px; padding:14px; box-shadow:0 2px 10px rgba(0,0,0,0.04); margin-bottom:14px; }
 
+    .tabs { display:flex; gap:8px; margin-bottom:12px; }
+    .tab { border:1px solid rgba(0,0,0,0.12); background:#fff; padding:8px 12px; border-radius:12px; font-weight:900; cursor:pointer; }
+    .tab.active { background:#3b3bbf; color:#fff; border-color:#3b3bbf; }
+
     .row { display:grid; grid-template-columns: 1.2fr 1fr 1fr 0.8fr; gap:10px; align-items:end; }
     .field label { font-size:12px; font-weight:900; color:#64748b; display:block; margin-bottom:6px; }
 
@@ -302,8 +405,8 @@
 
     .msg { margin-top:10px; color:#0f172a; font-weight:900; }
 
-    .grid { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:12px; }
-    .day { background:#fff; border:1px solid rgba(0,0,0,0.06); border-radius:16px; padding:14px; box-shadow:0 2px 10px rgba(0,0,0,0.04); }
+    .grid { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:12px; margin-top:14px; }
+    .day { background:#fff; border:1px solid rgba(0,0,0,0.06); border-radius:16px; padding:14px; box-shadow:0 2px 10px rgba(0,0,0,0.04); margin-top:12px; }
     .day-title { font-weight:900; color:#0f172a; margin-bottom:10px; }
     .mini { color:#94a3b8; font-weight:800; }
 

@@ -2,7 +2,6 @@
 @attribute [Authorize]
 @layout BlazorApp1.Components.Layout.UserDashboardLayout
 
-
 @using Microsoft.AspNetCore.Authorization
 @using BlazorApp1.Service
 @using Model
@@ -73,6 +72,18 @@ else
                     </button>
                 }
             </div>
+
+            <hr style="margin:16px 0;" />
+
+            <h4>Or choose a precise time</h4>
+            <div class="form-group">
+                <label>Time</label>
+                <input type="time" class="form-control" @bind="manualTime" />
+            </div>
+
+            <button class="btn-primary" @onclick="BookManualTime" disabled="@busy">
+                Book This Time
+            </button>
         }
     </div>
 }
@@ -95,6 +106,8 @@ else
 
     private AvailabilityResponseDto? availability;
 
+    private TimeOnly? manualTime = new(9, 0);
+
     private string dateStr => selectedDate.ToString("yyyy-MM-dd");
 
     private void OnDateChanged(ChangeEventArgs e)
@@ -103,7 +116,7 @@ else
         if (!string.IsNullOrWhiteSpace(v) && DateTime.TryParse(v, out var d))
         {
             selectedDate = d.Date;
-            availability = null; // reset slots when date changes
+            availability = null;
         }
     }
 
@@ -118,7 +131,6 @@ else
                 return;
             }
 
-            // Optional: show doctor name
             var doc = await DoctorService.GetDoctorByIdAsync(DoctorId);
             if (doc != null && !string.IsNullOrWhiteSpace(doc.Name))
                 doctorName = doc.Name!;
@@ -140,7 +152,6 @@ else
             error = "";
             busy = true;
 
-            // ✅ PASS DateTime, NOT string
             availability = await ApptApi.GetAvailabilityAsync(DoctorId, selectedDate, slotMinutes);
         }
         catch (Exception ex)
@@ -172,8 +183,51 @@ else
             );
 
             await ApptApi.BookAsync(req);
+            Nav.NavigateTo("/my-appointments", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
 
-            // ✅ Your patient appointments page route:
+    private async Task BookManualTime()
+    {
+        try
+        {
+            error = "";
+            busy = true;
+
+            if (string.IsNullOrWhiteSpace(userId))
+                throw new Exception("UserId missing");
+
+            if (manualTime == null)
+                throw new Exception("Please select a time.");
+
+            // ensure availability loaded
+            if (availability == null)
+                availability = await ApptApi.GetAvailabilityAsync(DoctorId, selectedDate, slotMinutes);
+
+            var start = selectedDate.Date.Add(manualTime.Value.ToTimeSpan());
+
+            // must match an available slot start
+            var ok = availability?.AvailableSlots?.Any(s => s.Start == start) == true;
+            if (!ok)
+                throw new Exception("This time is not available. Please choose from available slots.");
+
+            var req = new BookAppointmentRequest(
+                PatientUserId: userId!,
+                DoctorId: DoctorId,
+                Start: start,
+                DurationMinutes: durationMinutes,
+                Notes: notes
+            );
+
+            await ApptApi.BookAsync(req);
             Nav.NavigateTo("/my-appointments", forceLoad: true);
         }
         catch (Exception ex)
