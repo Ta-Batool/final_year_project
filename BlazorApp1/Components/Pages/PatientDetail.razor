@@ -1,6 +1,6 @@
-@page "/patientdetail/{userClientId}"
-@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@page "/patientdetail/{patientUserId}"
 @layout BlazorApp1.Components.Layout.DashboardLayout
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
 
 @using System.Linq
 @using Model
@@ -13,134 +13,143 @@
 @inject IJSRuntime JS
 @inject NavigationManager Nav
 
-<h2>Patient Details</h2>
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h2>Patient Details</h2>
+            <div class="muted">Profile + last appointments + today meals & medication status.</div>
+        </div>
+        <button class="ghost" @onclick="GoBack">⬅ Back</button>
+    </div>
 
-@if (isLoading)
-{
-    <p>Loading patient details...</p>
-}
-else if (!string.IsNullOrEmpty(errorMessage))
-{
-    <p style="color:red">@errorMessage</p>
-}
-else if (patient == null)
-{
-    <p>Patient not found.</p>
-}
-else
-{
-    <div class="patient-detail-grid">
+    @if (isLoading)
+    {
+        <div class="state">Loading patient details…</div>
+    }
+    else if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="state error">@errorMessage</div>
+    }
+    else if (patient == null)
+    {
+        <div class="state">Patient not found.</div>
+    }
+    else
+    {
+        <div class="grid-2">
+            <section class="card">
+                <div class="card-title">@patient.Name</div>
+                <div class="kv"><b>Reason:</b> @patient.Reason</div>
+                <div class="kv"><b>Gender:</b> @patient.Sex</div>
+                <div class="kv"><b>DOB:</b> @patient.DOB.ToShortDateString()</div>
+                <div class="kv"><b>Weight:</b> @patient.Weight</div>
+                <div class="kv"><b>Height:</b> @patient.Height</div>
+                <div class="kv"><b>Phone:</b> @patient.Phone</div>
+                <div class="kv"><b>Address:</b> @patient.Address</div>
+                <div class="kv"><b>Registered since:</b> @patient.RegisterDate.ToShortDateString()</div>
 
-        <!-- Left: Basic info -->
-        <section class="card">
-            <h3>@patient.Name</h3>
-            <p><b>Reason:</b> @patient.Reason</p>
-            <p><b>Gender:</b> @patient.Sex</p>
-            <p><b>DOB:</b> @patient.DOB.ToShortDateString()</p>
-            <p><b>Weight:</b> @patient.Weight</p>
-            <p><b>Height:</b> @patient.Height</p>
-            <p><b>Phone:</b> @patient.Phone</p>
-            <p><b>Address:</b> @patient.Address</p>
-            <p><b>Registered since:</b> @patient.RegisterDate.ToShortDateString()</p>
-
-            @if (patient.Tags != null && patient.Tags.Count > 0)
-            {
-                <p><b>Tags:</b></p>
-                <div class="tags">
-                    @foreach (var t in patient.Tags)
-                    {
-                        <span class="tag">@t</span>
-                    }
-                </div>
-            }
-        </section>
-
-        <!-- Right: Appointments with this doctor -->
-        <section class="card">
-            <h3>Appointments with you</h3>
-
-            @if (appointments.Count == 0)
-            {
-                <p>No appointments found for this patient with you.</p>
-            }
-            else
-            {
-                <table class="simple-table">
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Time</th>
-                            <th>Status</th>
-                            <th>Notes</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var a in appointments)
+                @if (patient.Tags != null && patient.Tags.Count > 0)
+                {
+                    <div class="tags">
+                        @foreach (var t in patient.Tags)
                         {
-                            <tr>
-                                <td>@a.Start.ToShortDateString()</td>
-                                <td>@a.Start.ToShortTimeString()</td>
-                                <td>@a.Status</td>
-                                <td>@a.Notes</td>
-                            </tr>
+                            <span class="tag">@t</span>
                         }
-                    </tbody>
-                </table>
-            }
-        </section>
-    </div>
+                    </div>
+                }
 
-    <div class="patient-detail-grid">
+                <div class="actions">
+                    <button class="btn" @onclick="OpenChat">Chat</button>
+                    <button class="btn primary" @onclick="GoPrescribe">Prescribe</button>
+                </div>
+            </section>
 
-        <!-- Meals today -->
-        <section class="card">
-            <h3>Today’s Meals</h3>
-            @if (mealsToday.Count == 0)
-            {
-                <p>No meals logged for today.</p>
-            }
-            else
-            {
-                <ul>
-                    @foreach (var m in mealsToday)
-                    {
-                        <li>
-                            <b>@m.Type</b> – @m.Foods
-                            @if (m.Calories.HasValue)
-                            {
-                                <span> (@m.Calories.Value kcal)</span>
-                            }
-                        </li>
-                    }
-                </ul>
-            }
-        </section>
+            <section class="card">
+                <div class="card-title">Appointments with you</div>
 
-        <!-- Medication today -->
-        <section class="card">
-            <h3>Medication Status (Today)</h3>
+                @if (appointments.Count == 0)
+                {
+                    <div class="mini">No appointments found for this patient with you.</div>
+                }
+                else
+                {
+                    <div class="table-wrap">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Time</th>
+                                    <th>Status</th>
+                                    <th>Notes</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var a in appointments)
+                                {
+                                    <tr>
+                                        <td>@a.Start.ToShortDateString()</td>
+                                        <td>@a.Start.ToShortTimeString()</td>
+                                        <td>@a.Status</td>
+                                        <td class="notes">@a.Notes</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </section>
+        </div>
 
-            @if (todayLogs.Count == 0)
-            {
-                <p>No medication logs for today.</p>
-            }
-            else
-            {
-                <p><b>Total doses:</b> @totalDoses</p>
-                <p><b>Taken:</b> @takenDoses</p>
-                <p><b>Skipped:</b> @skippedDoses</p>
-                <p><b>Pending:</b> @pendingDoses</p>
-            }
-        </section>
-    </div>
+        <div class="grid-2">
+            <section class="card">
+                <div class="card-title">Today’s Meals</div>
+                @if (mealsToday.Count == 0)
+                {
+                    <div class="mini">No meals logged for today.</div>
+                }
+                else
+                {
+                    <ul class="list">
+                        @foreach (var m in mealsToday)
+                        {
+                            <li>
+                                <b>@m.Type</b> – @m.Foods
+                                @if (m.Calories.HasValue)
+                                {
+                                    <span class="muted"> (@m.Calories.Value kcal)</span>
+                                }
+                            </li>
+                        }
+                    </ul>
+                }
+            </section>
 
-    <button class="btn back-btn" @onclick="GoBack">⬅ Back to Patients</button>
-}
+            <section class="card">
+                <div class="card-title">Medication Status (Today)</div>
+
+                @if (todayLogs.Count == 0)
+                {
+                    <div class="mini">No medication logs for today.</div>
+                }
+                else
+                {
+                    <div class="stats">
+                        <div class="box"><div class="k">Total</div><div class="v">@totalDoses</div></div>
+                        <div class="box"><div class="k">Taken</div><div class="v">@takenDoses</div></div>
+                        <div class="box"><div class="k">Skipped</div><div class="v">@skippedDoses</div></div>
+                        <div class="box"><div class="k">Pending</div><div class="v">@pendingDoses</div></div>
+                    </div>
+                }
+            </section>
+        </div>
+    }
+</div>
 
 @code {
-    [Parameter] public string userClientId { get; set; } = string.Empty;
+    [Parameter] public string patientUserId { get; set; } = string.Empty;
 
     private User? patient;
+    private string? patientClientId; // ✅ important for meal/med endpoints
     private List<Appointment> appointments = new();
     private List<Meal> mealsToday = new();
     private List<MedicationLog> todayLogs = new();
@@ -159,45 +168,43 @@ else
 
         try
         {
-            if (string.IsNullOrWhiteSpace(userClientId))
+            if (string.IsNullOrWhiteSpace(patientUserId))
             {
                 errorMessage = "No patient specified.";
                 return;
             }
 
-            // Logged-in doctor id from localStorage
-            var doctorId = await JS.InvokeAsync<string>("localStorage.getItem", "doctorId");
+            var doctorMongoId = await JS.InvokeAsync<string>("localStorage.getItem", "doctorMongoId");
 
-            // 1) Load patient profile
-            patient = await UserService.GetUserByClientIdAsync(userClientId);
-
+            // 1) Patient profile (Mongo User._id)
+            patient = await UserService.GetUserByIdAsync(patientUserId);
             if (patient == null)
             {
                 errorMessage = "Patient not found.";
                 return;
             }
 
-            // 2) Load appointments for this user (filter to this doctor)
-            var allAppts = await AppointmentService.GetAppointmentsByUserAsync(userClientId)
+            // ✅ clientId is what many “logs” modules use
+            patientClientId = !string.IsNullOrWhiteSpace(patient.ClientId)
+                ? patient.ClientId
+                : patientUserId; // fallback only
+
+            // 2) Appointments for this patient (filter to current doctor)
+            var allAppts = await AppointmentService.GetAppointmentsByUserAsync(patientUserId)
                            ?? new List<Appointment>();
 
-            if (!string.IsNullOrWhiteSpace(doctorId))
+            if (!string.IsNullOrWhiteSpace(doctorMongoId))
             {
-                allAppts = allAppts
-                    .Where(a => a.DoctorId == doctorId)
-                    .ToList();
+                allAppts = allAppts.Where(a => a.DoctorId == doctorMongoId).ToList();
             }
 
-            appointments = allAppts
-                .OrderByDescending(a => a.Start)
-                .Take(10)
-                .ToList();
+            appointments = allAppts.OrderByDescending(a => a.Start).Take(10).ToList();
 
-            // 3) Today meals
-            mealsToday = await MealService.GetTodayMealsAsync(userClientId) ?? new List<Meal>();
+            // 3) Today meals (use clientId safely)
+            mealsToday = await MealService.GetTodayMealsAsync(patientClientId) ?? new List<Meal>();
 
-            // 4) Today medication logs
-            todayLogs = await MedicationService.GetTodayLogsAsync(userClientId) ?? new List<MedicationLog>();
+            // 4) Today medication logs (use clientId safely)
+            todayLogs = await MedicationService.GetTodayLogsAsync(patientClientId) ?? new List<MedicationLog>();
 
             totalDoses = todayLogs.Count;
             takenDoses = todayLogs.Count(l => l.Status == MedicationStatus.Taken);
@@ -214,72 +221,84 @@ else
         }
     }
 
-    private void GoBack()
+    private async Task OpenChat()
     {
-        Nav.NavigateTo("/patients");
+        var doctorClientId = await JS.InvokeAsync<string>("localStorage.getItem", "doctorId");
+        if (string.IsNullOrWhiteSpace(doctorClientId) || string.IsNullOrWhiteSpace(patientClientId)) return;
+
+        Nav.NavigateTo($"/chat/{doctorClientId}/{patientClientId}", forceLoad: true);
     }
+
+    private void GoPrescribe()
+    {
+        // prescribe route uses Mongo User._id (patientUserId)
+        Nav.NavigateTo($"/doctor/prescribe/{patientUserId}");
+    }
+
+    private void GoBack() => Nav.NavigateTo("/patients");
 }
 
 <style>
-    .patient-detail-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-        gap: 16px;
-        margin-bottom: 20px;
+    .page { max-width: 1100px; margin: 0 auto; }
+    .page-head { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; margin-bottom:14px; }
+    h2 { margin:0; color:#0f172a; }
+    .muted { color:#64748b; font-size:13px; margin-top:4px; }
+    .ghost {
+        border:1px solid rgba(0,0,0,0.08);
+        background:#fff;
+        padding:10px 12px;
+        border-radius:12px;
+        cursor:pointer;
+        font-weight:800;
+    }
+
+    .state {
+        background:#fff;
+        border:1px solid rgba(0,0,0,0.06);
+        border-radius:14px;
+        padding:14px;
+        box-shadow:0 2px 10px rgba(0,0,0,0.04);
+        font-weight:700;
+        color:#0f172a;
+    }
+    .state.error { color:#b91c1c; }
+
+    .grid-2 {
+        display:grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap:14px;
+        margin-bottom:14px;
     }
 
     .card {
-        background: #ffffff;
-        border-radius: 10px;
-        padding: 15px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.08);
+        background:#fff;
+        border:1px solid rgba(0,0,0,0.06);
+        border-radius:16px;
+        padding:14px;
+        box-shadow:0 2px 10px rgba(0,0,0,0.04);
     }
 
-    .card h3 {
-        margin-top: 0;
-        margin-bottom: 10px;
-        color: #3b3bbf;
-    }
+    .card-title { font-weight:900; color:#0f172a; font-size:16px; margin-bottom:10px; }
+    .kv { color:#334155; font-size:14px; margin:6px 0; }
 
-    .simple-table {
-        width: 100%;
-        border-collapse: collapse;
-    }
+    .tags { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+    .tag { background:#eef2ff; color:#3b3bbf; font-weight:900; font-size:12px; padding:6px 10px; border-radius:999px; }
 
-    .simple-table th, .simple-table td {
-        border-bottom: 1px solid #eee;
-        padding: 6px 8px;
-        font-size: 0.9rem;
-    }
+    .actions { display:flex; gap:10px; margin-top:12px; }
+    .btn { border:none; border-radius:12px; padding:10px 12px; cursor:pointer; background:#eef2ff; font-weight:900; }
+    .btn.primary { background:#3b3bbf; color:white; }
 
-    .simple-table th {
-        text-align: left;
-        background: #f5f5ff;
-    }
+    .mini { color:#64748b; font-weight:800; }
 
-    .tags {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 4px;
-        margin-top: 4px;
-    }
+    .table-wrap { border:1px solid rgba(0,0,0,0.06); border-radius:14px; overflow:hidden; }
+    .table { width:100%; border-collapse:collapse; }
+    .table th, .table td { padding:10px; border-bottom:1px solid #eef2f7; text-align:left; font-size:14px; }
+    .table th { background:#f8fafc; color:#334155; font-weight:900; }
+    .notes { color:#334155; }
 
-    .tag {
-        background: #e5e7ff;
-        padding: 2px 6px;
-        border-radius: 6px;
-        font-size: 0.75rem;
-    }
-
-    .btn.back-btn {
-        border: none;
-        background: #e0e0e0;
-        padding: 8px 14px;
-        border-radius: 6px;
-        cursor: pointer;
-    }
-
-    .btn.back-btn:hover {
-        background: #cccccc;
-    }
+    .list { margin:0; padding-left:18px; }
+    .stats { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:10px; margin-top:10px; }
+    .box { background:#f8fafc; border:1px solid rgba(0,0,0,0.05); border-radius:14px; padding:10px; }
+    .k { font-size:12px; color:#64748b; font-weight:900; }
+    .v { font-size:18px; color:#0f172a; font-weight:900; margin-top:4px; }
 </style>

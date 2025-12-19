@@ -9,72 +9,87 @@
 @inject IJSRuntime JS
 @inject NavigationManager Nav
 
-<div class="patients-list">
-    <h3>Today's Patients</h3>
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h2>Today’s Patients</h2>
+            <div class="muted">Tap a patient to expand details and actions.</div>
+        </div>
+        <button class="ghost" @onclick="Reload">↻ Refresh</button>
+    </div>
 
     @if (isLoading)
     {
-        <p>Loading patients...</p>
+        <div class="state">Loading patients…</div>
     }
     else if (!string.IsNullOrEmpty(loadError))
     {
-        <p style="color:red">@loadError</p>
+        <div class="state error">@loadError</div>
     }
     else if (patients.Count == 0)
     {
-        <p>No patients scheduled for today.</p>
+        <div class="state">No patients scheduled for today.</div>
     }
     else
     {
-        <ul>
+        <div class="list">
             @foreach (var p in patients)
             {
-                <li class="patient-item">
-                    <div class="patient-summary" @onclick="@(() => TogglePatient(p))">
+                <div class="item">
+                    <div class="row" @onclick="@(() => TogglePatient(p))">
                         <div>
-                            <strong>@p.Name</strong><br />
-                            <span>@p.Reason</span>
+                            <div class="name">@p.Name</div>
+                            <div class="sub">@p.Reason</div>
                         </div>
-                        <div class="patient-time">@p.Time</div>
+                        <div class="meta">
+                            <div class="time">@p.Time</div>
+                            <div class="pill">@((p.IsExpanded) ? "Hide" : "View")</div>
+                        </div>
                     </div>
 
                     @if (p.IsExpanded)
                     {
-                        <div class="patient-details-expanded">
-                            <div class="patient-info">
-                                <p><strong>Address:</strong> @p.Address</p>
-                                <p><strong>DOB:</strong> @p.DOB.ToShortDateString()</p>
-                                <p><strong>Sex:</strong> @p.Sex</p>
-                                <p><strong>Weight:</strong> @p.Weight</p>
-                                <p><strong>Height:</strong> @p.Height</p>
-                                <p><strong>Last Appointment:</strong> @p.LastAppointment.ToShortDateString()</p>
-                                <p><strong>Registered Since:</strong> @p.RegisterDate.ToShortDateString()</p>
-
-                                @if (p.Tags?.Count > 0)
-                                {
-                                    <p><strong>Tags:</strong></p>
-                                    <div class="tags">
-                                        @foreach (var tag in p.Tags)
-                                        {
-                                            <span class="tag">@tag</span>
-                                        }
-                                    </div>
-                                }
+                        <div class="expanded">
+                            <div class="grid">
+                                <div class="box">
+                                    <div class="k">DOB</div>
+                                    <div class="v">@p.DOB.ToShortDateString()</div>
+                                </div>
+                                <div class="box">
+                                    <div class="k">Sex</div>
+                                    <div class="v">@p.Sex</div>
+                                </div>
+                                <div class="box">
+                                    <div class="k">Weight</div>
+                                    <div class="v">@p.Weight</div>
+                                </div>
+                                <div class="box">
+                                    <div class="k">Height</div>
+                                    <div class="v">@p.Height</div>
+                                </div>
                             </div>
 
-                            <div class="patient-actions">
-                                <button class="btn-call">📞 @p.Phone</button>
-                                <button class="btn">Documents</button>
+                            @if (p.Tags?.Count > 0)
+                            {
+                                <div class="tags">
+                                    @foreach (var tag in p.Tags)
+                                    {
+                                        <span class="tag">@tag</span>
+                                    }
+                                </div>
+                            }
+
+                            <div class="actions">
+                                <button class="btn call">📞 @p.Phone</button>
                                 <button class="btn" @onclick="@(async () => await OpenChat(p))">Chat</button>
-                                <button class="btn" @onclick="@(() => Nav.NavigateTo($"/patientdetail/{p.UserClientId}"))">
-                                    Details
-                                </button>
+                                <button class="btn" @onclick="@(() => Nav.NavigateTo($"/patientdetail/{p.PatientUserId}"))">Details</button>
+                                <button class="btn primary" @onclick="@(() => Nav.NavigateTo($"/doctor/prescribe/{p.PatientUserId}"))">Prescribe</button>
                             </div>
                         </div>
                     }
-                </li>
+                </div>
             }
-        </ul>
+        </div>
     }
 </div>
 
@@ -82,17 +97,16 @@
     private class PatientViewModel
     {
         public string AppointmentId { get; set; } = "";
-        public string UserClientId { get; set; } = "";
+        public string PatientUserId { get; set; } = "";   // Mongo User._id
+        public string PatientClientId { get; set; } = ""; // ClientId (chat)
+
         public string Name { get; set; } = "";
         public string Reason { get; set; } = "";
         public string Time { get; set; } = "";
-        public string Address { get; set; } = "";
         public DateTime DOB { get; set; }
         public string Sex { get; set; } = "";
         public string Weight { get; set; } = "";
         public string Height { get; set; } = "";
-        public DateTime LastAppointment { get; set; }
-        public DateTime RegisterDate { get; set; }
         public string Phone { get; set; } = "";
         public List<string> Tags { get; set; } = new();
         public bool IsExpanded { get; set; }
@@ -104,9 +118,7 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender)
-            return;
-
+        if (!firstRender) return;
         await LoadPatientsAsync();
         StateHasChanged();
     }
@@ -119,43 +131,38 @@
 
         try
         {
-            var doctorId = await JS.InvokeAsync<string>("localStorage.getItem", "doctorId");
-            if (string.IsNullOrWhiteSpace(doctorId))
+            var doctorMongoId = await JS.InvokeAsync<string>("localStorage.getItem", "doctorMongoId");
+            if (string.IsNullOrWhiteSpace(doctorMongoId))
             {
                 loadError = "Doctor ID not found. Please log in again.";
                 return;
             }
 
-            var appts = await AppointmentService.GetAppointmentsByDoctorAsync(doctorId)
+            var appts = await AppointmentService.GetAppointmentsByDoctorAsync(doctorMongoId)
                         ?? new List<Appointment>();
 
             var today = DateTime.Today;
-            appts = appts.Where(a => a.Start.Date == today).ToList();
+            appts = appts.Where(a => a.Start.Date == today).OrderBy(a => a.Start).ToList();
 
             foreach (var appt in appts)
             {
-                if (string.IsNullOrWhiteSpace(appt.UserId))
-                    continue;
+                if (string.IsNullOrWhiteSpace(appt.UserId)) continue;
 
-                var user = await UserService.GetUserByClientIdAsync(appt.UserId);
+                var user = await UserService.GetUserByIdAsync(appt.UserId);
                 if (user == null) continue;
 
                 patients.Add(new PatientViewModel
                 {
                     AppointmentId = appt.Id ?? "",
-                    UserClientId = appt.UserId,
-                    Name = !string.IsNullOrWhiteSpace(user.Name)
-                        ? user.Name
-                        : (appt.PatientName ?? "Unknown"),
+                    PatientUserId = appt.UserId,
+                    PatientClientId = user.ClientId ?? "",
+                    Name = !string.IsNullOrWhiteSpace(user.Name) ? user.Name : (appt.PatientName ?? "Unknown"),
                     Reason = string.IsNullOrWhiteSpace(user.Reason) ? (appt.Notes ?? "") : user.Reason!,
                     Time = appt.Start.ToShortTimeString(),
-                    Address = user.Address ?? "",
                     DOB = user.DOB,
                     Sex = user.Sex ?? "",
                     Weight = user.Weight ?? "",
                     Height = user.Height ?? "",
-                    LastAppointment = user.LastAppointment,
-                    RegisterDate = user.RegisterDate,
                     Phone = user.Phone ?? "",
                     Tags = user.Tags ?? new List<string>()
                 });
@@ -171,108 +178,94 @@
         }
     }
 
-    private void TogglePatient(PatientViewModel p)
-    {
-        p.IsExpanded = !p.IsExpanded;
-    }
+    private void TogglePatient(PatientViewModel p) => p.IsExpanded = !p.IsExpanded;
 
     private async Task OpenChat(PatientViewModel p)
     {
-        var doctorId = await JS.InvokeAsync<string>("localStorage.getItem", "doctorId");
-        if (string.IsNullOrWhiteSpace(doctorId) || string.IsNullOrWhiteSpace(p.UserClientId))
-            return;
+        var doctorClientId = await JS.InvokeAsync<string>("localStorage.getItem", "doctorId");
+        if (string.IsNullOrWhiteSpace(doctorClientId) || string.IsNullOrWhiteSpace(p.PatientClientId)) return;
 
-        Nav.NavigateTo($"/chat/{doctorId}/{p.UserClientId}", forceLoad: true);
+        Nav.NavigateTo($"/chat/{doctorClientId}/{p.PatientClientId}", forceLoad: true);
     }
+
+    private async Task Reload() => await LoadPatientsAsync();
 }
 
 <style>
-    .patients-list {
-        max-width: 600px;
-        margin: 0 auto;
+    .page { max-width: 980px; margin: 0 auto; }
+    .page-head { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; margin-bottom:14px; }
+    h2 { margin:0; color:#0f172a; }
+    .muted { color:#64748b; font-size:13px; margin-top:4px; }
+    .ghost {
+        border:1px solid rgba(0,0,0,0.08);
+        background:#fff;
+        padding:10px 12px;
+        border-radius:12px;
+        cursor:pointer;
+        font-weight:800;
     }
 
-    .patient-item {
-        background: #fff;
-        border-radius: 10px;
-        margin: 10px 0;
-        padding: 12px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    .state {
+        background:#fff;
+        border:1px solid rgba(0,0,0,0.06);
+        border-radius:14px;
+        padding:14px;
+        box-shadow:0 2px 10px rgba(0,0,0,0.04);
+        font-weight:700;
+        color:#0f172a;
+    }
+    .state.error { color:#b91c1c; }
+
+    .list { display:flex; flex-direction:column; gap:12px; }
+
+    .item {
+        background:#fff;
+        border:1px solid rgba(0,0,0,0.06);
+        border-radius:16px;
+        box-shadow:0 2px 10px rgba(0,0,0,0.04);
+        overflow:hidden;
     }
 
-    .patient-summary {
-        display: flex;
-        justify-content: space-between;
-        cursor: pointer;
+    .row {
+        padding:14px;
+        display:flex;
+        justify-content:space-between;
+        cursor:pointer;
+        align-items:center;
     }
 
-    .patient-time {
-        font-weight: bold;
+    .name { font-weight:900; color:#0f172a; }
+    .sub { color:#64748b; font-size:13px; margin-top:3px; max-width:560px; }
+
+    .meta { text-align:right; display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
+    .time { font-weight:900; color:#0f172a; }
+    .pill {
+        background:#eef2ff;
+        padding:6px 10px;
+        border-radius:999px;
+        font-size:12px;
+        font-weight:900;
+        color:#3b3bbf;
     }
 
-    .patient-details-expanded {
-        margin-top: 10px;
-        border-top: 1px solid #eee;
-        padding-top: 10px;
-        font-size: 14px;
-        color: #444;
-    }
+    .expanded { border-top:1px solid #eef2f7; padding:14px; }
+    .grid { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:10px; }
+    .box { background:#f8fafc; border:1px solid rgba(0,0,0,0.05); border-radius:14px; padding:10px; }
+    .k { font-size:12px; color:#64748b; font-weight:900; }
+    .v { font-size:14px; color:#0f172a; font-weight:900; margin-top:4px; }
 
-    .patient-tags {
-        margin: 8px 0;
-    }
+    .tags { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+    .tag { background:#eef2ff; color:#3b3bbf; font-weight:900; font-size:12px; padding:6px 10px; border-radius:999px; }
 
-    .tag {
-        display: inline-block;
-        background: #eef2ff;
-        border-radius: 12px;
-        padding: 5px 10px;
-        margin: 3px;
-        font-size: 12px;
+    .actions { margin-top:14px; display:flex; flex-wrap:wrap; gap:10px; }
+    .btn {
+        border:none;
+        border-radius:12px;
+        padding:10px 12px;
+        cursor:pointer;
+        background:#eef2ff;
+        font-weight:900;
     }
-
-    .patient-actions {
-        margin-top: 15px;
-    }
-
-    .btn, .btn-call {
-        border: none;
-        border-radius: 6px;
-        padding: 8px 12px;
-        margin-right: 10px;
-        cursor: pointer;
-        background: #eef2ff;
-        font-size: 14px;
-    }
-
-    .btn-call {
-        background: #dff0d8;
-    }
-
-    .patients-list {
-        margin-left: 20px;
-        margin-right: 20px;
-    }
-
-    .patients-list ul {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-    }
-
-    .patient-item {
-        background: #fff;
-        border-radius: 10px;
-        margin: 12px 0;
-        padding: 12px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        width: 100%;
-    }
-
-    .patient-summary {
-        display: flex;
-        justify-content: space-between;
-        cursor: pointer;
-        font-weight: bold;
-    }
+    .btn.call { background:#dcfce7; }
+    .btn.primary { background:#3b3bbf; color:white; }
 </style>

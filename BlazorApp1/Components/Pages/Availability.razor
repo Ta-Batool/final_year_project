@@ -1,0 +1,254 @@
+@page "/availability"
+@layout BlazorApp1.Components.Layout.DashboardLayout
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+@inject IJSRuntime JS
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h2>Availability</h2>
+            <div class="muted">Add your available time slots. (Saved locally for now — safe)</div>
+        </div>
+        <button class="ghost" @onclick="Save">Save</button>
+    </div>
+
+    @if (string.IsNullOrWhiteSpace(doctorMongoId))
+    {
+        <div class="state error">Doctor ID not found. Please re-login.</div>
+    }
+    else
+    {
+        <div class="card">
+            <div class="row">
+                <div class="field">
+                    <label>Day</label>
+                    <select class="select" @bind="selectedDay">
+                        @foreach (var d in days)
+                        {
+                            <option value="@d">@d</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="field">
+                    <label>Start</label>
+                    <input class="input" type="time" @bind="startTime" />
+                </div>
+
+                <div class="field">
+                    <label>End</label>
+                    <input class="input" type="time" @bind="endTime" />
+                </div>
+
+                <div class="field">
+                    <label>&nbsp;</label>
+                    <button class="btn primary" @onclick="AddSlot">Add Slot</button>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(msg))
+            {
+                <div class="msg">@msg</div>
+            }
+        </div>
+
+        <div class="grid">
+            @foreach (var d in days)
+            {
+                <div class="day">
+                    <div class="day-title">@d</div>
+
+                    @if (!slots.ContainsKey(d) || slots[d].Count == 0)
+                    {
+                        <div class="mini">No slots</div>
+                    }
+                    else
+                    {
+                        @foreach (var s in slots[d])
+                        {
+                            <div class="slot">
+                                <div class="t">@s</div>
+                                <button class="x" title="Remove" @onclick="@(() => RemoveSlot(d, s))">✕</button>
+                            </div>
+                        }
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private string? doctorMongoId;
+
+    private readonly List<string> days = new()
+    {
+        "Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"
+    };
+
+    private Dictionary<string, List<string>> slots = new();
+
+    private string selectedDay = "Monday";
+    private string startTime = "09:00";
+    private string endTime = "12:00";
+
+    private string? msg;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        doctorMongoId = await JS.InvokeAsync<string>("localStorage.getItem", "doctorMongoId");
+        await Load();
+        StateHasChanged();
+    }
+
+    private string StorageKey => $"doctor_availability_{doctorMongoId}";
+
+    private async Task Load()
+    {
+        msg = null;
+        slots = new Dictionary<string, List<string>>();
+        foreach (var d in days) slots[d] = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(doctorMongoId)) return;
+
+        try
+        {
+            var json = await JS.InvokeAsync<string>("localStorage.getItem", StorageKey);
+            if (!string.IsNullOrWhiteSpace(json))
+            {
+                var parsed = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, List<string>>>(json);
+                if (parsed != null)
+                {
+                    foreach (var d in days)
+                    {
+                        if (parsed.ContainsKey(d))
+                            slots[d] = parsed[d] ?? new List<string>();
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // ignore, keep defaults
+        }
+    }
+
+    private void AddSlot()
+    {
+        msg = null;
+
+        if (string.Compare(endTime, startTime, StringComparison.Ordinal) <= 0)
+        {
+            msg = "End time must be after start time.";
+            return;
+        }
+
+        var slot = $"{startTime} - {endTime}";
+        if (!slots.ContainsKey(selectedDay)) slots[selectedDay] = new List<string>();
+
+        if (slots[selectedDay].Contains(slot))
+        {
+            msg = "Slot already exists.";
+            return;
+        }
+
+        slots[selectedDay].Add(slot);
+        slots[selectedDay] = slots[selectedDay].OrderBy(x => x).ToList();
+        msg = "Added.";
+    }
+
+    private void RemoveSlot(string day, string slot)
+    {
+        if (!slots.ContainsKey(day)) return;
+        slots[day].Remove(slot);
+    }
+
+    private async Task Save()
+    {
+        msg = null;
+        if (string.IsNullOrWhiteSpace(doctorMongoId)) return;
+
+        var json = System.Text.Json.JsonSerializer.Serialize(slots);
+        await JS.InvokeVoidAsync("localStorage.setItem", StorageKey, json);
+        msg = "Saved successfully.";
+    }
+}
+
+<style>
+    .page { max-width: 1100px; margin: 0 auto; }
+    .page-head { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; margin-bottom:14px; }
+    h2 { margin:0; color:#0f172a; }
+    .muted { color:#64748b; font-size:13px; margin-top:4px; }
+    .ghost {
+        border:1px solid rgba(0,0,0,0.08);
+        background:#fff;
+        padding:10px 12px;
+        border-radius:12px;
+        cursor:pointer;
+        font-weight:800;
+    }
+
+    .state {
+        background:#fff;
+        border:1px solid rgba(0,0,0,0.06);
+        border-radius:14px;
+        padding:14px;
+        box-shadow:0 2px 10px rgba(0,0,0,0.04);
+        font-weight:700;
+        color:#0f172a;
+    }
+    .state.error { color:#b91c1c; }
+
+    .card {
+        background:#fff;
+        border:1px solid rgba(0,0,0,0.06);
+        border-radius:16px;
+        padding:14px;
+        box-shadow:0 2px 10px rgba(0,0,0,0.04);
+        margin-bottom:14px;
+    }
+
+    .row { display:grid; grid-template-columns: 1.2fr 1fr 1fr 0.8fr; gap:10px; align-items:end; }
+    .field label { font-size:12px; font-weight:900; color:#64748b; display:block; margin-bottom:6px; }
+
+    .select, .input {
+        width:100%;
+        padding:10px 12px;
+        border-radius:12px;
+        border:1px solid rgba(0,0,0,0.10);
+        background:#fff;
+        font-weight:800;
+    }
+
+    .btn { border:none; border-radius:12px; padding:10px 12px; cursor:pointer; background:#eef2ff; font-weight:900; }
+    .btn.primary { background:#3b3bbf; color:white; }
+
+    .msg { margin-top:10px; color:#0f172a; font-weight:900; }
+
+    .grid { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:12px; }
+    .day {
+        background:#fff;
+        border:1px solid rgba(0,0,0,0.06);
+        border-radius:16px;
+        padding:14px;
+        box-shadow:0 2px 10px rgba(0,0,0,0.04);
+    }
+    .day-title { font-weight:900; color:#0f172a; margin-bottom:10px; }
+    .mini { color:#94a3b8; font-weight:800; }
+
+    .slot {
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        background:#f8fafc;
+        border:1px solid rgba(0,0,0,0.05);
+        border-radius:12px;
+        padding:10px 12px;
+        margin-bottom:8px;
+    }
+    .t { font-weight:900; color:#0f172a; }
+    .x { border:none; background:transparent; cursor:pointer; font-size:16px; }
+</style>
