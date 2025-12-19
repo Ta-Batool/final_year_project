@@ -37,6 +37,7 @@ builder.Services.AddSingleton<BPLogService>();
 builder.Services.AddSingleton<GlucoseLogService>();
 builder.Services.AddSingleton<WeightLogService>();
 
+builder.Services.AddScoped<API.Services.ExercisePlanService>();
 
 
 // ✅ SignalR for WebRTC signalling

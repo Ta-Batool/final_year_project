@@ -1,29 +1,89 @@
-using API.MongoModel;
-using Microsoft.Extensions.Options;
-using Model;
-using MongoDB.Driver;
 using System;
 using System.Threading.Tasks;
+using Model;
 
 namespace API.Services
 {
     public class ExercisePlanService
     {
-        private readonly IMongoCollection<ExercisePlan> _ex;
-
-        public ExercisePlanService(IOptions<MongoDBSettings> mongo)
+        public Task<ExercisePlanResult> BuildAsync(MetabolismSummary meta)
         {
-            var client = new MongoClient(mongo.Value.ConnectionString);
-            var db = client.GetDatabase(mongo.Value.DatabaseName);
-            _ex = db.GetCollection<ExercisePlan>("ExercisePlans");
+            if (meta == null || meta.MaintenanceCalories <= 0)
+            {
+                return Task.FromResult(new ExercisePlanResult
+                {
+                    Title = "Exercise Plan",
+                    Notes = "Complete your profile to generate a plan."
+                });
+            }
+
+            int surplus = meta.DeficitOrSurplus;
+            int targetBurn;
+
+            if (surplus >= 500) targetBurn = 450;
+            else if (surplus >= 200) targetBurn = 350;
+            else if (surplus >= 0) targetBurn = 250;
+            else if (surplus <= -500) targetBurn = 120;
+            else targetBurn = 180;
+
+            double w = Math.Max(40, meta.WeightKg);
+
+            int Burn(int minutes, double factor) =>
+                (int)Math.Round(minutes * factor * (w / 70.0));
+
+            var plan = new ExercisePlanResult
+            {
+                Title = "Today's Personalized Exercise Plan",
+                TargetCaloriesToBurn = targetBurn,
+                Notes = "Based on your maintenance calories + today's intake/exercise."
+            };
+
+            if (surplus >= 200)
+            {
+                plan.Items.Add(new ExercisePlanItem
+                {
+                    DayLabel = "Today",
+                    Type = "Cardio",
+                    Intensity = "Medium",
+                    Minutes = 35,
+                    Example = "Brisk walk / Cycling",
+                    EstimatedCaloriesBurned = Burn(35, 8.0)
+                });
+
+                plan.Items.Add(new ExercisePlanItem
+                {
+                    DayLabel = "Today",
+                    Type = "Strength",
+                    Intensity = "Low",
+                    Minutes = 20,
+                    Example = "Bodyweight circuit",
+                    EstimatedCaloriesBurned = Burn(20, 6.0)
+                });
+            }
+            else
+            {
+                plan.Items.Add(new ExercisePlanItem
+                {
+                    DayLabel = "Today",
+                    Type = "Cardio",
+                    Intensity = "Low",
+                    Minutes = 25,
+                    Example = "Easy walk",
+                    EstimatedCaloriesBurned = Burn(25, 6.0)
+                });
+
+                plan.Items.Add(new ExercisePlanItem
+                {
+                    DayLabel = "Today",
+                    Type = "Yoga",
+                    Intensity = "Low",
+                    Minutes = 15,
+                    Example = "Stretching / Mobility",
+                    EstimatedCaloriesBurned = Burn(15, 4.0)
+                });
+            }
+
+            return Task.FromResult(plan);
         }
-
-        public Task<ExercisePlan?> GetByUserAndDateAsync(string userId, DateTime date) =>
-            _ex.Find(x => x.UserId == userId && x.Date == date.Date).FirstOrDefaultAsync();
-
-        public Task CreateAsync(ExercisePlan plan) => _ex.InsertOneAsync(plan);
-
-        public Task UpdateAsync(string id, ExercisePlan plan) =>
-            _ex.ReplaceOneAsync(x => x.Id == id, plan);
     }
 }

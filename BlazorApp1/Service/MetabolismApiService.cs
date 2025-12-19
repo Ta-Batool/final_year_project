@@ -1,6 +1,5 @@
 using System;
 using System.Linq;
-using System.Globalization;
 using System.Threading.Tasks;
 using Model;
 
@@ -22,74 +21,53 @@ namespace BlazorApp1.Service
             _exerciseService = exerciseService;
         }
 
-        // =========================================================
-        // MAIN SUMMARY (Dashboard + UserExercises)
-        // =========================================================
         public async Task<MetabolismSummary> GetSummaryAsync(string clientId)
         {
             var user = await _userService.GetUserByClientIdAsync(clientId);
 
-            // 🔒 SAFE DEFAULTS (viva-safe)
+            // ✅ safe defaults
             double weightKg = 70;
             double heightCm = 170;
             int age = 25;
             string gender = "Male";
 
-            // ---------------------------------------------------------
-            // ✅ PARSE STRING FIELDS SAFELY (YOUR ACTUAL USER MODEL)
-            // ---------------------------------------------------------
             if (user != null)
             {
-                // Weight (string → double)
-                if (!string.IsNullOrWhiteSpace(user.Weight) &&
-                    double.TryParse(user.Weight, NumberStyles.Any, CultureInfo.InvariantCulture, out var w))
-                {
-                    weightKg = Math.Max(30, w);
-                }
+                // ✅ WEIGHT (try numeric prop first, then string prop)
+                TryGetDouble(user, "WeightKg", ref weightKg);
+                TryGetDouble(user, "Weight", ref weightKg);
+                TryGetDouble(user, "weight", ref weightKg);
 
-                // Height (string → double)
-                if (!string.IsNullOrWhiteSpace(user.Height) &&
-                    double.TryParse(user.Height, NumberStyles.Any, CultureInfo.InvariantCulture, out var h))
-                {
-                    heightCm = Math.Max(100, h);
-                }
+                // ✅ HEIGHT
+                TryGetDouble(user, "HeightCm", ref heightCm);
+                TryGetDouble(user, "Height", ref heightCm);
+                TryGetDouble(user, "height", ref heightCm);
 
-                // Age (string → int)
-                if (!string.IsNullOrWhiteSpace(user.Age) &&
-                    int.TryParse(user.Age, out var a))
-                {
-                    age = Math.Max(10, a);
-                }
+                // ✅ AGE
+                TryGetInt(user, "Age", ref age);
+                TryGetInt(user, "age", ref age);
 
-                if (!string.IsNullOrWhiteSpace(user.Gender))
-                {
-                    gender = user.Gender;
-                }
+                // ✅ GENDER
+                TryGetString(user, "Gender", ref gender);
+                TryGetString(user, "gender", ref gender);
             }
 
-            // ---------------------------------------------------------
-            // TODAY'S MEALS & EXERCISE
-            // ---------------------------------------------------------
+            // Meals + exercise today
             var meals = await _mealService.GetTodayMealsAsync(clientId) ?? new();
-            var exercises = await _exerciseService.GetTodayAsync(clientId) ?? new();
+            var exLogs = await _exerciseService.GetTodayAsync(clientId) ?? new();
 
             int consumed = meals.Sum(m => m.Calories ?? 0);
-            int burned = exercises.Sum(e => e.CaloriesBurned ?? 0);
+            int burned = exLogs.Sum(e => e.CaloriesBurned ?? 0);
 
-            // ---------------------------------------------------------
-            // 🔥 BMR (Mifflin–St Jeor)
-            // ---------------------------------------------------------
+            // ✅ BMR (Mifflin–St Jeor)
             int bmr = gender.Equals("female", StringComparison.OrdinalIgnoreCase)
                 ? (int)Math.Round(10 * weightKg + 6.25 * heightCm - 5 * age - 161)
                 : (int)Math.Round(10 * weightKg + 6.25 * heightCm - 5 * age + 5);
 
-            // ---------------------------------------------------------
-            // ⚡ Maintenance Calories
-            // ---------------------------------------------------------
             int maintenance = (int)Math.Round(bmr * 1.55);
 
-            int netCalories = consumed - burned;
-            int deficitOrSurplus = netCalories - maintenance;
+            int net = consumed - burned;
+            int deficitOrSurplus = net - maintenance;
 
             return new MetabolismSummary
             {
@@ -103,20 +81,73 @@ namespace BlazorApp1.Service
 
                 CaloriesConsumed = consumed,
                 CaloriesBurned = burned,
-                NetCalories = netCalories,
+                NetCalories = net,
                 DeficitOrSurplus = deficitOrSurplus
             };
         }
 
-        // =========================================================
-        // CHART SUPPORT (HealthCharts)
-        // =========================================================
-        public async Task<MetabolismSummary> GetSummaryForDateAsync(
-            string clientId,
-            DateTime date)
+        // ----------------- helpers (reflection-safe) -----------------
+
+        private static void TryGetDouble(object obj, string propName, ref double target)
         {
-            // For FYP: reuse logic (charts already filter visually)
-            return await GetSummaryAsync(clientId);
+            try
+            {
+                var p = obj.GetType().GetProperty(propName);
+                if (p == null) return;
+
+                var val = p.GetValue(obj);
+                if (val == null) return;
+
+                if (val is double d && d > 0) { target = d; return; }
+                if (val is float f && f > 0) { target = f; return; }
+                if (val is int i && i > 0) { target = i; return; }
+                if (val is long l && l > 0) { target = l; return; }
+
+                if (val is string s)
+                {
+                    s = s.Trim();
+                    if (double.TryParse(s, out var parsed) && parsed > 0)
+                        target = parsed;
+                }
+            }
+            catch { }
+        }
+
+        private static void TryGetInt(object obj, string propName, ref int target)
+        {
+            try
+            {
+                var p = obj.GetType().GetProperty(propName);
+                if (p == null) return;
+
+                var val = p.GetValue(obj);
+                if (val == null) return;
+
+                if (val is int i && i > 0) { target = i; return; }
+                if (val is long l && l > 0) { target = (int)l; return; }
+
+                if (val is string s)
+                {
+                    s = s.Trim();
+                    if (int.TryParse(s, out var parsed) && parsed > 0)
+                        target = parsed;
+                }
+            }
+            catch { }
+        }
+
+        private static void TryGetString(object obj, string propName, ref string target)
+        {
+            try
+            {
+                var p = obj.GetType().GetProperty(propName);
+                if (p == null) return;
+
+                var val = p.GetValue(obj)?.ToString();
+                if (!string.IsNullOrWhiteSpace(val))
+                    target = val.Trim();
+            }
+            catch { }
         }
     }
 }

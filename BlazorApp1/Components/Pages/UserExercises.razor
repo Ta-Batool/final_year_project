@@ -19,7 +19,12 @@
 
 @* 🔥 Priority-C services *@
 @inject MetabolismApiService MetabolismService
+
+@* ✅ FIX: You DO have this in frontend (ExercisePlanService : IExercisePlanService) *@
 @inject IExercisePlanService ExercisePlanService
+
+@* ❌ REMOVED because you said you don't have it (this line causes build failure) *@
+@* @inject IExercisePlanApiClient ExercisePlanApiClient *@
 
 @layout UserDashboardLayout
 
@@ -379,7 +384,7 @@ else
         // ✅ Priority-C
         metabolism = await MetabolismService.GetSummaryAsync(currentClient.Id!);
 
-        // IMPORTANT: your plan service builds plan from metabolism
+        // ✅ FIX: use your existing frontend-only ExercisePlanService
         if (metabolism != null)
             exercisePlan = await ExercisePlanService.BuildPlanAsync(metabolism);
         else

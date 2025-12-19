@@ -1,8 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using API.Services;
 using Model;
-using System;
-using System.Threading.Tasks;
 
 namespace API.Controllers
 {
@@ -10,28 +8,23 @@ namespace API.Controllers
     [Route("api/[controller]")]
     public class ExercisePlansController : ControllerBase
     {
-        private readonly ExercisePlanService _svc;
-        public ExercisePlansController(ExercisePlanService svc) => _svc = svc;
+        private readonly ExercisePlanService _service;
 
-        [HttpGet("{userId}")]
-        public async Task<IActionResult> Get(string userId, [FromQuery] DateTime date)
-            => Ok(await _svc.GetByUserAndDateAsync(userId, date));
-
-        [HttpPost]
-        public async Task<IActionResult> Create([FromBody] ExercisePlan plan)
+        public ExercisePlansController(ExercisePlanService service)
         {
-            plan.Date = plan.Date.Date;
-            await _svc.CreateAsync(plan);
-            return Ok(plan);
+            _service = service;
         }
 
-        [HttpPut("{id}")]
-        public async Task<IActionResult> Update(string id, [FromBody] ExercisePlan plan)
+        // POST: /api/exerciseplans/build
+        // Body: MetabolismSummary (sent from frontend)
+        [HttpPost("build")]
+        public async Task<ActionResult<ExercisePlanResult>> Build([FromBody] MetabolismSummary meta)
         {
-            plan.Id = id;
-            plan.Date = plan.Date.Date;
-            await _svc.UpdateAsync(id, plan);
-            return NoContent();
+            if (meta == null)
+                return BadRequest("MetabolismSummary is required.");
+
+            var plan = await _service.BuildAsync(meta);
+            return Ok(plan);
         }
     }
 }
