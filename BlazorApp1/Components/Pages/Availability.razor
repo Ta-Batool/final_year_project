@@ -2,18 +2,32 @@
 @layout BlazorApp1.Components.Layout.DashboardLayout
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 
+@using Model
+@using BlazorApp1.Service
 @inject IJSRuntime JS
+@inject IDService DoctorService
 
 <div class="page">
     <div class="page-head">
         <div>
             <h2>Availability</h2>
-            <div class="muted">Add available time slots (saved locally for demo, safe).</div>
+            <div class="muted">Add available time slots (saved to database, shown to patients).</div>
         </div>
-        <button class="ghost" @onclick="Save">Save</button>
+
+        <button class="ghost" @onclick="Save" disabled="@busy">
+            @(busy ? "Saving..." : "Save")
+        </button>
     </div>
 
-    @if (string.IsNullOrWhiteSpace(doctorMongoId))
+    @if (isLoading)
+    {
+        <div class="state">Loading availability...</div>
+    }
+    else if (!string.IsNullOrWhiteSpace(error))
+    {
+        <div class="state error">@error</div>
+    }
+    else if (string.IsNullOrWhiteSpace(doctorMongoId))
     {
         <div class="state error">Doctor ID not found. Please log in again.</div>
     }
@@ -33,19 +47,19 @@
 
                 <div class="field">
                     <label>Start</label>
-                    <!-- ✅ correct binding for time -->
                     <input class="input" type="time" @bind="startTime" />
                 </div>
 
                 <div class="field">
                     <label>End</label>
-                    <!-- ✅ correct binding for time -->
                     <input class="input" type="time" @bind="endTime" />
                 </div>
 
                 <div class="field">
                     <label>&nbsp;</label>
-                    <button class="btn primary" type="button" @onclick="AddSlot">Add Slot</button>
+                    <button class="btn primary" type="button" @onclick="AddSlot" disabled="@busy">
+                        Add Slot
+                    </button>
                 </div>
             </div>
 
@@ -71,7 +85,7 @@
                         {
                             <div class="slot">
                                 <div class="t">@s</div>
-                                <button class="x" type="button" title="Remove" @onclick="@(() => RemoveSlot(d, s))">✕</button>
+                                <button class="x" type="button" title="Remove" @onclick="@(() => RemoveSlot(d, s))" disabled="@busy">✕</button>
                             </div>
                         }
                     }
@@ -84,6 +98,13 @@
 @code {
     private string? doctorMongoId;
 
+    private bool isLoading = true;
+    private bool busy = false;
+    private string? msg;
+    private string? error;
+
+    private Doctor? doctor;
+
     private readonly List<string> days = new()
     {
         "Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"
@@ -92,48 +113,68 @@
     private Dictionary<string, List<string>> slots = new();
 
     private string selectedDay = "Monday";
-
-    // ✅ MUST be TimeOnly? for <input type="time">
     private TimeOnly? startTime = new(9, 0);
     private TimeOnly? endTime = new(12, 0);
 
-    private string? msg;
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    protected override async Task OnInitializedAsync()
     {
-        if (!firstRender) return;
-
-        doctorMongoId = await JS.InvokeAsync<string>("localStorage.getItem", "doctorMongoId");
-
-        slots = new Dictionary<string, List<string>>();
-        foreach (var d in days) slots[d] = new List<string>();
-
-        await Load();
-        StateHasChanged();
-    }
-
-    private string StorageKey => $"doctor_availability_{doctorMongoId}";
-
-    private async Task Load()
-    {
-        msg = null;
-        if (string.IsNullOrWhiteSpace(doctorMongoId)) return;
-
         try
         {
-            var json = await JS.InvokeAsync<string>("localStorage.getItem", StorageKey);
-            if (string.IsNullOrWhiteSpace(json)) return;
+            // init dict
+            slots = new Dictionary<string, List<string>>();
+            foreach (var d in days) slots[d] = new List<string>();
 
-            var parsed = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, List<string>>>(json);
-            if (parsed == null) return;
+            doctorMongoId = await JS.InvokeAsync<string>("localStorage.getItem", "doctorMongoId");
 
-            foreach (var d in days)
+            if (string.IsNullOrWhiteSpace(doctorMongoId))
             {
-                if (parsed.TryGetValue(d, out var list) && list != null)
-                    slots[d] = list;
+                error = "Doctor ID missing in localStorage. Please login again.";
+                return;
             }
+
+            // ✅ Load doctor from DB
+            doctor = await DoctorService.GetDoctorByIdAsync(doctorMongoId);
+
+            if (doctor == null)
+            {
+                error = "Doctor not found in database.";
+                return;
+            }
+
+            // ✅ Fill UI from doctor.Slots (DB)
+            LoadFromDoctorSlots();
         }
-        catch { }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void LoadFromDoctorSlots()
+    {
+        foreach (var d in days) slots[d] = new List<string>();
+
+        var list = doctor?.Slots ?? new List<TimeSlots>();
+
+        foreach (var s in list)
+        {
+            if (string.IsNullOrWhiteSpace(s.Day) || s.StartTime == null || s.EndTime == null)
+                continue;
+
+            var day = NormalizeDay(s.Day!);
+            if (!slots.ContainsKey(day)) continue;
+
+            var slotText = $"{s.StartTime:HH\\:mm} - {s.EndTime:HH\\:mm}";
+            if (!slots[day].Contains(slotText))
+                slots[day].Add(slotText);
+        }
+
+        foreach (var d in days)
+            slots[d] = slots[d].OrderBy(x => x).ToList();
     }
 
     private void AddSlot()
@@ -177,11 +218,65 @@
     private async Task Save()
     {
         msg = null;
-        if (string.IsNullOrWhiteSpace(doctorMongoId)) return;
+        error = null;
 
-        var json = System.Text.Json.JsonSerializer.Serialize(slots);
-        await JS.InvokeVoidAsync("localStorage.setItem", StorageKey, json);
-        msg = "Saved.";
+        if (doctor == null || string.IsNullOrWhiteSpace(doctorMongoId))
+            return;
+
+        try
+        {
+            busy = true;
+
+            // ✅ Convert UI slots -> Doctor.Slots (DB model)
+            var newSlots = new List<TimeSlots>();
+
+            foreach (var day in days)
+            {
+                if (!slots.TryGetValue(day, out var dayList) || dayList.Count == 0)
+                    continue;
+
+                foreach (var s in dayList)
+                {
+                    // format: "HH:mm - HH:mm"
+                    var parts = s.Split('-', StringSplitOptions.TrimEntries);
+                    if (parts.Length != 2) continue;
+
+                    if (!TimeOnly.TryParse(parts[0], out var st)) continue;
+                    if (!TimeOnly.TryParse(parts[1], out var en)) continue;
+                    if (en <= st) continue;
+
+                    newSlots.Add(new TimeSlots
+                    {
+                        Day = day,
+                        StartTime = st,
+                        EndTime = en
+                    });
+                }
+            }
+
+            // update only Slots (keep rest of doctor profile)
+            doctor.Slots = newSlots;
+
+            // ✅ Save to DB
+            await DoctorService.UpdateDoctorAsync(doctorMongoId, doctor);
+
+            msg = "Saved to database ✅ Patients will now see these slots.";
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private string NormalizeDay(string day)
+    {
+        // make it match your days list: "Monday" etc
+        day = day.Trim();
+        return char.ToUpper(day[0]) + day.Substring(1).ToLower();
     }
 }
 
