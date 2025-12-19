@@ -1,3 +1,5 @@
+using System;
+using System.Linq;
 using API.MongoModel;
 using Microsoft.Extensions.Options;
 using Model;
@@ -51,6 +53,13 @@ namespace API.Services
         public async Task DeleteAsync(string id)
         {
             await _collection.DeleteOneAsync(x => x.Id == id);
+        }
+
+        // ✅ REQUIRED BY MetabolismController.cs
+        public async Task<int> GetCaloriesBurnedForDateAsync(string clientId, DateTime dateUtc)
+        {
+            var logs = await GetForDayAsync(clientId, dateUtc) ?? new List<ExerciseEntry>();
+            return logs.Sum(e => e.CaloriesBurned ?? 0);
         }
     }
 }

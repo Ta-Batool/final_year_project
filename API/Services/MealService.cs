@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using API.MongoModel;
 using Microsoft.Extensions.Options;
 using Model;
@@ -75,6 +76,13 @@ namespace API.Services
         public async Task DeleteAsync(string id)
         {
             await _meals.DeleteOneAsync(m => m.Id == id);
+        }
+
+        // ✅ REQUIRED BY MetabolismController.cs
+        public async Task<int> GetCaloriesForDateAsync(string clientId, DateTime dateUtc)
+        {
+            var meals = await GetMealsForDayAsync(clientId, dateUtc) ?? new List<Meal>();
+            return meals.Sum(m => m.Calories ?? 0);
         }
     }
 }

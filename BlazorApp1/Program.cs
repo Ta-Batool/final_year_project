@@ -199,7 +199,11 @@ builder.Services.AddScoped<ExerciseApiClient>();
 
 
 
-builder.Services.AddScoped<MetabolismApiService>();
+builder.Services.AddHttpClient<MetabolismApiService>(c =>
+{
+    c.BaseAddress = new Uri(apiBaseUrl);
+});
+
 
 builder.Services.AddScoped(sp =>
     sp.GetRequiredService<IHttpClientFactory>().CreateClient("Api"));
