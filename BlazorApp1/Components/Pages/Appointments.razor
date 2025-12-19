@@ -1,225 +1,194 @@
-﻿@page "/appointments"
+﻿@page "/availability"
 @layout BlazorApp1.Components.Layout.DashboardLayout
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 
-@using Model
-@using BlazorApp1.Service
-@inject IAService AppointmentService
-@inject IUService UserService
 @inject IJSRuntime JS
-@inject NavigationManager Nav
 
 <div class="page">
     <div class="page-head">
         <div>
-            <h2>Appointments</h2>
-            <div class="muted">Manage today’s schedule, chat, details, and prescriptions.</div>
+            <h2>Availability</h2>
+            <div class="muted">Add your available time slots. (Saved locally — safe)</div>
         </div>
-        <button class="ghost" @onclick="Reload">↻ Refresh</button>
+        <button class="ghost" @onclick="Save">Save</button>
     </div>
 
-    @if (isLoading)
+    @if (string.IsNullOrWhiteSpace(doctorMongoId))
     {
-        <div class="state">Loading appointments…</div>
-    }
-    else if (!string.IsNullOrEmpty(loadError))
-    {
-        <div class="state error">@loadError</div>
+        <div class="state error">Doctor ID not found. Please re-login.</div>
     }
     else
     {
-        <div class="cards">
-            <div class="card">
-                <div class="k">Total</div>
-                <div class="v">@appointments.Count</div>
+        <div class="card">
+            <div class="row">
+                <div class="field">
+                    <label>Day</label>
+                    <select class="select" @bind="selectedDay">
+                        @foreach (var d in days)
+                        {
+                            <option value="@d">@d</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="field">
+                    <label>Start</label>
+                    <!-- ✅ TimeOnly? binding -->
+                    <input class="input" type="time" @bind="startTime" />
+                </div>
+
+                <div class="field">
+                    <label>End</label>
+                    <!-- ✅ TimeOnly? binding -->
+                    <input class="input" type="time" @bind="endTime" />
+                </div>
+
+                <div class="field">
+                    <label>&nbsp;</label>
+                    <button class="btn primary" @onclick="AddSlot">Add Slot</button>
+                </div>
             </div>
-            <div class="card">
-                <div class="k">Scheduled</div>
-                <div class="v">@appointments.Count(a => a.Status == "Scheduled")</div>
-            </div>
-            <div class="card">
-                <div class="k">Completed</div>
-                <div class="v">@appointments.Count(a => a.Status == "Completed")</div>
-            </div>
-            <div class="card">
-                <div class="k">Cancelled</div>
-                <div class="v">@appointments.Count(a => a.Status == "Cancelled")</div>
-            </div>
+
+            @if (!string.IsNullOrWhiteSpace(msg))
+            {
+                <div class="msg">@msg</div>
+            }
         </div>
 
-        @if (appointments.Count == 0)
-        {
-            <div class="state">No appointments found.</div>
-        }
-        else
-        {
-            <div class="table-wrap">
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Patient</th>
-                            <th>Date</th>
-                            <th>Time</th>
-                            <th>Status</th>
-                            <th>Notes</th>
-                            <th style="width:240px;">Actions</th>
-                        </tr>
-                    </thead>
+        <div class="grid">
+            @foreach (var d in days)
+            {
+                <div class="day">
+                    <div class="day-title">@d</div>
 
-                    <tbody>
-                        @foreach (var a in appointments)
+                    @if (!slots.ContainsKey(d) || slots[d].Count == 0)
+                    {
+                        <div class="mini">No slots</div>
+                    }
+                    else
+                    {
+                        @foreach (var s in slots[d])
                         {
-                            <tr>
-                                <td>
-                                    <div class="pname">@a.PatientName</div>
-                                    <div class="psub">@a.PatientClientId</div>
-                                </td>
-                                <td>@a.Start.ToShortDateString()</td>
-                                <td>@a.Start.ToShortTimeString()</td>
-                                <td>
-                                    <select class="select" value="@a.Status" @onchange="@(e => OnStatusChanged(e, a))">
-                                        <option>Scheduled</option>
-                                        <option>Completed</option>
-                                        <option>Cancelled</option>
-                                    </select>
-                                </td>
-                                <td class="notes">@a.Notes</td>
-                                <td>
-                                    <button class="btn" @onclick="@(() => OpenChat(a))">Chat</button>
-
-                                    <button class="btn" @onclick="@(() => Nav.NavigateTo($"/patientdetail/{a.PatientUserId}"))">
-                                        Details
-                                    </button>
-
-                                    <button class="btn primary" @onclick="@(() => Nav.NavigateTo($"/doctor/prescribe/{a.PatientUserId}"))">
-                                        Prescribe
-                                    </button>
-                                </td>
-                            </tr>
+                            <div class="slot">
+                                <div class="t">@s</div>
+                                <button class="x" title="Remove" @onclick="@(() => RemoveSlot(d, s))">✕</button>
+                            </div>
                         }
-                    </tbody>
-                </table>
-            </div>
-        }
+                    }
+                </div>
+            }
+        </div>
     }
 </div>
 
 @code {
-    private class DoctorAppointmentVm
-    {
-        public string Id { get; set; } = "";
-
-        public string? PatientUserId { get; set; }     // Mongo User._id
-        public string? DoctorMongoId { get; set; }     // Doctor Mongo _id
-        public string? PatientClientId { get; set; }   // ClientId (chat)
-
-        public string PatientName { get; set; } = "";
-        public DateTime Start { get; set; }
-        public DateTime End { get; set; }
-        public string Status { get; set; } = "Scheduled";
-        public string? Notes { get; set; }
-    }
-
-    private List<DoctorAppointmentVm> appointments = new();
-    private bool isLoading = true;
-    private string? loadError;
     private string? doctorMongoId;
-    private string? doctorClientId;
+
+    private readonly List<string> days = new()
+    {
+        "Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"
+    };
+
+    // store as strings like "09:00 - 12:00"
+    private Dictionary<string, List<string>> slots = new();
+
+    private string selectedDay = "Monday";
+
+    // ✅ correct type for <input type="time"> in .NET 8 Blazor
+    private TimeOnly? startTime = new TimeOnly(9, 0);
+    private TimeOnly? endTime = new TimeOnly(12, 0);
+
+    private string? msg;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
-        await LoadAppointmentsAsync();
+
+        doctorMongoId = await JS.InvokeAsync<string>("localStorage.getItem", "doctorMongoId");
+        await Load();
         StateHasChanged();
     }
 
-    private async Task LoadAppointmentsAsync()
+    private string StorageKey => $"doctor_availability_{doctorMongoId}";
+
+    private async Task Load()
     {
-        isLoading = true;
-        loadError = null;
-        appointments.Clear();
+        msg = null;
+
+        slots = new Dictionary<string, List<string>>();
+        foreach (var d in days) slots[d] = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(doctorMongoId)) return;
 
         try
         {
-            doctorMongoId = await JS.InvokeAsync<string>("localStorage.getItem", "doctorMongoId");
-            doctorClientId = await JS.InvokeAsync<string>("localStorage.getItem", "doctorId");
-
-            if (string.IsNullOrWhiteSpace(doctorMongoId))
+            var json = await JS.InvokeAsync<string>("localStorage.getItem", StorageKey);
+            if (!string.IsNullOrWhiteSpace(json))
             {
-                loadError = "Doctor ID not found. Please log in again.";
-                return;
-            }
-
-            var appts = await AppointmentService.GetAppointmentsByDoctorAsync(doctorMongoId)
-                        ?? new List<Appointment>();
-
-            foreach (var appt in appts.OrderBy(a => a.Start))
-            {
-                string patientName = appt.PatientName ?? "Unknown";
-                string? patientClientId = null;
-
-                if (!string.IsNullOrWhiteSpace(appt.UserId))
+                var parsed = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, List<string>>>(json);
+                if (parsed != null)
                 {
-                    try
+                    foreach (var d in days)
                     {
-                        var user = await UserService.GetUserByIdAsync(appt.UserId);
-                        if (user != null && !string.IsNullOrWhiteSpace(user.Name))
-                            patientName = user.Name;
-
-                        patientClientId = user?.ClientId;
+                        if (parsed.TryGetValue(d, out var list) && list != null)
+                            slots[d] = list;
                     }
-                    catch { }
                 }
-
-                appointments.Add(new DoctorAppointmentVm
-                {
-                    Id = appt.Id ?? "",
-                    PatientUserId = appt.UserId,
-                    DoctorMongoId = appt.DoctorId,
-                    PatientClientId = patientClientId,
-                    PatientName = patientName,
-                    Start = appt.Start,
-                    End = appt.End,
-                    Status = appt.Status ?? "Scheduled",
-                    Notes = appt.Notes
-                });
             }
         }
-        catch (Exception ex)
+        catch
         {
-            loadError = $"Error loading appointments: {ex.Message}";
-        }
-        finally
-        {
-            isLoading = false;
+            // keep defaults
         }
     }
 
-    private async Task ChangeStatus(DoctorAppointmentVm appt)
+    private void AddSlot()
     {
-        if (string.IsNullOrEmpty(appt.Id)) return;
+        msg = null;
 
-        var ok = await AppointmentService.UpdateAppointmentStatusAsync(appt.Id, appt.Status);
-        if (!ok) loadError = "Failed to update status.";
-    }
-
-    private void OpenChat(DoctorAppointmentVm appt) => _ = OpenChatAsync(appt);
-
-    private async Task OpenChatAsync(DoctorAppointmentVm appt)
-    {
-        if (string.IsNullOrWhiteSpace(doctorClientId) || string.IsNullOrWhiteSpace(appt.PatientClientId))
+        if (startTime == null || endTime == null)
+        {
+            msg = "Please select both start and end time.";
             return;
+        }
 
-        Nav.NavigateTo($"/chat/{doctorClientId}/{appt.PatientClientId}", forceLoad: true);
+        if (endTime.Value <= startTime.Value)
+        {
+            msg = "End time must be after start time.";
+            return;
+        }
+
+        var slot = $"{startTime:HH\\:mm} - {endTime:HH\\:mm}";
+
+        if (!slots.ContainsKey(selectedDay))
+            slots[selectedDay] = new List<string>();
+
+        if (slots[selectedDay].Contains(slot))
+        {
+            msg = "Slot already exists.";
+            return;
+        }
+
+        slots[selectedDay].Add(slot);
+        slots[selectedDay] = slots[selectedDay].OrderBy(x => x).ToList();
+        msg = "Added.";
     }
 
-    private async Task OnStatusChanged(ChangeEventArgs e, DoctorAppointmentVm appt)
+    private void RemoveSlot(string day, string slot)
     {
-        appt.Status = e.Value?.ToString() ?? "Scheduled";
-        await ChangeStatus(appt);
+        if (!slots.ContainsKey(day)) return;
+        slots[day].Remove(slot);
     }
 
-    private async Task Reload() => await LoadAppointmentsAsync();
+    private async Task Save()
+    {
+        msg = null;
+        if (string.IsNullOrWhiteSpace(doctorMongoId)) return;
+
+        var json = System.Text.Json.JsonSerializer.Serialize(slots);
+        await JS.InvokeVoidAsync("localStorage.setItem", StorageKey, json);
+        msg = "Saved successfully.";
+    }
 }
 
 <style>
@@ -227,7 +196,6 @@
     .page-head { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; margin-bottom:14px; }
     h2 { margin:0; color:#0f172a; }
     .muted { color:#64748b; font-size:13px; margin-top:4px; }
-
     .ghost {
         border:1px solid rgba(0,0,0,0.08);
         background:#fff;
@@ -248,56 +216,53 @@
     }
     .state.error { color:#b91c1c; }
 
-    .cards {
-        display:grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap:12px;
-        margin:12px 0 14px;
-    }
     .card {
         background:#fff;
         border:1px solid rgba(0,0,0,0.06);
         border-radius:16px;
         padding:14px;
         box-shadow:0 2px 10px rgba(0,0,0,0.04);
+        margin-bottom:14px;
     }
-    .k { color:#64748b; font-weight:800; font-size:12px; }
-    .v { color:#0f172a; font-weight:900; font-size:22px; margin-top:6px; }
 
-    .table-wrap {
-        background:#fff;
-        border:1px solid rgba(0,0,0,0.06);
-        border-radius:16px;
-        overflow:hidden;
-        box-shadow:0 2px 10px rgba(0,0,0,0.04);
-    }
-    .table { width:100%; border-collapse:collapse; }
-    .table th, .table td { padding:12px; border-bottom:1px solid #eef2f7; text-align:left; font-size:14px; }
-    .table th { background:#f8fafc; color:#334155; font-weight:900; }
-    .notes { color:#334155; max-width:280px; }
+    .row { display:grid; grid-template-columns: 1.2fr 1fr 1fr 0.8fr; gap:10px; align-items:end; }
+    .field label { font-size:12px; font-weight:900; color:#64748b; display:block; margin-bottom:6px; }
 
-    .pname { font-weight:900; color:#0f172a; }
-    .psub { font-size:12px; color:#94a3b8; margin-top:2px; }
-
-    .select {
-        padding:8px 10px;
+    .select, .input {
+        width:100%;
+        padding:10px 12px;
         border-radius:12px;
         border:1px solid rgba(0,0,0,0.10);
         background:#fff;
-        font-weight:700;
+        font-weight:800;
     }
 
-    .btn {
-        border:none;
+    .btn { border:none; border-radius:12px; padding:10px 12px; cursor:pointer; background:#eef2ff; font-weight:900; }
+    .btn.primary { background:#3b3bbf; color:white; }
+
+    .msg { margin-top:10px; color:#0f172a; font-weight:900; }
+
+    .grid { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:12px; }
+    .day {
+        background:#fff;
+        border:1px solid rgba(0,0,0,0.06);
+        border-radius:16px;
+        padding:14px;
+        box-shadow:0 2px 10px rgba(0,0,0,0.04);
+    }
+    .day-title { font-weight:900; color:#0f172a; margin-bottom:10px; }
+    .mini { color:#94a3b8; font-weight:800; }
+
+    .slot {
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        background:#f8fafc;
+        border:1px solid rgba(0,0,0,0.05);
         border-radius:12px;
-        padding:9px 10px;
-        cursor:pointer;
-        background:#eef2ff;
-        font-weight:900;
-        margin-right:8px;
+        padding:10px 12px;
+        margin-bottom:8px;
     }
-    .btn.primary {
-        background:#3b3bbf;
-        color:white;
-    }
+    .t { font-weight:900; color:#0f172a; }
+    .x { border:none; background:transparent; cursor:pointer; font-size:16px; }
 </style>
