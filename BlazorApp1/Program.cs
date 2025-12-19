@@ -22,7 +22,6 @@ builder.Services
     .AddServerSideBlazor()
     .AddCircuitOptions(o =>
     {
-        // 🔍 CRITICAL: shows real exception instead of killing circuit silently
         o.DetailedErrors = true;
     });
 
@@ -88,87 +87,63 @@ var apiBaseUrl =
 
 //
 // ─────────────────────────────────────────────────────────────
-// 🧠 Domain Services (DI)
+// ✅ Named fallback HttpClient (keep this)
 // ─────────────────────────────────────────────────────────────
 //
-builder.Services.AddScoped<HealthApiService>();
-builder.Services.AddScoped<GlucoseLogApiService>();
-builder.Services.AddScoped<WeightLogApiService>();
-builder.Services.AddScoped<AppointmentApiService>();
-builder.Services.AddScoped<DoctorPatientsApiService>();
+builder.Services.AddHttpClient("Api", c =>
+{
+    c.BaseAddress = new Uri(apiBaseUrl);
+});
 
-// ✅ MetabolismApiService depends on IUService + IMealService + IExerciseService (NOT HttpClient)
+builder.Services.AddScoped(sp =>
+    sp.GetRequiredService<IHttpClientFactory>().CreateClient("Api"));
+
+//
+// ─────────────────────────────────────────────────────────────
+// ✅ Typed HttpClients (your app services)
+// ─────────────────────────────────────────────────────────────
+//
+builder.Services.AddHttpClient<HealthApiService>(c => c.BaseAddress = new Uri(apiBaseUrl));
+
+builder.Services.AddHttpClient<IDService, DService>(c => c.BaseAddress = new Uri(apiBaseUrl));
+builder.Services.AddHttpClient<IUService, UService>(c => c.BaseAddress = new Uri(apiBaseUrl));
+builder.Services.AddHttpClient<ICService, CService>(c => c.BaseAddress = new Uri(apiBaseUrl));
+builder.Services.AddHttpClient<IAService, AService>(c => c.BaseAddress = new Uri(apiBaseUrl));
+
+builder.Services.AddHttpClient<IMService, MService>(c => c.BaseAddress = new Uri(apiBaseUrl));
+builder.Services.AddHttpClient<IMealService, MealService>(c => c.BaseAddress = new Uri(apiBaseUrl));
+
+builder.Services.AddHttpClient<IExerciseService, ExerciseService>(c => c.BaseAddress = new Uri(apiBaseUrl));
+builder.Services.AddHttpClient<IHydrationService, HydrationService>(c => c.BaseAddress = new Uri(apiBaseUrl));
+
+builder.Services.AddHttpClient<IMedicationHttpService, MedicationHttpService>(c => c.BaseAddress = new Uri(apiBaseUrl));
+builder.Services.AddHttpClient<IMedicationService, MedicationService>(c => c.BaseAddress = new Uri(apiBaseUrl));
+
+builder.Services.AddHttpClient<MessageClientService>(c => c.BaseAddress = new Uri(apiBaseUrl));
+builder.Services.AddHttpClient<ConversationClientService>(c => c.BaseAddress = new Uri(apiBaseUrl));
+
+//
+// ✅ THIS IS THE MISSING ONE THAT CRASHED YOUR APP
+// Make sure ExercisePlanService class exists and implements IExercisePlanService
+//
+builder.Services.AddHttpClient<IExercisePlanService, ExercisePlanService>(c =>
+{
+    c.BaseAddress = new Uri(apiBaseUrl);
+});
+
+//
+// ─────────────────────────────────────────────────────────────
+// 🧠 Non-Http domain orchestrators (if they call other services)
+// ─────────────────────────────────────────────────────────────
+//
+// If MetabolismApiService uses IUService/IMealService/IExerciseService internally,
+// it should be AddScoped (NOT AddHttpClient).
+//
 builder.Services.AddScoped<MetabolismApiService>();
 
-//
-// ─────────────────────────────────────────────────────────────
-// ✅ Typed HttpClients (BaseAddress fixed)
-// ─────────────────────────────────────────────────────────────
-//
-builder.Services.AddHttpClient<HealthApiService>(c =>
-{
-    c.BaseAddress = new Uri(apiBaseUrl);
-});
-
-builder.Services.AddHttpClient<IDService, DService>(c =>
-{
-    c.BaseAddress = new Uri(apiBaseUrl);
-});
-
-builder.Services.AddHttpClient<IUService, UService>(c =>
-{
-    c.BaseAddress = new Uri(apiBaseUrl);
-});
-
-builder.Services.AddHttpClient<ICService, CService>(c =>
-{
-    c.BaseAddress = new Uri(apiBaseUrl);
-});
-
-builder.Services.AddHttpClient<IAService, AService>(c =>
-{
-    c.BaseAddress = new Uri(apiBaseUrl);
-});
-
-builder.Services.AddHttpClient<IMService, MService>(c =>
-{
-    c.BaseAddress = new Uri(apiBaseUrl);
-});
-
-builder.Services.AddHttpClient<IMealService, MealService>(c =>
-{
-    c.BaseAddress = new Uri(apiBaseUrl);
-});
-
-builder.Services.AddHttpClient<IMedicationHttpService, MedicationHttpService>(c =>
-{
-    c.BaseAddress = new Uri(apiBaseUrl);
-});
-
-builder.Services.AddHttpClient<IMedicationService, MedicationService>(c =>
-{
-    c.BaseAddress = new Uri(apiBaseUrl);
-});
-
-builder.Services.AddHttpClient<MessageClientService>(c =>
-{
-    c.BaseAddress = new Uri(apiBaseUrl);
-});
-
-builder.Services.AddHttpClient<ConversationClientService>(c =>
-{
-    c.BaseAddress = new Uri(apiBaseUrl);
-});
-
-builder.Services.AddHttpClient<IExerciseService, ExerciseService>(c =>
-{
-    c.BaseAddress = new Uri(apiBaseUrl);
-});
-
-builder.Services.AddHttpClient<IHydrationService, HydrationService>(c =>
-{
-    c.BaseAddress = new Uri(apiBaseUrl);
-});
+builder.Services.AddScoped<AppointmentApiService>();
+builder.Services.AddScoped<DoctorPatientsApiService>();
+builder.Services.AddScoped<ExerciseApiClient>();
 
 //
 // ─────────────────────────────────────────────────────────────
@@ -181,22 +156,6 @@ builder.Services.AddHttpClient<ICalorieNinjaService, CalorieNinjaService>(c =>
 {
     c.BaseAddress = new Uri("https://api.nal.usda.gov/fdc/v1/");
 });
-
-//
-// ─────────────────────────────────────────────────────────────
-// 🔁 Generic HttpClient (fallback)
-// ─────────────────────────────────────────────────────────────
-//
-builder.Services.AddHttpClient("Api", c =>
-{
-    c.BaseAddress = new Uri(apiBaseUrl);
-});
-
-builder.Services.AddScoped<ExerciseApiClient>();
-
-// Keep one generic client registration if you use it elsewhere
-builder.Services.AddScoped(sp =>
-    sp.GetRequiredService<IHttpClientFactory>().CreateClient("Api"));
 
 //
 // ─────────────────────────────────────────────────────────────
@@ -232,15 +191,9 @@ app.MapBlazorHub();
 // 🌍 Minimal API Endpoints
 // ─────────────────────────────────────────────────────────────
 //
-app.MapPost("/api/translate", async (
-    TranslateRequest req,
-    ITranslationService translator) =>
+app.MapPost("/api/translate", async (TranslateRequest req, ITranslationService translator) =>
 {
-    var translated = await translator.TranslateAsync(
-        req.TargetLanguage,
-        req.Texts.ToArray()
-    );
-
+    var translated = await translator.TranslateAsync(req.TargetLanguage, req.Texts.ToArray());
     return Results.Ok(new { texts = translated });
 });
 
@@ -253,20 +206,14 @@ app.MapGet("/login-google", async (HttpContext ctx) =>
 {
     await ctx.ChallengeAsync(
         GoogleDefaults.AuthenticationScheme,
-        new AuthenticationProperties
-        {
-            RedirectUri = "/google-callback"
-        });
+        new AuthenticationProperties { RedirectUri = "/google-callback" });
 });
 
 app.MapGet("/register-google", async (HttpContext ctx) =>
 {
     await ctx.ChallengeAsync(
         GoogleDefaults.AuthenticationScheme,
-        new AuthenticationProperties
-        {
-            RedirectUri = "/dashboard?registered=true"
-        });
+        new AuthenticationProperties { RedirectUri = "/dashboard?registered=true" });
 });
 
 app.MapGet("/logout", async (HttpContext ctx) =>
@@ -278,11 +225,6 @@ app.MapGet("/logout", async (HttpContext ctx) =>
 app.MapFallbackToPage("/_Host");
 app.Run();
 
-//
-// ─────────────────────────────────────────────────────────────
-// DTOs
-// ─────────────────────────────────────────────────────────────
-//
 public class TranslateRequest
 {
     public string TargetLanguage { get; set; } = "ur";
