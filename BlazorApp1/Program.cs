@@ -79,7 +79,7 @@ builder.Services.AddAuthorization();
 
 //
 // ─────────────────────────────────────────────────────────────
-// 🌐 API BASE URL  (THIS WAS BROKEN BEFORE ❌)
+// 🌐 API BASE URL
 // ─────────────────────────────────────────────────────────────
 //
 var apiBaseUrl =
@@ -97,15 +97,14 @@ builder.Services.AddScoped<WeightLogApiService>();
 builder.Services.AddScoped<AppointmentApiService>();
 builder.Services.AddScoped<DoctorPatientsApiService>();
 
+// ✅ MetabolismApiService depends on IUService + IMealService + IExerciseService (NOT HttpClient)
+builder.Services.AddScoped<MetabolismApiService>();
+
 //
 // ─────────────────────────────────────────────────────────────
-// ✅ Typed HttpClients (FIXED BaseAddress)
+// ✅ Typed HttpClients (BaseAddress fixed)
 // ─────────────────────────────────────────────────────────────
 //
-
-// ❌ BEFORE: new Uri("ApiBaseUrl")  ← WRONG (string literal)
-// ✅ NOW:    new Uri(apiBaseUrl)
-
 builder.Services.AddHttpClient<HealthApiService>(c =>
 {
     c.BaseAddress = new Uri(apiBaseUrl);
@@ -193,26 +192,11 @@ builder.Services.AddHttpClient("Api", c =>
     c.BaseAddress = new Uri(apiBaseUrl);
 });
 
-
-
 builder.Services.AddScoped<ExerciseApiClient>();
 
-
-
-builder.Services.AddHttpClient<MetabolismApiService>(c =>
-{
-    c.BaseAddress = new Uri(apiBaseUrl);
-});
-
-
+// Keep one generic client registration if you use it elsewhere
 builder.Services.AddScoped(sp =>
     sp.GetRequiredService<IHttpClientFactory>().CreateClient("Api"));
-
-builder.Services.AddHttpClient<MetabolismApiService>(c =>
-{
-    c.BaseAddress = new Uri(apiBaseUrl);
-});
-
 
 //
 // ─────────────────────────────────────────────────────────────
