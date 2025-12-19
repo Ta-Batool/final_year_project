@@ -8,14 +8,14 @@
     <div class="page-head">
         <div>
             <h2>Availability</h2>
-            <div class="muted">Add your available time slots. (Saved locally for now — safe)</div>
+            <div class="muted">Add available time slots (saved locally for demo, safe).</div>
         </div>
         <button class="ghost" @onclick="Save">Save</button>
     </div>
 
     @if (string.IsNullOrWhiteSpace(doctorMongoId))
     {
-        <div class="state error">Doctor ID not found. Please re-login.</div>
+        <div class="state error">Doctor ID not found. Please log in again.</div>
     }
     else
     {
@@ -33,17 +33,19 @@
 
                 <div class="field">
                     <label>Start</label>
+                    <!-- ✅ correct binding for time -->
                     <input class="input" type="time" @bind="startTime" />
                 </div>
 
                 <div class="field">
                     <label>End</label>
+                    <!-- ✅ correct binding for time -->
                     <input class="input" type="time" @bind="endTime" />
                 </div>
 
                 <div class="field">
                     <label>&nbsp;</label>
-                    <button class="btn primary" @onclick="AddSlot">Add Slot</button>
+                    <button class="btn primary" type="button" @onclick="AddSlot">Add Slot</button>
                 </div>
             </div>
 
@@ -59,17 +61,17 @@
                 <div class="day">
                     <div class="day-title">@d</div>
 
-                    @if (!slots.ContainsKey(d) || slots[d].Count == 0)
+                    @if (!slots.TryGetValue(d, out var list) || list.Count == 0)
                     {
                         <div class="mini">No slots</div>
                     }
                     else
                     {
-                        @foreach (var s in slots[d])
+                        @foreach (var s in list)
                         {
                             <div class="slot">
                                 <div class="t">@s</div>
-                                <button class="x" title="Remove" @onclick="@(() => RemoveSlot(d, s))">✕</button>
+                                <button class="x" type="button" title="Remove" @onclick="@(() => RemoveSlot(d, s))">✕</button>
                             </div>
                         }
                     }
@@ -90,8 +92,10 @@
     private Dictionary<string, List<string>> slots = new();
 
     private string selectedDay = "Monday";
-    private string startTime = "09:00";
-    private string endTime = "12:00";
+
+    // ✅ MUST be TimeOnly? for <input type="time">
+    private TimeOnly? startTime = new(9, 0);
+    private TimeOnly? endTime = new(12, 0);
 
     private string? msg;
 
@@ -100,6 +104,10 @@
         if (!firstRender) return;
 
         doctorMongoId = await JS.InvokeAsync<string>("localStorage.getItem", "doctorMongoId");
+
+        slots = new Dictionary<string, List<string>>();
+        foreach (var d in days) slots[d] = new List<string>();
+
         await Load();
         StateHasChanged();
     }
@@ -109,45 +117,45 @@
     private async Task Load()
     {
         msg = null;
-        slots = new Dictionary<string, List<string>>();
-        foreach (var d in days) slots[d] = new List<string>();
-
         if (string.IsNullOrWhiteSpace(doctorMongoId)) return;
 
         try
         {
             var json = await JS.InvokeAsync<string>("localStorage.getItem", StorageKey);
-            if (!string.IsNullOrWhiteSpace(json))
+            if (string.IsNullOrWhiteSpace(json)) return;
+
+            var parsed = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, List<string>>>(json);
+            if (parsed == null) return;
+
+            foreach (var d in days)
             {
-                var parsed = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, List<string>>>(json);
-                if (parsed != null)
-                {
-                    foreach (var d in days)
-                    {
-                        if (parsed.ContainsKey(d))
-                            slots[d] = parsed[d] ?? new List<string>();
-                    }
-                }
+                if (parsed.TryGetValue(d, out var list) && list != null)
+                    slots[d] = list;
             }
         }
-        catch
-        {
-            // ignore, keep defaults
-        }
+        catch { }
     }
 
     private void AddSlot()
     {
         msg = null;
 
-        if (string.Compare(endTime, startTime, StringComparison.Ordinal) <= 0)
+        if (startTime == null || endTime == null)
         {
-            msg = "End time must be after start time.";
+            msg = "Select start and end time.";
             return;
         }
 
-        var slot = $"{startTime} - {endTime}";
-        if (!slots.ContainsKey(selectedDay)) slots[selectedDay] = new List<string>();
+        if (endTime.Value <= startTime.Value)
+        {
+            msg = "End must be after start.";
+            return;
+        }
+
+        var slot = $"{startTime:HH\\:mm} - {endTime:HH\\:mm}";
+
+        if (!slots.ContainsKey(selectedDay))
+            slots[selectedDay] = new List<string>();
 
         if (slots[selectedDay].Contains(slot))
         {
@@ -173,7 +181,7 @@
 
         var json = System.Text.Json.JsonSerializer.Serialize(slots);
         await JS.InvokeVoidAsync("localStorage.setItem", StorageKey, json);
-        msg = "Saved successfully.";
+        msg = "Saved.";
     }
 }
 
@@ -182,46 +190,17 @@
     .page-head { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; margin-bottom:14px; }
     h2 { margin:0; color:#0f172a; }
     .muted { color:#64748b; font-size:13px; margin-top:4px; }
-    .ghost {
-        border:1px solid rgba(0,0,0,0.08);
-        background:#fff;
-        padding:10px 12px;
-        border-radius:12px;
-        cursor:pointer;
-        font-weight:800;
-    }
+    .ghost { border:1px solid rgba(0,0,0,0.08); background:#fff; padding:10px 12px; border-radius:12px; cursor:pointer; font-weight:800; }
 
-    .state {
-        background:#fff;
-        border:1px solid rgba(0,0,0,0.06);
-        border-radius:14px;
-        padding:14px;
-        box-shadow:0 2px 10px rgba(0,0,0,0.04);
-        font-weight:700;
-        color:#0f172a;
-    }
+    .state { background:#fff; border:1px solid rgba(0,0,0,0.06); border-radius:14px; padding:14px; box-shadow:0 2px 10px rgba(0,0,0,0.04); font-weight:700; color:#0f172a; }
     .state.error { color:#b91c1c; }
 
-    .card {
-        background:#fff;
-        border:1px solid rgba(0,0,0,0.06);
-        border-radius:16px;
-        padding:14px;
-        box-shadow:0 2px 10px rgba(0,0,0,0.04);
-        margin-bottom:14px;
-    }
+    .card { background:#fff; border:1px solid rgba(0,0,0,0.06); border-radius:16px; padding:14px; box-shadow:0 2px 10px rgba(0,0,0,0.04); margin-bottom:14px; }
 
     .row { display:grid; grid-template-columns: 1.2fr 1fr 1fr 0.8fr; gap:10px; align-items:end; }
     .field label { font-size:12px; font-weight:900; color:#64748b; display:block; margin-bottom:6px; }
 
-    .select, .input {
-        width:100%;
-        padding:10px 12px;
-        border-radius:12px;
-        border:1px solid rgba(0,0,0,0.10);
-        background:#fff;
-        font-weight:800;
-    }
+    .select, .input { width:100%; padding:10px 12px; border-radius:12px; border:1px solid rgba(0,0,0,0.10); background:#fff; font-weight:800; }
 
     .btn { border:none; border-radius:12px; padding:10px 12px; cursor:pointer; background:#eef2ff; font-weight:900; }
     .btn.primary { background:#3b3bbf; color:white; }
@@ -229,26 +208,11 @@
     .msg { margin-top:10px; color:#0f172a; font-weight:900; }
 
     .grid { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:12px; }
-    .day {
-        background:#fff;
-        border:1px solid rgba(0,0,0,0.06);
-        border-radius:16px;
-        padding:14px;
-        box-shadow:0 2px 10px rgba(0,0,0,0.04);
-    }
+    .day { background:#fff; border:1px solid rgba(0,0,0,0.06); border-radius:16px; padding:14px; box-shadow:0 2px 10px rgba(0,0,0,0.04); }
     .day-title { font-weight:900; color:#0f172a; margin-bottom:10px; }
     .mini { color:#94a3b8; font-weight:800; }
 
-    .slot {
-        display:flex;
-        align-items:center;
-        justify-content:space-between;
-        background:#f8fafc;
-        border:1px solid rgba(0,0,0,0.05);
-        border-radius:12px;
-        padding:10px 12px;
-        margin-bottom:8px;
-    }
+    .slot { display:flex; align-items:center; justify-content:space-between; background:#f8fafc; border:1px solid rgba(0,0,0,0.05); border-radius:12px; padding:10px 12px; margin-bottom:8px; }
     .t { font-weight:900; color:#0f172a; }
     .x { border:none; background:transparent; cursor:pointer; font-size:16px; }
 </style>
