@@ -135,6 +135,15 @@ namespace BlazorApp1.Service
             }
             catch { }
         }
+        
+        public Task<MetabolismSummary> GetSummaryForDateAsync(string clientId, DateTime date)
+        {
+            // Your current frontend services calculate "today" using GetTodayMealsAsync/GetTodayAsync
+            // and do not have a date-based method on those services in this Blazor layer.
+            // To fix the build and keep behavior consistent, we return the same summary.
+            // If later you add GetMealsByDate / GetForDay in the Blazor services, update this.
+            return GetSummaryAsync(clientId);
+        }
 
         private static void TryGetString(object obj, string propName, ref string target)
         {

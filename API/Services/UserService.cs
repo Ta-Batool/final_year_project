@@ -41,6 +41,11 @@ namespace API.Services
             await _users.ReplaceOneAsync(u => u.Id == id, user);
         }
 
+        public Task<User?> GetByClientIdAsync(string clientId)
+        {
+            return GetUserByClientIdAsync(clientId);
+        }
+
         public async Task DeleteAsync(string id)
         {
             await _users.DeleteOneAsync(u => u.Id == id);
