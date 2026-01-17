@@ -31,8 +31,9 @@
         {
             Session.Login(email, password);
 
-            // ✅ Do NOT forceLoad (it resets circuit/scoped state)
-            Nav.NavigateTo("/admin");
+            // ✅ FIX: navigate using BaseUri so it works under /BlazorApp1
+            var url = new Uri(new Uri(Nav.BaseUri), "admin").ToString();
+            Nav.NavigateTo(url);
         }
         else
         {

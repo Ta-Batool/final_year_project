@@ -6,8 +6,9 @@
     @code {
         protected override void OnInitialized()
         {
-            // ✅ no forceLoad
-            Nav.NavigateTo("/admin-login");
+            // ✅ FIX: use BaseUri-safe navigation
+            var url = new Uri(new Uri(Nav.BaseUri), "admin-login").ToString();
+            Nav.NavigateTo(url);
         }
     }
 }

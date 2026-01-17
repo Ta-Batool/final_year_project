@@ -14,6 +14,10 @@
     {
         <div class="alert alert-danger">@error</div>
     }
+    else if (docs.Count == 0)
+    {
+        <div class="alert alert-info">No pending doctors.</div>
+    }
     else
     {
         <table class="table table-striped">
@@ -32,11 +36,18 @@
                         <td>@d.Name</td>
                         <td>@d.Email</td>
                         <td>
-                            <a target="_blank" href="@CertUrl(d.Id!)">View</a>
+                            @if (!string.IsNullOrWhiteSpace(d.Id))
+                            {
+                                <a target="_blank" href="@CertUrl(d.Id!)">View</a>
+                            }
+                            else
+                            {
+                                <span class="text-muted">N/A</span>
+                            }
                         </td>
                         <td>
-                            <button class="btn btn-success btn-sm" @onclick="(()=>Approve(d.Id!))">Approve</button>
-                            <button class="btn btn-danger btn-sm ms-2" @onclick="(()=>Reject(d.Id!))">Reject</button>
+                            <button class="btn btn-success btn-sm" @onclick="() => Approve(d.Id!)">Approve</button>
+                            <button class="btn btn-danger btn-sm ms-2" @onclick="() => Reject(d.Id!)">Reject</button>
                         </td>
                     </tr>
                 }
@@ -50,8 +61,11 @@
     private string? error;
     private List<Model.Doctor> docs = new();
 
-    private string CertUrl(string id) =>
-        new Uri(Http.BaseAddress!, $"api/doctor-verification/{id}/certificate").ToString();
+    private string CertUrl(string id)
+    {
+        // Http.BaseAddress is already your API base (ApiBaseUrl) because you inject HttpClient from named "Api"
+        return new Uri(Http.BaseAddress!, $"api/doctor-verification/{id}/certificate").ToString();
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -73,11 +87,13 @@
     {
         await AdminApi.ReviewDoctorAsync(id, true, "Approved");
         docs = await AdminApi.GetPendingDoctorsAsync();
+        StateHasChanged();
     }
 
     private async Task Reject(string id)
     {
         await AdminApi.ReviewDoctorAsync(id, false, "Rejected");
         docs = await AdminApi.GetPendingDoctorsAsync();
+        StateHasChanged();
     }
 }

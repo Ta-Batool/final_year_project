@@ -13,6 +13,10 @@
     {
         <div class="alert alert-danger">@error</div>
     }
+    else if (patients.Count == 0)
+    {
+        <div class="alert alert-info">No patients found.</div>
+    }
     else
     {
         <table class="table table-striped">
