@@ -6,7 +6,7 @@
 <AdminGuard>
     <h3>Admin Panel</h3>
 
-    <button class="btn btn-danger btn-sm" @onclick="Logout">Logout</button>
+    <button class="btn btn-danger btn-sm" @onclick="LogoutAsync">Logout</button>
 
     <div class="mt-3">
         <a class="btn btn-primary" href="@DoctorsUrl">Doctor Approvals</a>
@@ -18,11 +18,9 @@
     private string DoctorsUrl => new Uri(new Uri(Nav.BaseUri), "admin/doctors").ToString();
     private string PatientsUrl => new Uri(new Uri(Nav.BaseUri), "admin/patients").ToString();
 
-    private void Logout()
+    private async Task LogoutAsync()
     {
-        Session.Logout();
-
-        // ✅ BaseUri-safe navigation
+        await Session.LogoutAsync();
         var url = new Uri(new Uri(Nav.BaseUri), "admin-login").ToString();
         Nav.NavigateTo(url);
     }

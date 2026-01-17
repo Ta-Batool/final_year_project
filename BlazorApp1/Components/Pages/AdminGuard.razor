@@ -1,16 +1,13 @@
 @inject NavigationManager Nav
 @inject BlazorApp1.Service.AdminSession Session
 
-@if (!Session.IsAdmin)
+@if (loading)
 {
-    @code {
-        protected override void OnInitialized()
-        {
-            // ✅ FIX: use BaseUri-safe navigation
-            var url = new Uri(new Uri(Nav.BaseUri), "admin-login").ToString();
-            Nav.NavigateTo(url);
-        }
-    }
+    <p>Checking admin session...</p>
+}
+else if (!Session.IsAdmin)
+{
+    <p>Redirecting...</p>
 }
 else
 {
@@ -19,4 +16,20 @@ else
 
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    private bool loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Session.LoadAsync();
+
+        if (!Session.IsAdmin)
+        {
+            // ✅ BaseUri-safe
+            var url = new Uri(new Uri(Nav.BaseUri), "admin-login").ToString();
+            Nav.NavigateTo(url);
+            return;
+        }
+
+        loading = false;
+    }
 }

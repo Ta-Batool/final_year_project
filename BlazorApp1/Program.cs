@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage; // ✅ ADD
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.DependencyInjection;
@@ -139,7 +140,7 @@ builder.Services.AddScoped<ExerciseApiClient>();
 
 //
 // ─────────────────────────────────────────────────────────────
-// ✅ Doctor Verification + Admin APIs (fix duplicates)
+// ✅ Doctor Verification + Admin APIs
 // ─────────────────────────────────────────────────────────────
 //
 builder.Services.AddHttpClient<IDoctorVerificationApiService, DoctorVerificationApiService>(
@@ -148,8 +149,15 @@ builder.Services.AddHttpClient<IDoctorVerificationApiService, DoctorVerification
 builder.Services.AddHttpClient<IAdminApiService, AdminApiService>(
     c => c.BaseAddress = new Uri(apiBaseUrl));
 
-// ✅ IMPORTANT FIX: AdminSession must persist → Singleton
-builder.Services.AddSingleton<AdminSession>();
+//
+// ─────────────────────────────────────────────────────────────
+// ✅ ADMIN SESSION FIX (PERSIST IN BROWSER)
+// ─────────────────────────────────────────────────────────────
+//
+builder.Services.AddScoped<ProtectedLocalStorage>(); // ✅ add storage
+
+// ✅ change from Singleton -> Scoped
+builder.Services.AddScoped<AdminSession>();
 builder.Services.AddScoped<AdminApiClient>();
 
 //

@@ -17,7 +17,7 @@
         <div class="alert alert-danger mt-2">@error</div>
     }
 
-    <button class="btn btn-primary mt-3" @onclick="Login">Login</button>
+    <button class="btn btn-primary mt-3" @onclick="LoginAsync">Login</button>
 </div>
 
 @code {
@@ -25,13 +25,14 @@
     private string password = "admin123";
     private string? error;
 
-    private void Login()
+    private async Task LoginAsync()
     {
-        if (email == "admin@admin.com" && password == "admin123")
-        {
-            Session.Login(email, password);
+        error = null;
 
-            // ✅ FIX: navigate using BaseUri so it works under /BlazorApp1
+        var ok = await Session.LoginAsync(email, password);
+        if (ok)
+        {
+            // ✅ BaseUri-safe
             var url = new Uri(new Uri(Nav.BaseUri), "admin").ToString();
             Nav.NavigateTo(url);
         }
