@@ -1,68 +1,80 @@
 @page "/doctor/verification"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
-@layout BlazorApp1.Components.Layout.DashboardLayout
 
 @using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Forms
 @using Model
 
 @inject AuthenticationStateProvider AuthStateProvider
 @inject ICService CService
 @inject IDService DService
-@inject HttpClient Http
-@inject NavigationManager Nav
+@inject IDoctorVerificationApiService VerifyApi
+@inject NavigationManager NavManager
 
 <h3>Doctor Verification</h3>
 
-@if (loading)
+@if (isLoading)
 {
     <p>Loading...</p>
 }
-else if (!string.IsNullOrEmpty(error))
+else if (!string.IsNullOrWhiteSpace(error))
 {
     <div class="alert alert-danger">@error</div>
 }
-else if (doctor != null)
+else if (doctor is null)
 {
-    <p><b>Status:</b> @doctor.VerificationStatus</p>
+    <p>Doctor profile not found. Please complete doctor registration.</p>
+}
+else
+{
+    <div class="card p-3">
+        <p><b>Status:</b> @doctor.VerificationStatus</p>
 
-    @if (!string.IsNullOrWhiteSpace(doctor.ReviewNotes))
-    {
-        <div class="alert alert-secondary"><b>Admin Notes:</b> @doctor.ReviewNotes</div>
-    }
-
-    @if (doctor.VerificationStatus == DoctorVerificationStatus.Approved)
-    {
-        <div class="alert alert-success">Approved ✅</div>
-        <button class="btn btn-primary" @onclick="()=>Nav.NavigateTo("/dashboard", true)">Go Dashboard</button>
-    }
-    else if (doctor.VerificationStatus == DoctorVerificationStatus.PendingAdminApproval)
-    {
-        <div class="alert alert-warning">Certificate uploaded ✅ Waiting for admin approval…</div>
-    }
-    else
-    {
-        <p>Upload your Medical Certificate (PDF/JPG/PNG)</p>
-
-        <InputFile OnChange="OnFileChange" />
-        <button class="btn btn-success mt-2" @onclick="Upload" disabled="@(!canUpload)">Upload</button>
-
-        @if (!string.IsNullOrWhiteSpace(msg))
+        @if (doctor.VerificationStatus == DoctorVerificationStatus.Approved)
         {
-            <div class="alert alert-info mt-2">@msg</div>
+            <div class="alert alert-success">
+                Approved ✅ You can now access your dashboard.
+            </div>
+
+            <button class="btn btn-primary" @onclick="GoToDashboard">
+                Go to Dashboard
+            </button>
         }
-    }
+        else if (doctor.VerificationStatus == DoctorVerificationStatus.PendingAdminApproval)
+        {
+            <div class="alert alert-info">
+                Certificate uploaded ✅ Waiting for admin approval.
+            </div>
+        }
+        else
+        {
+            <p class="text-muted">
+                Upload your medical certificate (PDF/JPG/PNG). After upload, admin will verify your documents.
+            </p>
+
+            @if (doctor.VerificationStatus == DoctorVerificationStatus.Rejected &&
+                 !string.IsNullOrWhiteSpace(doctor.ReviewNotes))
+            {
+                <div class="alert alert-warning">
+                    <b>Rejected:</b> @doctor.ReviewNotes
+                </div>
+            }
+
+            <InputFile OnChange="OnFileSelected" />
+
+            @if (!string.IsNullOrWhiteSpace(uploadMessage))
+            {
+                <div class="alert alert-info mt-2">@uploadMessage</div>
+            }
+        }
+    </div>
 }
 
 @code {
-    bool loading = true;
-    string? error;
-    Doctor? doctor;
-
-    byte[]? fileBytes;
-    string? fileName;
-    string? fileType;
-    bool canUpload => fileBytes != null;
-    string? msg;
+    private bool isLoading = true;
+    private string? error;
+    private Doctor? doctor;
+    private string? uploadMessage;
 
     protected override async Task OnInitializedAsync()
     {
@@ -71,44 +83,72 @@ else if (doctor != null)
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             var principal = authState.User;
 
+            if (!(principal.Identity?.IsAuthenticated ?? false))
+            {
+                NavManager.NavigateTo("/login-google", true);
+                return;
+            }
+
             var email = principal.FindFirst(ClaimTypes.Email)?.Value
                         ?? principal.FindFirst("email")?.Value;
 
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                error = "No email found in your Google account.";
+                return;
+            }
+
             var client = await CService.GetClientByEmailAsync(email);
+            if (client is null)
+            {
+                error = "Client profile not found.";
+                return;
+            }
+
             doctor = await DService.GetDoctorByClientIdAsync(client.Id);
         }
-        catch (Exception ex) { error = ex.Message; }
-        finally { loading = false; }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
     }
 
-    async Task OnFileChange(InputFileChangeEventArgs e)
+    private void GoToDashboard()
     {
+        NavManager.NavigateTo("/dashboard", true);
+    }
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        if (doctor?.Id is null) return;
+
         var file = e.File;
-        fileName = file.Name;
-        fileType = file.ContentType;
+        if (file is null) return;
 
-        using var ms = new MemoryStream();
-        await file.OpenReadStream(15_000_000).CopyToAsync(ms);
-        fileBytes = ms.ToArray();
-    }
-
-    async Task Upload()
-    {
         try
         {
-            if (doctor?.Id == null || fileBytes == null || fileName == null || fileType == null) return;
+            uploadMessage = "Uploading...";
 
-            var form = new MultipartFormDataContent();
-            var content = new ByteArrayContent(fileBytes);
-            content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(fileType);
-            form.Add(content, "file", fileName);
+            using var stream = file.OpenReadStream(15_000_000);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var bytes = ms.ToArray();
 
-            var resp = await Http.PostAsync($"api/doctor-verification/{doctor.Id}/upload", form);
-            msg = await resp.Content.ReadAsStringAsync();
+            await VerifyApi.UploadCertificateAsync(doctor.Id, bytes, file.Name, file.ContentType);
 
-            // reload doctor from DB (status becomes PendingAdminApproval)
-            doctor = await DService.GetDoctorByClientIdAsync(doctor.ClientId);
+            uploadMessage = "Uploaded ✅ Waiting for admin approval.";
+
+            // Refresh doctor profile
+            doctor = await DService.GetDoctorByIdAsync(doctor.Id);
         }
-        catch (Exception ex) { error = ex.Message; }
+        catch (Exception ex)
+        {
+            uploadMessage = null;
+            error = ex.Message;
+        }
     }
 }
