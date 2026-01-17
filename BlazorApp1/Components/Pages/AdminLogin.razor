@@ -30,7 +30,9 @@
         if (email == "admin@admin.com" && password == "admin123")
         {
             Session.Login(email, password);
-            Nav.NavigateTo("/admin", true);
+
+            // ✅ Do NOT forceLoad (it resets circuit/scoped state)
+            Nav.NavigateTo("/admin");
         }
         else
         {

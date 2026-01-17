@@ -6,7 +6,8 @@
     @code {
         protected override void OnInitialized()
         {
-            Nav.NavigateTo("/admin-login", true);
+            // ✅ no forceLoad
+            Nav.NavigateTo("/admin-login");
         }
     }
 }

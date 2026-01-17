@@ -129,29 +129,27 @@ builder.Services.AddHttpClient<ConversationClientService>(c => c.BaseAddress = n
 // ✅ NON-HTTP SERVICES (pure logic / orchestrators)
 // ─────────────────────────────────────────────────────────────
 //
-
-// If MetabolismApiService uses IUService/IMealService/IExerciseService internally,
-// it should be AddScoped (NOT AddHttpClient).
 builder.Services.AddScoped<MetabolismApiService>();
 
-// ✅ FIXED: ExercisePlanService is NOT HttpClient-based -> AddScoped
 builder.Services.AddScoped<IExercisePlanService, ExercisePlanService>();
 
 builder.Services.AddScoped<AppointmentApiService>();
 builder.Services.AddScoped<DoctorPatientsApiService>();
 builder.Services.AddScoped<ExerciseApiClient>();
 
-
-builder.Services.AddHttpClient<IDoctorVerificationApiService, DoctorVerificationApiService>(
-    c => c.BaseAddress = new Uri(apiBaseUrl));
-
+//
+// ─────────────────────────────────────────────────────────────
+// ✅ Doctor Verification + Admin APIs (fix duplicates)
+// ─────────────────────────────────────────────────────────────
+//
 builder.Services.AddHttpClient<IDoctorVerificationApiService, DoctorVerificationApiService>(
     c => c.BaseAddress = new Uri(apiBaseUrl));
 
 builder.Services.AddHttpClient<IAdminApiService, AdminApiService>(
     c => c.BaseAddress = new Uri(apiBaseUrl));
 
-builder.Services.AddScoped<AdminSession>();
+// ✅ IMPORTANT FIX: AdminSession must persist → Singleton
+builder.Services.AddSingleton<AdminSession>();
 builder.Services.AddScoped<AdminApiClient>();
 
 //
