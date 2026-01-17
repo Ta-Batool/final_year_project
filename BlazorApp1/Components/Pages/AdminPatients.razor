@@ -1,0 +1,62 @@
+@page "/admin/patients"
+
+@inject BlazorApp1.Service.AdminApiClient AdminApi
+
+<AdminGuard>
+    <h3>Patients</h3>
+
+    @if (loading)
+    {
+        <p>Loading...</p>
+    }
+    else if (!string.IsNullOrEmpty(error))
+    {
+        <div class="alert alert-danger">@error</div>
+    }
+    else
+    {
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Phone</th>
+                    <th>Age</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var p in patients)
+                {
+                    <tr>
+                        <td>@p.Name</td>
+                        <td>@p.Email</td>
+                        <td>@p.Phone</td>
+                        <td>@p.Age</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</AdminGuard>
+
+@code {
+    private bool loading = true;
+    private string? error;
+    private List<Model.User> patients = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            patients = await AdminApi.GetPatientsAsync();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+}

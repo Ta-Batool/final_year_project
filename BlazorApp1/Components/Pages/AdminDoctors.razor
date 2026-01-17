@@ -1,0 +1,83 @@
+@page "/admin/doctors"
+
+@inject BlazorApp1.Service.AdminApiClient AdminApi
+@inject HttpClient Http
+
+<AdminGuard>
+    <h3>Pending Doctor Approvals</h3>
+
+    @if (loading)
+    {
+        <p>Loading...</p>
+    }
+    else if (!string.IsNullOrEmpty(error))
+    {
+        <div class="alert alert-danger">@error</div>
+    }
+    else
+    {
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Certificate</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var d in docs)
+                {
+                    <tr>
+                        <td>@d.Name</td>
+                        <td>@d.Email</td>
+                        <td>
+                            <a target="_blank" href="@CertUrl(d.Id!)">View</a>
+                        </td>
+                        <td>
+                            <button class="btn btn-success btn-sm" @onclick="(()=>Approve(d.Id!))">Approve</button>
+                            <button class="btn btn-danger btn-sm ms-2" @onclick="(()=>Reject(d.Id!))">Reject</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</AdminGuard>
+
+@code {
+    private bool loading = true;
+    private string? error;
+    private List<Model.Doctor> docs = new();
+
+    private string CertUrl(string id) =>
+        new Uri(Http.BaseAddress!, $"api/doctor-verification/{id}/certificate").ToString();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            docs = await AdminApi.GetPendingDoctorsAsync();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task Approve(string id)
+    {
+        await AdminApi.ReviewDoctorAsync(id, true, "Approved");
+        docs = await AdminApi.GetPendingDoctorsAsync();
+    }
+
+    private async Task Reject(string id)
+    {
+        await AdminApi.ReviewDoctorAsync(id, false, "Rejected");
+        docs = await AdminApi.GetPendingDoctorsAsync();
+    }
+}

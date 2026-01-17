@@ -11,7 +11,8 @@ namespace Model
         [BsonRepresentation(BsonType.ObjectId)]
         [BsonElement("_id")]
         public string? Id { get; set; }
-        public string? ClientId { get; set; } 
+
+        public string? ClientId { get; set; }
         public string? Name { get; set; }
         public string? Gender { get; set; }
         public int Age { get; set; }
@@ -20,30 +21,12 @@ namespace Model
         public string? Email { get; set; }
         public string? Phone { get; set; }
         public string? Address { get; set; }
-        public string? PMDCNumber {  get; set; }
+        public string? PMDCNumber { get; set; }
 
-        // Auto-calculate experience years from JoiningDate
-        public DateTime? StartDate { get; set; }   // Doctor’s first job start date
-        
+        // Doctor’s first job start date
+        public DateTime? StartDate { get; set; }
+
         public int ExperienceYears { get; set; }
-        //{
-            //get
-            //{
-            //    if (StartDate.HasValue)
-            //    {
-            //        var today = DateTime.Today;
-            //        int years = today.Year - StartDate.Value.Year;
-
-            //        // If current date is before the anniversary of StartDate, subtract 1 year
-            //        if (today < StartDate.Value.AddYears(years))
-            //            years--;
-
-            //        return years;
-            //    }
-            //    return 0;
-            //}
-        //}
-
 
         public double ConsultationFee { get; set; }
         public double Rating { get; set; }
@@ -69,20 +52,33 @@ namespace Model
         public string? ProfileImageUrl { get; set; }
         public Dictionary<string, string>? AdditionalInfo { get; set; }
 
+        // ===========================
+        // ✅ Doctor Verification Fields
+        // ===========================
+        public DoctorVerificationStatus VerificationStatus { get; set; }
+            = DoctorVerificationStatus.PendingCertificateUpload;
+
+        // Certificate info
+        public string? CertificateFileName { get; set; }
+        public string? CertificateContentType { get; set; }
+        public string? CertificateStoragePath { get; set; }
+        public DateTime? CertificateUploadedAt { get; set; }
+
+        // Admin review info
+        public string? ReviewedByClientId { get; set; }
+        public DateTime? ReviewedAt { get; set; }
+        public string? ReviewNotes { get; set; }
     }
 
-            public class TimeSlots
-        {
-            // Weekly recurring slot (e.g. Monday)
-            public string? Day { get; set; }
+    public class TimeSlots
+    {
+        // Weekly recurring slot (e.g. Monday)
+        public string? Day { get; set; }
 
-            // ✅ Date-specific slot (calendar). If set, this slot is ONLY for that date.
-            public DateTime? Date { get; set; }
+        // Date-specific slot (calendar). If set, slot is ONLY for that date.
+        public DateTime? Date { get; set; }
 
-            public TimeOnly? StartTime { get; set; }
-            public TimeOnly? EndTime { get; set; }
-        }
-
-
-   
+        public TimeOnly? StartTime { get; set; }
+        public TimeOnly? EndTime { get; set; }
+    }
 }

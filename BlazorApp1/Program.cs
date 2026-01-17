@@ -141,6 +141,19 @@ builder.Services.AddScoped<AppointmentApiService>();
 builder.Services.AddScoped<DoctorPatientsApiService>();
 builder.Services.AddScoped<ExerciseApiClient>();
 
+
+builder.Services.AddHttpClient<IDoctorVerificationApiService, DoctorVerificationApiService>(
+    c => c.BaseAddress = new Uri(apiBaseUrl));
+
+builder.Services.AddHttpClient<IDoctorVerificationApiService, DoctorVerificationApiService>(
+    c => c.BaseAddress = new Uri(apiBaseUrl));
+
+builder.Services.AddHttpClient<IAdminApiService, AdminApiService>(
+    c => c.BaseAddress = new Uri(apiBaseUrl));
+
+builder.Services.AddScoped<AdminSession>();
+builder.Services.AddScoped<AdminApiClient>();
+
 //
 // ─────────────────────────────────────────────────────────────
 // 🧾 External APIs

@@ -1,18 +1,15 @@
 using API.MongoModel;
 using API.Services;
-using Microsoft.Extensions.Options;
 using MongoDB.Driver;
-using API.Hubs;                    // ✅ add this (namespace where CallHub lives)
-using API.Ai;   // ⬅️ at the top of the file with the other using statements
+using API.Hubs;
+using API.Ai;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// MongoDB settings
 builder.Services.Configure<MongoDBSettings>(
     builder.Configuration.GetSection("MongoDB"));
 
@@ -39,20 +36,20 @@ builder.Services.AddSingleton<WeightLogService>();
 
 builder.Services.AddScoped<API.Services.ExercisePlanService>();
 
+// ✅ Admin (Basic Auth) for /api/admin endpoints
+builder.Services.AddSingleton<API.Security.AdminAuth>();
 
-// ✅ SignalR for WebRTC signalling
 builder.Services.AddSignalR();
 
-// ✅ CORS so Blazor app can reach this API + SignalR hub
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowBlazor", policy =>
     {
         policy
             .WithOrigins(
-                "https://fyp-blazor.onrender.com",  // your Render Blazor app
-                "https://localhost:7090",           // local https dev
-                "http://localhost:5090"             // local http dev (adjust if needed)
+                "https://fyp-blazor.onrender.com",
+                "https://localhost:7090",
+                "http://localhost:5090"
             )
             .AllowAnyHeader()
             .AllowAnyMethod()
@@ -68,26 +65,14 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// ❌ On Render this can cause issues / warnings.
-// app.UseHttpsRedirection();
-
 app.UseRouting();
-
-// ✅ Apply CORS before auth/endpoints
 app.UseCors("AllowBlazor");
-
 app.UseAuthorization();
 
-// ✅ Simple root endpoint to test quickly
 app.MapGet("/", () => Results.Ok("API is running"));
-
-// ✅ Simple health endpoint that DOES NOT touch MongoDB
 app.MapGet("/health", () => Results.Ok(new { status = "Healthy" }));
 
-// ✅ Your actual API controllers
 app.MapControllers();
-
-// ✅ WebRTC signalling hub
 app.MapHub<CallHub>("/callHub");
 
 app.Run();

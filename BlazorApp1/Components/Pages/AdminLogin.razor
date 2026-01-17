@@ -1,0 +1,40 @@
+@page "/admin-login"
+
+@inject NavigationManager Nav
+@inject BlazorApp1.Service.AdminSession Session
+
+<h3>Admin Login</h3>
+
+<div class="card p-3" style="max-width:420px;">
+    <label>Email</label>
+    <input class="form-control" @bind="email" />
+
+    <label class="mt-2">Password</label>
+    <input class="form-control" type="password" @bind="password" />
+
+    @if (!string.IsNullOrWhiteSpace(error))
+    {
+        <div class="alert alert-danger mt-2">@error</div>
+    }
+
+    <button class="btn btn-primary mt-3" @onclick="Login">Login</button>
+</div>
+
+@code {
+    private string email = "admin@admin.com";
+    private string password = "admin123";
+    private string? error;
+
+    private void Login()
+    {
+        if (email == "admin@admin.com" && password == "admin123")
+        {
+            Session.Login(email, password);
+            Nav.NavigateTo("/admin", true);
+        }
+        else
+        {
+            error = "Invalid admin credentials.";
+        }
+    }
+}

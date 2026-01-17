@@ -1,0 +1,114 @@
+@page "/doctor/verification"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@layout BlazorApp1.Components.Layout.DashboardLayout
+
+@using System.Security.Claims
+@using Model
+
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ICService CService
+@inject IDService DService
+@inject HttpClient Http
+@inject NavigationManager Nav
+
+<h3>Doctor Verification</h3>
+
+@if (loading)
+{
+    <p>Loading...</p>
+}
+else if (!string.IsNullOrEmpty(error))
+{
+    <div class="alert alert-danger">@error</div>
+}
+else if (doctor != null)
+{
+    <p><b>Status:</b> @doctor.VerificationStatus</p>
+
+    @if (!string.IsNullOrWhiteSpace(doctor.ReviewNotes))
+    {
+        <div class="alert alert-secondary"><b>Admin Notes:</b> @doctor.ReviewNotes</div>
+    }
+
+    @if (doctor.VerificationStatus == DoctorVerificationStatus.Approved)
+    {
+        <div class="alert alert-success">Approved ✅</div>
+        <button class="btn btn-primary" @onclick="()=>Nav.NavigateTo("/dashboard", true)">Go Dashboard</button>
+    }
+    else if (doctor.VerificationStatus == DoctorVerificationStatus.PendingAdminApproval)
+    {
+        <div class="alert alert-warning">Certificate uploaded ✅ Waiting for admin approval…</div>
+    }
+    else
+    {
+        <p>Upload your Medical Certificate (PDF/JPG/PNG)</p>
+
+        <InputFile OnChange="OnFileChange" />
+        <button class="btn btn-success mt-2" @onclick="Upload" disabled="@(!canUpload)">Upload</button>
+
+        @if (!string.IsNullOrWhiteSpace(msg))
+        {
+            <div class="alert alert-info mt-2">@msg</div>
+        }
+    }
+}
+
+@code {
+    bool loading = true;
+    string? error;
+    Doctor? doctor;
+
+    byte[]? fileBytes;
+    string? fileName;
+    string? fileType;
+    bool canUpload => fileBytes != null;
+    string? msg;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var principal = authState.User;
+
+            var email = principal.FindFirst(ClaimTypes.Email)?.Value
+                        ?? principal.FindFirst("email")?.Value;
+
+            var client = await CService.GetClientByEmailAsync(email);
+            doctor = await DService.GetDoctorByClientIdAsync(client.Id);
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { loading = false; }
+    }
+
+    async Task OnFileChange(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        fileName = file.Name;
+        fileType = file.ContentType;
+
+        using var ms = new MemoryStream();
+        await file.OpenReadStream(15_000_000).CopyToAsync(ms);
+        fileBytes = ms.ToArray();
+    }
+
+    async Task Upload()
+    {
+        try
+        {
+            if (doctor?.Id == null || fileBytes == null || fileName == null || fileType == null) return;
+
+            var form = new MultipartFormDataContent();
+            var content = new ByteArrayContent(fileBytes);
+            content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(fileType);
+            form.Add(content, "file", fileName);
+
+            var resp = await Http.PostAsync($"api/doctor-verification/{doctor.Id}/upload", form);
+            msg = await resp.Content.ReadAsStringAsync();
+
+            // reload doctor from DB (status becomes PendingAdminApproval)
+            doctor = await DService.GetDoctorByClientIdAsync(doctor.ClientId);
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+}

@@ -1,0 +1,20 @@
+@inject NavigationManager Nav
+@inject BlazorApp1.Service.AdminSession Session
+
+@if (!Session.IsAdmin)
+{
+    @code {
+        protected override void OnInitialized()
+        {
+            Nav.NavigateTo("/admin-login", true);
+        }
+    }
+}
+else
+{
+    @ChildContent
+}
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}
