@@ -1,4 +1,5 @@
 using System;
+using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
 
@@ -11,6 +12,9 @@ namespace BlazorApp1.Service
 
         public bool IsAdmin { get; private set; }
         public string? Email { get; private set; }
+
+        // ✅ REQUIRED by AdminApiClient.cs
+        public string? BasicAuthHeader { get; private set; }
 
         public AdminSession(ProtectedLocalStorage storage)
         {
@@ -26,17 +30,20 @@ namespace BlazorApp1.Service
                 {
                     IsAdmin = result.Value.IsAdmin;
                     Email = result.Value.Email;
+                    BasicAuthHeader = result.Value.BasicAuthHeader;
                 }
                 else
                 {
                     IsAdmin = false;
                     Email = null;
+                    BasicAuthHeader = null;
                 }
             }
             catch
             {
                 IsAdmin = false;
                 Email = null;
+                BasicAuthHeader = null;
             }
         }
 
@@ -48,10 +55,15 @@ namespace BlazorApp1.Service
                 IsAdmin = true;
                 Email = email;
 
+                // ✅ build Basic auth header (AdminApiClient uses this)
+                var raw = $"{email}:{password}";
+                BasicAuthHeader = "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes(raw));
+
                 await _storage.SetAsync(Key, new AdminAuthState
                 {
                     IsAdmin = true,
                     Email = email,
+                    BasicAuthHeader = BasicAuthHeader,
                     LoggedInAtUtc = DateTime.UtcNow
                 });
 
@@ -65,6 +77,7 @@ namespace BlazorApp1.Service
         {
             IsAdmin = false;
             Email = null;
+            BasicAuthHeader = null;
             await _storage.DeleteAsync(Key);
         }
 
@@ -72,6 +85,7 @@ namespace BlazorApp1.Service
         {
             public bool IsAdmin { get; set; }
             public string? Email { get; set; }
+            public string? BasicAuthHeader { get; set; }
             public DateTime LoggedInAtUtc { get; set; }
         }
     }

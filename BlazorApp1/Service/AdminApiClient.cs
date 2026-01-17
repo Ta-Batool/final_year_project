@@ -1,4 +1,4 @@
-using Model;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 
 namespace BlazorApp1.Service
@@ -14,33 +14,36 @@ namespace BlazorApp1.Service
             _session = session;
         }
 
-        private void ApplyAuth()
+        private async Task EnsureAuthAsync()
         {
-            _http.DefaultRequestHeaders.Remove("Authorization");
-            if (!string.IsNullOrWhiteSpace(_session.BasicAuthHeader))
-                _http.DefaultRequestHeaders.Add("Authorization", _session.BasicAuthHeader);
+            await _session.LoadAsync();
+
+            if (string.IsNullOrWhiteSpace(_session.BasicAuthHeader))
+                throw new Exception("Admin not logged in.");
+
+            _http.DefaultRequestHeaders.Authorization = AuthenticationHeaderValue.Parse(_session.BasicAuthHeader);
         }
 
-        public async Task<List<Doctor>> GetPendingDoctorsAsync()
+        public async Task<List<Model.Doctor>> GetPendingDoctorsAsync()
         {
-            ApplyAuth();
-            return await _http.GetFromJsonAsync<List<Doctor>>("api/admin/doctors/pending") ?? new();
+            await EnsureAuthAsync();
+            var res = await _http.GetFromJsonAsync<List<Model.Doctor>>("api/admin/pending-doctors");
+            return res ?? new List<Model.Doctor>();
         }
 
-        public async Task<List<User>> GetPatientsAsync()
+        public async Task ReviewDoctorAsync(string doctorId, bool approve, string notes)
         {
-            ApplyAuth();
-            return await _http.GetFromJsonAsync<List<User>>("api/admin/patients") ?? new();
+            await EnsureAuthAsync();
+            var payload = new { approve, notes };
+            var resp = await _http.PostAsJsonAsync($"api/admin/review-doctor/{doctorId}", payload);
+            resp.EnsureSuccessStatusCode();
         }
 
-        public async Task ReviewDoctorAsync(string doctorId, bool approve, string? notes)
+        public async Task<List<Model.User>> GetPatientsAsync()
         {
-            ApplyAuth();
-            var resp = await _http.PostAsJsonAsync($"api/admin/doctors/{doctorId}/review",
-                new { approve, notes });
-
-            if (!resp.IsSuccessStatusCode)
-                throw new Exception(await resp.Content.ReadAsStringAsync());
+            await EnsureAuthAsync();
+            var res = await _http.GetFromJsonAsync<List<Model.User>>("api/admin/patients");
+            return res ?? new List<Model.User>();
         }
     }
 }
