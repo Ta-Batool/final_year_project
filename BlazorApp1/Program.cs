@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage; // ✅ ADD
+using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.DependencyInjection;
@@ -45,6 +45,9 @@ builder.Services
         options.LogoutPath = "/logout";
         options.Cookie.Name = ".FypAuth";
 
+        // Optional but helpful for consistent redirects
+        options.AccessDeniedPath = "/access-denied";
+
         if (builder.Environment.IsDevelopment())
         {
             options.Cookie.SameSite = SameSiteMode.Lax;
@@ -60,10 +63,18 @@ builder.Services
     {
         options.ClientId = builder.Configuration["Authentication:Google:ClientId"] ?? "";
         options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"] ?? "";
+
+        // ✅ IMPORTANT: must match your endpoint + page route
         options.CallbackPath = "/google-callback";
+
         options.SaveTokens = true;
 
+        // Keep your picture claim mapping
         options.ClaimActions.MapJsonKey("urn:google:picture", "picture", "url");
+
+        // ✅ Ensure we actually get email/name reliably
+        options.Scope.Add("email");
+        options.Scope.Add("profile");
 
         if (builder.Environment.IsDevelopment())
         {
@@ -86,11 +97,11 @@ builder.Services.AddAuthorization();
 //
 var apiBaseUrl =
     builder.Configuration["ApiBaseUrl"]
-    ?? "http://localhost:5092/"; // local backend
+    ?? "http://localhost:5092/";
 
 //
 // ─────────────────────────────────────────────────────────────
-// ✅ Named fallback HttpClient (keep this)
+// ✅ HttpClient Setup
 // ─────────────────────────────────────────────────────────────
 //
 builder.Services.AddHttpClient("Api", c =>
@@ -103,7 +114,7 @@ builder.Services.AddScoped(sp =>
 
 //
 // ─────────────────────────────────────────────────────────────
-// ✅ Typed HttpClients (your HTTP API services)
+// ✅ Typed HttpClients (HTTP API services)
 // ─────────────────────────────────────────────────────────────
 //
 builder.Services.AddHttpClient<HealthApiService>(c => c.BaseAddress = new Uri(apiBaseUrl));
@@ -131,9 +142,7 @@ builder.Services.AddHttpClient<ConversationClientService>(c => c.BaseAddress = n
 // ─────────────────────────────────────────────────────────────
 //
 builder.Services.AddScoped<MetabolismApiService>();
-
 builder.Services.AddScoped<IExercisePlanService, ExercisePlanService>();
-
 builder.Services.AddScoped<AppointmentApiService>();
 builder.Services.AddScoped<DoctorPatientsApiService>();
 builder.Services.AddScoped<ExerciseApiClient>();
@@ -154,10 +163,8 @@ builder.Services.AddHttpClient<IAdminApiService, AdminApiService>(
 // ✅ ADMIN SESSION FIX (PERSIST IN BROWSER)
 // ─────────────────────────────────────────────────────────────
 //
-builder.Services.AddScoped<ProtectedLocalStorage>(); // ✅ add storage
-
-// ✅ change from Singleton -> Scoped
-builder.Services.AddScoped<AdminSession>();
+builder.Services.AddScoped<ProtectedLocalStorage>();
+builder.Services.AddScoped<AdminSession>();   // ✅ Scoped (not Singleton)
 builder.Services.AddScoped<AdminApiClient>();
 
 //
@@ -194,6 +201,7 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
+
 app.UseRouting();
 
 app.UseAuthentication();
@@ -214,8 +222,9 @@ app.MapPost("/api/translate", async (TranslateRequest req, ITranslationService t
 
 //
 // ─────────────────────────────────────────────────────────────
-// OAuth endpoints
+// OAuth endpoints (UPDATED)
 // ─────────────────────────────────────────────────────────────
+// ✅ Single source of truth: always land on /google-callback page
 //
 app.MapGet("/login-google", async (HttpContext ctx) =>
 {
@@ -224,11 +233,14 @@ app.MapGet("/login-google", async (HttpContext ctx) =>
         new AuthenticationProperties { RedirectUri = "/google-callback" });
 });
 
+//
+// ✅ Keep /register-google if you want, but it MUST redirect to /google-callback too
+//
 app.MapGet("/register-google", async (HttpContext ctx) =>
 {
     await ctx.ChallengeAsync(
         GoogleDefaults.AuthenticationScheme,
-        new AuthenticationProperties { RedirectUri = "/dashboard?registered=true" });
+        new AuthenticationProperties { RedirectUri = "/google-callback" });
 });
 
 app.MapGet("/logout", async (HttpContext ctx) =>

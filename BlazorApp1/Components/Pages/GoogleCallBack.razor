@@ -1,8 +1,13 @@
 ﻿@page "/google-callback"
+
+@using System.Security.Claims
+@using Model
+
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
-@inject HttpClient Http
-@using Model
+@inject ICService CService
+@inject IUService UService
+@inject IDService DService
 
 <p>Processing login...</p>
 
@@ -10,47 +15,96 @@
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        var user = authState.User;
+        var principal = authState.User;
 
-        if (user.Identity != null && user.Identity.IsAuthenticated)
+        // 0) Must be authenticated
+        if (!(principal.Identity?.IsAuthenticated ?? false))
         {
-            var email = user.FindFirst(c => c.Type.Contains("email"))?.Value;
-            var firstName = user.FindFirst(c => c.Type.Contains("givenname"))?.Value ?? "";
-            var lastName = user.FindFirst(c => c.Type.Contains("surname"))?.Value ?? "";
-            var fullName = user.FindFirst(c => c.Type == "name")?.Value ?? $"{firstName} {lastName}";
+            Navigation.NavigateTo("/login-google", forceLoad: true);
+            return;
+        }
 
-            if (!string.IsNullOrEmpty(email))
+        // 1) Read claims safely
+        var email =
+            principal.FindFirst(ClaimTypes.Email)?.Value
+            ?? principal.FindFirst("email")?.Value
+            ?? principal.FindFirst(c => c.Type.Contains("email", StringComparison.OrdinalIgnoreCase))?.Value;
+
+        email = email?.Trim().ToLowerInvariant();
+
+        var fullName =
+            principal.FindFirst("name")?.Value
+            ?? principal.FindFirst(ClaimTypes.Name)?.Value
+            ?? "";
+
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            // If Google did not return email, user cannot be linked
+            Navigation.NavigateTo("/login-google", forceLoad: true);
+            return;
+        }
+
+        // 2) Ensure Client exists (create on first login)
+        var client = await CService.GetClientByEmailAsync(email);
+
+        if (client is null)
+        {
+            await CService.AddClientAsync(new Client
             {
-                // ✅ Check if user exists in API
-                var existing = await Http.GetAsync($"api/clients/{email}");
-                if (existing.IsSuccessStatusCode)
-                {
-                    var client = await existing.Content.ReadFromJsonAsync<Client>();
+                Email = email,
+                Name = fullName,
+                Role = null
+            });
 
-                    if (client.Role == "Doctor")
-                        Navigation.NavigateTo($"/profile/{client.Id}");
-                    else if (client.Role == "Patient")
-                        Navigation.NavigateTo($"/userprofile/{client.Id}");
-                    else
-                        Navigation.NavigateTo("/register");
-                }
-                else
-                {
-                    // ✅ New user → save in API
-                    var newClient = new Client
-                        {
-                            Email = email,
-                            Name = fullName.Trim(),
-                            Role = null
-                        };
-                    await Http.PostAsJsonAsync("api/clients", newClient);
-                    Navigation.NavigateTo("/register");
-                }
-            }
+            // first time -> choose role
+            Navigation.NavigateTo("/register", forceLoad: true);
+            return;
         }
-        else
+
+        // 3) If role not selected, go to role selection
+        var role = client.Role?.Trim();
+        if (string.IsNullOrWhiteSpace(role))
         {
-            Navigation.NavigateTo("/login");
+            Navigation.NavigateTo("/register", forceLoad: true);
+            return;
         }
+
+        role = role.ToLowerInvariant();
+
+        // 4) Route correctly based on role + profile existence
+        if (role == "patient")
+        {
+            var user = await UService.GetUserByClientIdAsync(client.Id!);
+
+            // Patient role chosen but profile not created yet
+            if (user is null)
+            {
+                Navigation.NavigateTo($"/formuser/{client.Id}", forceLoad: true);
+                return;
+            }
+
+            // Fully registered patient -> patient portal
+            Navigation.NavigateTo("/userdashboard", forceLoad: true);
+            return;
+        }
+
+        if (role == "doctor")
+        {
+            var doc = await DService.GetDoctorByClientIdAsync(client.Id!);
+
+            // Doctor role chosen but profile not created yet
+            if (doc is null)
+            {
+                Navigation.NavigateTo($"/form/{client.Id}", forceLoad: true);
+                return;
+            }
+
+            // Doctor exists -> go dashboard (dashboard will gate verification)
+            Navigation.NavigateTo("/dashboard", forceLoad: true);
+            return;
+        }
+
+        // 5) Unknown role -> reselect role
+        Navigation.NavigateTo("/register", forceLoad: true);
     }
 }
