@@ -62,6 +62,17 @@ else
 
             <InputFile OnChange="OnFileSelected" />
 
+            @if (!string.IsNullOrWhiteSpace(selectedFileName))
+            {
+                <p class="mt-2"><b>Selected:</b> @selectedFileName</p>
+
+                <button class="btn btn-primary mt-2"
+                        @onclick="UploadSelectedFile"
+                        disabled="@isUploading">
+                    @(isUploading ? "Uploading..." : "Upload Certificate")
+                </button>
+            }
+
             @if (!string.IsNullOrWhiteSpace(uploadMessage))
             {
                 <div class="alert alert-info mt-2">@uploadMessage</div>
@@ -72,9 +83,15 @@ else
 
 @code {
     private bool isLoading = true;
+    private bool isUploading = false;
+
     private string? error;
     private Doctor? doctor;
+
     private string? uploadMessage;
+
+    private IBrowserFile? selectedFile;
+    private string? selectedFileName;
 
     protected override async Task OnInitializedAsync()
     {
@@ -122,33 +139,44 @@ else
         NavManager.NavigateTo("/dashboard", true);
     }
 
-    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    private Task OnFileSelected(InputFileChangeEventArgs e)
     {
-        if (doctor?.Id is null) return;
+        selectedFile = e.File;
+        selectedFileName = selectedFile?.Name;
+        uploadMessage = null;
+        error = null;
+        return Task.CompletedTask;
+    }
 
-        var file = e.File;
-        if (file is null) return;
+    private async Task UploadSelectedFile()
+    {
+        if (doctor?.Id is null || selectedFile is null) return;
 
         try
         {
+            isUploading = true;
             uploadMessage = "Uploading...";
 
-            using var stream = file.OpenReadStream(15_000_000);
+            using var stream = selectedFile.OpenReadStream(15_000_000);
             using var ms = new MemoryStream();
             await stream.CopyToAsync(ms);
             var bytes = ms.ToArray();
 
-            await VerifyApi.UploadCertificateAsync(doctor.Id, bytes, file.Name, file.ContentType);
+            await VerifyApi.UploadCertificateAsync(doctor.Id, bytes, selectedFile.Name, selectedFile.ContentType);
 
             uploadMessage = "Uploaded ✅ Waiting for admin approval.";
 
-            // Refresh doctor profile
+            // Refresh doctor profile so status updates in UI
             doctor = await DService.GetDoctorByIdAsync(doctor.Id);
         }
         catch (Exception ex)
         {
             uploadMessage = null;
             error = ex.Message;
+        }
+        finally
+        {
+            isUploading = false;
         }
     }
 }

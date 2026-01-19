@@ -24,9 +24,12 @@ namespace BlazorApp1.Service
             var fileContent = new ByteArrayContent(fileBytes);
             fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
 
+            // must match controller param name: IFormFile file
             content.Add(fileContent, "file", fileName);
 
-            var resp = await _http.PostAsync($"api/doctor-verification/{doctorMongoId}/upload-certificate", content);
+            // ✅ FIXED ENDPOINT (was upload-certificate)
+            var resp = await _http.PostAsync($"api/doctor-verification/{doctorMongoId}/upload", content);
+
             if (!resp.IsSuccessStatusCode)
             {
                 var err = await resp.Content.ReadAsStringAsync();
