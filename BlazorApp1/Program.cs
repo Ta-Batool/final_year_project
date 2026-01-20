@@ -174,6 +174,9 @@ builder.Services.AddScoped<AdminApiClient>();
 //
 builder.Services.AddHttpClient<ITranslationService, TranslationService>();
 
+builder.Services.AddScoped<IAdminApiService>(sp => sp.GetRequiredService<AdminApiClient>());
+
+
 builder.Services.AddHttpClient<ICalorieNinjaService, CalorieNinjaService>(c =>
 {
     c.BaseAddress = new Uri("https://api.nal.usda.gov/fdc/v1/");

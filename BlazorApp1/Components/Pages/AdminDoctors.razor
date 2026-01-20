@@ -1,7 +1,10 @@
 @page "/admin/doctors"
+@layout BlazorApp1.Components.Layout.AdminLayout
 
-@inject BlazorApp1.Service.AdminApiClient AdminApi
-@inject HttpClient Http
+@using Model
+
+@inject IAdminApiService AdminApi
+@inject IDoctorVerificationApiService VerifyApi
 
 <AdminGuard>
     <h3>Pending Doctor Approvals</h3>
@@ -16,61 +19,95 @@
     }
     else if (docs.Count == 0)
     {
-        <div class="alert alert-info">No pending doctors.</div>
+        <div class="cardx">No pending doctors ✅</div>
     }
     else
     {
-        <table class="table table-striped">
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Email</th>
-                    <th>Certificate</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var d in docs)
-                {
-                    <tr>
-                        <td>@d.Name</td>
-                        <td>@d.Email</td>
-                        <td>
-                            @if (!string.IsNullOrWhiteSpace(d.Id))
-                            {
-                                <a target="_blank" href="@CertUrl(d.Id!)">View</a>
-                            }
-                            else
-                            {
-                                <span class="text-muted">N/A</span>
-                            }
-                        </td>
-                        <td>
-                            <button class="btn btn-success btn-sm" @onclick="() => Approve(d.Id!)">Approve</button>
-                            <button class="btn btn-danger btn-sm ms-2" @onclick="() => Reject(d.Id!)">Reject</button>
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
+        <div class="grid">
+            @foreach (var d in docs)
+            {
+                <div class="cardx">
+                    <div class="name">@d.Name</div>
+                    <div class="meta">@d.Email</div>
+                    <div class="meta">@d.Specialization</div>
+
+                    <div class="badge">@d.VerificationStatus</div>
+
+                    <div class="actions">
+                        @if (!string.IsNullOrWhiteSpace(d.Id))
+                        {
+                            <a class="btn secondary"
+                               target="_blank"
+                               href="@VerifyApi.GetCertificateDownloadUrl(d.Id!)"
+                               @onclick="() => MarkViewed(d.Id!)">
+                                View Certificate
+                            </a>
+
+                            <button class="btn ok"
+                                    disabled="@(!HasViewed(d.Id!))"
+                                    @onclick="() => Approve(d.Id!)">
+                                Approve
+                            </button>
+
+                            <button class="btn danger"
+                                    disabled="@(!HasViewed(d.Id!))"
+                                    @onclick="() => StartReject(d.Id!)">
+                                Reject
+                            </button>
+                        }
+                    </div>
+
+                    @if (!HasViewed(d.Id!))
+                    {
+                        <div class="hint">
+                            Please view the certificate first (required).
+                        </div>
+                    }
+
+                    @if (rejectingId == d.Id)
+                    {
+                        <div class="reject-box">
+                            <label><b>Rejection Notes (required)</b></label>
+                            <textarea class="txt" @bind="rejectNotes"></textarea>
+
+                            <div class="actions">
+                                <button class="btn danger" @onclick="() => ConfirmReject(d.Id!)">
+                                    Confirm Reject
+                                </button>
+                                <button class="btn secondary" @onclick="CancelReject">
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
     }
 </AdminGuard>
 
 @code {
     private bool loading = true;
     private string? error;
-    private List<Model.Doctor> docs = new();
+    private List<Doctor> docs = new();
 
-    private string CertUrl(string id)
-    {
-        // Http.BaseAddress is already your API base (ApiBaseUrl) because you inject HttpClient from named "Api"
-        return new Uri(Http.BaseAddress!, $"api/doctor-verification/{id}/certificate").ToString();
-    }
+    // Enforce "view certificate before action"
+    private readonly HashSet<string> viewed = new();
+
+    private string? rejectingId;
+    private string rejectNotes = "";
 
     protected override async Task OnInitializedAsync()
     {
+        await Load();
+    }
+
+    private async Task Load()
+    {
         try
         {
+            loading = true;
+            error = null;
             docs = await AdminApi.GetPendingDoctorsAsync();
         }
         catch (Exception ex)
@@ -83,17 +120,146 @@
         }
     }
 
+    private void MarkViewed(string id) => viewed.Add(id);
+    private bool HasViewed(string id) => viewed.Contains(id);
+
     private async Task Approve(string id)
     {
-        await AdminApi.ReviewDoctorAsync(id, true, "Approved");
-        docs = await AdminApi.GetPendingDoctorsAsync();
-        StateHasChanged();
+        try
+        {
+            error = null;
+            await AdminApi.ReviewDoctorAsync(id, true, "Approved");
+            await Load();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
     }
 
-    private async Task Reject(string id)
+    private void StartReject(string id)
     {
-        await AdminApi.ReviewDoctorAsync(id, false, "Rejected");
-        docs = await AdminApi.GetPendingDoctorsAsync();
-        StateHasChanged();
+        rejectingId = id;
+        rejectNotes = "";
+        error = null;
+    }
+
+    private void CancelReject()
+    {
+        rejectingId = null;
+        rejectNotes = "";
+    }
+
+    private async Task ConfirmReject(string id)
+    {
+        if (string.IsNullOrWhiteSpace(rejectNotes))
+        {
+            error = "Rejection notes are required.";
+            return;
+        }
+
+        try
+        {
+            error = null;
+            await AdminApi.ReviewDoctorAsync(id, false, rejectNotes);
+            rejectingId = null;
+            rejectNotes = "";
+            await Load();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
     }
 }
+
+<style>
+.grid{
+    display:grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap:14px;
+    margin-top:12px;
+}
+.cardx{
+    background:white;
+    border:1px solid #e5e7eb;
+    border-radius:14px;
+    padding:14px;
+    box-shadow:0 6px 18px rgba(17,24,39,0.06);
+}
+.name{
+    font-weight:900;
+    font-size:16px;
+    color:#111827;
+}
+.meta{
+    color:#6b7280;
+    font-size:13px;
+    margin-top:2px;
+}
+.badge{
+    margin-top:10px;
+    display:inline-block;
+    padding:6px 10px;
+    border-radius:999px;
+    background:#eef2ff;
+    color:#3730a3;
+    font-weight:800;
+    font-size:12px;
+}
+.actions{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+    margin-top:12px;
+}
+.btn{
+    border:none;
+    border-radius:10px;
+    padding:10px 12px;
+    font-weight:800;
+    cursor:pointer;
+    text-decoration:none;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+}
+.btn.secondary{
+    background:#f3f4f6;
+    color:#111827;
+}
+.btn.ok{
+    background:#22c55e;
+    color:white;
+}
+.btn.danger{
+    background:#ef4444;
+    color:white;
+}
+.btn:disabled{
+    opacity:0.5;
+    cursor:not-allowed;
+}
+.reject-box{
+    margin-top:12px;
+    padding-top:10px;
+    border-top:1px solid #e5e7eb;
+}
+.txt{
+    width:100%;
+    min-height:90px;
+    border:1px solid #e5e7eb;
+    border-radius:10px;
+    padding:10px;
+    margin-top:6px;
+}
+.hint{
+    margin-top:10px;
+    padding:10px;
+    border-radius:10px;
+    background:#fff7ed;
+    color:#9a3412;
+    font-weight:700;
+    font-size:12px;
+}
+</style>

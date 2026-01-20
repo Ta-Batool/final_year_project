@@ -4,10 +4,10 @@ namespace BlazorApp1.Service
 {
     public interface IAdminApiService
     {
-        Task<AdminOverviewDto?> GetOverviewAsync();
-        Task<List<Doctor>> GetDoctorsAsync(string status);
+        Task<AdminOverviewDto?> GetOverviewAsync(); // optional (if you have endpoint)
+        Task<List<Doctor>> GetPendingDoctorsAsync();
         Task<List<User>> GetPatientsAsync();
-        Task ReviewDoctorAsync(string doctorId, bool approve, string adminClientId, string? notes);
+        Task ReviewDoctorAsync(string doctorId, bool approve, string? notes);
     }
 
     public class AdminOverviewDto
