@@ -33,6 +33,9 @@ builder.Services.AddHttpClient<ICaloriesBurnedApiService, CaloriesBurnedApiServi
 builder.Services.AddSingleton<BPLogService>();
 builder.Services.AddSingleton<GlucoseLogService>();
 builder.Services.AddSingleton<WeightLogService>();
+builder.Services.Configure<API.Otp.OtpSettings>(
+    builder.Configuration.GetSection("Otp"));
+builder.Services.AddSingleton<API.Services.OtpService>();
 
 builder.Services.AddScoped<API.Services.ExercisePlanService>();
 

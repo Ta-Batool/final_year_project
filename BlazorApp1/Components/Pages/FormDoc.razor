@@ -1,10 +1,15 @@
-﻿@page "/form/{ClientId}"    
-@using System.ComponentModel.DataAnnotations
-@inject NavigationManager Navigation
+﻿@page "/form/{ClientId}"
 
+@using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Forms
+@using System.Net.Http.Json
+@using Model
+
+@inject NavigationManager Navigation
 @inject IJSRuntime JS
 @inject IDService DoctorService
-@using Model
+@inject HttpClient Http
 
 <div class="auth-container">
     <div class="auth-left">
@@ -14,6 +19,12 @@
 
     <div class="auth-right">
         <div class="auth-card">
+
+            @if (!string.IsNullOrWhiteSpace(errorMessage))
+            {
+                <div class="alert alert-danger">@errorMessage</div>
+            }
+
             @if (step == 1)
             {
                 <EditForm Model="@doctor" OnValidSubmit="@GoToProfessional">
@@ -42,11 +53,72 @@
                         <ValidationMessage For="@(() => doctor.Age)" />
                     </div>
 
+                    <!-- ✅ Phone + Country Code -->
                     <div class="form-group">
                         <label>Phone Number</label>
-                        <InputText class="form-input" @bind-Value="doctor.Phone" placeholder="Enter phone number" />
-                        <ValidationMessage For="@(() => doctor.Phone)" />
+
+                        <div style="display:flex; gap:10px;">
+                            <select class="form-input" style="max-width:140px;" @onchange="OnCountryChange">
+                                @foreach (var c in Countries)
+                                {
+                                    <option value="@c.DialCode" selected="@(c.DialCode == selectedCountry.DialCode)">
+                                        @c.Name (@c.DialCode)
+                                    </option>
+                                }
+                            </select>
+
+                            <InputText class="form-input"
+                                       @bind-Value="phoneDigits"
+                                       placeholder="Digits only"
+                                       @oninput="OnPhoneInput" />
+                        </div>
+
+                        <small class="text-muted">
+                            Required digits: @selectedCountry.MinDigits - @selectedCountry.MaxDigits
+                        </small>
+
+                        @if (!string.IsNullOrWhiteSpace(phoneError))
+                        {
+                            <div class="validation-message">@phoneError</div>
+                        }
                     </div>
+
+                    <!-- ✅ OTP FLOW -->
+                    <div class="form-group">
+                        <button type="button"
+                                class="btn-next"
+                                style="background:#111827;"
+                                @onclick="SendOtp"
+                                disabled="@otpSending">
+                            @(otpSending ? "Sending..." : "Send OTP")
+                        </button>
+                    </div>
+
+                    @if (otpSent)
+                    {
+                        <div class="form-group">
+                            <label>Enter OTP</label>
+                            <InputText class="form-input" @bind-Value="otpCode" placeholder="6-digit OTP" />
+                        </div>
+
+                        <button type="button"
+                                class="btn-next"
+                                style="background:#0ea5e9;"
+                                @onclick="VerifyOtp"
+                                disabled="@otpVerifying">
+                            @(otpVerifying ? "Verifying..." : "Verify OTP")
+                        </button>
+
+                        @if (!string.IsNullOrWhiteSpace(otpMessage))
+                        {
+                            <div class="alert alert-info mt-2">@otpMessage</div>
+                        }
+                    }
+
+                    @if (otpVerified)
+                    {
+                        <div class="alert alert-success mt-2">Phone verified ✅</div>
+                    }
 
                     <div class="form-group">
                         <label>Address</label>
@@ -54,7 +126,8 @@
                         <ValidationMessage For="@(() => doctor.Address)" />
                     </div>
 
-                    <button type="submit" class="btn-next">Next</button>
+                    <!-- ✅ Next disabled until OTP verified -->
+                    <button type="submit" class="btn-next" disabled="@(!otpVerified)">Next</button>
                 </EditForm>
             }
             else if (step == 2)
@@ -72,6 +145,16 @@
                         <label>Years of Experience</label>
                         <InputNumber class="form-input" @bind-Value="doctor.ExperienceYears" />
                         <ValidationMessage For="@(() => doctor.ExperienceYears)" />
+                        @if (!string.IsNullOrWhiteSpace(experienceError))
+                        {
+                            <div class="validation-message">@experienceError</div>
+                        }
+                        else if (doctor.Age > 0)
+                        {
+                            <small class="text-muted">
+                                Tip: Maximum realistic experience for age @doctor.Age is @Math.Max(0, doctor.Age - 18).
+                            </small>
+                        }
                     </div>
 
                     <div class="form-group">
@@ -80,7 +163,13 @@
                         <ValidationMessage For="@(() => doctor.PMDCNumber)" />
                     </div>
 
-                    <button type="submit" class="btn-submit">Submit</button>
+                    <div style="display:flex; gap:10px;">
+                        <button type="button" class="btn-next" style="background:#6b7280;" @onclick="BackToStep1">
+                            Back
+                        </button>
+
+                        <button type="submit" class="btn-submit">Submit</button>
+                    </div>
                 </EditForm>
             }
         </div>
@@ -89,31 +178,238 @@
 
 @code {
     [Parameter]
-    public string? ClientId { get; set; }  // comes from URL
+    public string? ClientId { get; set; }
 
     private int step = 1;
     private Doctor doctor = new();
+
+    private string? errorMessage;
+    private string? phoneError;
+    private string? experienceError;
+
+    // ✅ Country + Phone
+    private record CountryOption(string Name, string DialCode, int MinDigits, int MaxDigits);
+
+    private static readonly List<CountryOption> Countries = new()
+    {
+        new("Pakistan", "+92", 10, 10),
+        new("UAE", "+971", 9, 9),
+        new("USA", "+1", 10, 10),
+        new("UK", "+44", 10, 10),
+        new("India", "+91", 10, 10),
+    };
+
+    private CountryOption selectedCountry = Countries[0];
+    private string phoneDigits = "";
+
+    // ✅ OTP State
+    private bool otpSending = false;
+    private bool otpVerifying = false;
+    private bool otpSent = false;
+    private bool otpVerified = false;
+
+    private string otpCode = "";
+    private string? otpMessage;
 
     protected override void OnInitialized()
     {
         if (!string.IsNullOrEmpty(ClientId))
         {
             doctor.ClientId = ClientId;
-            Console.WriteLine($"✅ Client ID set: {doctor.ClientId}");
-        }
-        else
-        {
-            Console.WriteLine("⚠️ ClientId not found in URL!");
         }
     }
 
-    private void GoToProfessional() => step = 2;
+    private void OnCountryChange(ChangeEventArgs e)
+    {
+        var dial = e.Value?.ToString();
+        var found = Countries.FirstOrDefault(x => x.DialCode == dial);
+        if (found is not null)
+        {
+            selectedCountry = found;
+            ValidatePhone();
+        }
+    }
+
+    private void OnPhoneInput(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? "";
+        phoneDigits = new string(raw.Where(char.IsDigit).ToArray());
+        ValidatePhone();
+    }
+
+    private bool ValidatePhone()
+    {
+        phoneError = null;
+
+        if (string.IsNullOrWhiteSpace(phoneDigits))
+        {
+            phoneError = "Phone number is required.";
+            return false;
+        }
+
+        if (phoneDigits.Length < selectedCountry.MinDigits || phoneDigits.Length > selectedCountry.MaxDigits)
+        {
+            phoneError = $"Phone must be {selectedCountry.MinDigits} digits for {selectedCountry.Name}.";
+            return false;
+        }
+
+        return true;
+    }
+
+    private void ApplyPhoneToDoctor()
+    {
+        doctor.Phone = $"{selectedCountry.DialCode}{phoneDigits}";
+    }
+
+    // ✅ OTP calls (backend later)
+    private async Task SendOtp()
+    {
+        errorMessage = null;
+        otpMessage = null;
+
+        otpVerified = false;
+        otpSent = false;
+
+        if (!ValidatePhone())
+            return;
+
+        try
+        {
+            otpSending = true;
+
+            var phone = $"{selectedCountry.DialCode}{phoneDigits}";
+            var resp = await Http.PostAsJsonAsync("api/otp/send", new { phone });
+
+            if (!resp.IsSuccessStatusCode)
+            {
+                otpMessage = await resp.Content.ReadAsStringAsync();
+                return;
+            }
+
+            otpSent = true;
+            otpMessage = "OTP sent. Please check your phone.";
+        }
+        catch (Exception ex)
+        {
+            otpMessage = ex.Message;
+        }
+        finally
+        {
+            otpSending = false;
+        }
+    }
+
+    private async Task VerifyOtp()
+    {
+        otpMessage = null;
+
+        if (string.IsNullOrWhiteSpace(otpCode) || otpCode.Length != 6 || !otpCode.All(char.IsDigit))
+        {
+            otpMessage = "Enter a valid 6-digit OTP.";
+            return;
+        }
+
+        try
+        {
+            otpVerifying = true;
+
+            var phone = $"{selectedCountry.DialCode}{phoneDigits}";
+            var resp = await Http.PostAsJsonAsync("api/otp/verify", new { phone, code = otpCode });
+
+            if (!resp.IsSuccessStatusCode)
+            {
+                otpMessage = await resp.Content.ReadAsStringAsync();
+                return;
+            }
+
+            otpVerified = true;
+            otpMessage = "Verified ✅";
+        }
+        catch (Exception ex)
+        {
+            otpMessage = ex.Message;
+        }
+        finally
+        {
+            otpVerifying = false;
+        }
+    }
+
+    private void BackToStep1()
+    {
+        errorMessage = null;
+        experienceError = null;
+        step = 1;
+    }
+
+    private void GoToProfessional()
+    {
+        errorMessage = null;
+
+        if (!otpVerified)
+        {
+            errorMessage = "Please verify OTP before continuing.";
+            return;
+        }
+
+        if (!ValidatePhone())
+        {
+            errorMessage = "Please correct phone number before continuing.";
+            return;
+        }
+
+        ApplyPhoneToDoctor();
+        step = 2;
+    }
+
+    private bool ValidateExperience()
+    {
+        experienceError = null;
+
+        if (doctor.Age <= 0)
+        {
+            experienceError = "Age must be greater than 0.";
+            return false;
+        }
+
+        if (doctor.ExperienceYears < 0)
+        {
+            experienceError = "Experience cannot be negative.";
+            return false;
+        }
+
+        if (doctor.ExperienceYears > doctor.Age)
+        {
+            experienceError = "Experience years cannot be greater than age.";
+            return false;
+        }
+
+        var maxPossible = Math.Max(0, doctor.Age - 18);
+        if (doctor.ExperienceYears > maxPossible)
+        {
+            experienceError = $"Experience is too high. Maximum allowed for age {doctor.Age} is {maxPossible}.";
+            return false;
+        }
+
+        return true;
+    }
 
     private async Task HandleSubmit()
     {
+        errorMessage = null;
+
+        // Ensure phone is saved correctly
+        ApplyPhoneToDoctor();
+
+        if (!ValidateExperience())
+        {
+            errorMessage = "Please fix experience validation.";
+            return;
+        }
+
         await DoctorService.AddDoctorAsync(doctor);
 
-        // ⭐ store doctorId for chat/messages
+        // Store doctorId (your existing logic)
         if (!string.IsNullOrEmpty(doctor.ClientId))
         {
             await JS.InvokeVoidAsync("localStorage.setItem", "doctorId", doctor.ClientId);
@@ -146,15 +442,15 @@
         padding: 40px;
     }
 
-        .auth-left h1 {
-            font-size: 26px;
-            margin-bottom: 12px;
-        }
+    .auth-left h1 {
+        font-size: 26px;
+        margin-bottom: 12px;
+    }
 
-        .auth-left p {
-            font-size: 16px;
-            color: #ddd;
-        }
+    .auth-left p {
+        font-size: 16px;
+        color: #ddd;
+    }
 
     .auth-right {
         flex: 1;
@@ -171,7 +467,7 @@
         border-radius: 15px;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         width: 100%;
-        max-width: 420px; /* slightly wider */
+        max-width: 440px;
         text-align: left;
     }
 
@@ -180,12 +476,12 @@
         margin-bottom: 18px;
     }
 
-        .form-group label {
-            font-weight: bold;
-            display: block;
-            margin-bottom: 6px;
-            font-size: 14px;
-        }
+    .form-group label {
+        font-weight: bold;
+        display: block;
+        margin-bottom: 6px;
+        font-size: 14px;
+    }
 
     /* Inputs */
     .form-input {
@@ -198,17 +494,18 @@
         box-sizing: border-box;
     }
 
-        .form-input:focus {
-            border-color: #3f3da6;
-            box-shadow: 0 0 5px rgba(63,61,166,0.4);
-        }
+    .form-input:focus {
+        border-color: #3f3da6;
+        box-shadow: 0 0 5px rgba(63,61,166,0.4);
+    }
 
     /* Validation messages */
     .validation-message {
         font-size: 13px;
         color: #e50000;
-        margin-top: 4px;
+        margin-top: 6px;
         display: block;
+        font-weight: 700;
     }
 
     /* Buttons */
@@ -229,16 +526,21 @@
         color: white;
     }
 
-        .btn-next:hover {
-            background: #2f2b8f;
-        }
+    .btn-next:hover {
+        background: #2f2b8f;
+    }
+
+    .btn-next:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
 
     .btn-submit {
         background: #28a745;
         color: white;
     }
 
-        .btn-submit:hover {
-            background: #218838;
-        }
+    .btn-submit:hover {
+        background: #218838;
+    }
 </style>
