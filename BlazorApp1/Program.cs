@@ -13,26 +13,14 @@ using Microsoft.Extensions.Hosting;
 
 var builder = WebApplication.CreateBuilder(args);
 
-//
-// ─────────────────────────────────────────────────────────────
-// Razor + Blazor Server
-// ─────────────────────────────────────────────────────────────
-//
+// Razor Pages + Blazor Server
 builder.Services.AddRazorPages()
     .WithRazorPagesRoot("/Components/Pages");
 
-builder.Services
-    .AddServerSideBlazor()
-    .AddCircuitOptions(o =>
-    {
-        o.DetailedErrors = true;
-    });
+builder.Services.AddServerSideBlazor()
+    .AddCircuitOptions(o => o.DetailedErrors = true);
 
-//
-// ─────────────────────────────────────────────────────────────
-// 🔐 Authentication (Cookies + Google OAuth)
-// ─────────────────────────────────────────────────────────────
-//
+// Authentication (Cookies + Google)
 builder.Services
     .AddAuthentication(options =>
     {
@@ -44,8 +32,6 @@ builder.Services
         options.LoginPath = "/login-google";
         options.LogoutPath = "/logout";
         options.Cookie.Name = ".FypAuth";
-
-        // Optional but helpful for consistent redirects
         options.AccessDeniedPath = "/access-denied";
 
         if (builder.Environment.IsDevelopment())
@@ -63,18 +49,13 @@ builder.Services
     {
         options.ClientId = builder.Configuration["Authentication:Google:ClientId"] ?? "";
         options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"] ?? "";
-
-        // ✅ IMPORTANT: must match your endpoint + page route
         options.CallbackPath = "/google-callback";
-
         options.SaveTokens = true;
 
-        // Keep your picture claim mapping
-        options.ClaimActions.MapJsonKey("urn:google:picture", "picture", "url");
-
-        // ✅ Ensure we actually get email/name reliably
         options.Scope.Add("email");
         options.Scope.Add("profile");
+
+        options.ClaimActions.MapJsonKey("urn:google:picture", "picture", "url");
 
         if (builder.Environment.IsDevelopment())
         {
@@ -90,33 +71,14 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
-//
-// ─────────────────────────────────────────────────────────────
-// 🌐 API BASE URL
-// ─────────────────────────────────────────────────────────────
-//
-var apiBaseUrl =
-    builder.Configuration["ApiBaseUrl"]
-    ?? "http://localhost:5092/";
+// API base url
+var apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? "http://localhost:5092/";
 
-//
-// ─────────────────────────────────────────────────────────────
-// ✅ HttpClient Setup
-// ─────────────────────────────────────────────────────────────
-//
-builder.Services.AddHttpClient("Api", c =>
-{
-    c.BaseAddress = new Uri(apiBaseUrl);
-});
+// Base HttpClient
+builder.Services.AddHttpClient("Api", c => c.BaseAddress = new Uri(apiBaseUrl));
+builder.Services.AddScoped(sp => sp.GetRequiredService<IHttpClientFactory>().CreateClient("Api"));
 
-builder.Services.AddScoped(sp =>
-    sp.GetRequiredService<IHttpClientFactory>().CreateClient("Api"));
-
-//
-// ─────────────────────────────────────────────────────────────
-// ✅ Typed HttpClients (HTTP API services)
-// ─────────────────────────────────────────────────────────────
-//
+// Typed HTTP services (your existing ones)
 builder.Services.AddHttpClient<HealthApiService>(c => c.BaseAddress = new Uri(apiBaseUrl));
 
 builder.Services.AddHttpClient<IDService, DService>(c => c.BaseAddress = new Uri(apiBaseUrl));
@@ -136,65 +98,37 @@ builder.Services.AddHttpClient<IMedicationService, MedicationService>(c => c.Bas
 builder.Services.AddHttpClient<MessageClientService>(c => c.BaseAddress = new Uri(apiBaseUrl));
 builder.Services.AddHttpClient<ConversationClientService>(c => c.BaseAddress = new Uri(apiBaseUrl));
 
-//
-// ─────────────────────────────────────────────────────────────
-// ✅ NON-HTTP SERVICES (pure logic / orchestrators)
-// ─────────────────────────────────────────────────────────────
-//
+// Non-HTTP logic services
 builder.Services.AddScoped<MetabolismApiService>();
 builder.Services.AddScoped<IExercisePlanService, ExercisePlanService>();
 builder.Services.AddScoped<AppointmentApiService>();
 builder.Services.AddScoped<DoctorPatientsApiService>();
 builder.Services.AddScoped<ExerciseApiClient>();
 
-//
-// ─────────────────────────────────────────────────────────────
-// ✅ Doctor Verification + Admin APIs
-// ─────────────────────────────────────────────────────────────
-//
+// Doctor verification + Admin API (ONLY ONCE)
 builder.Services.AddHttpClient<IDoctorVerificationApiService, DoctorVerificationApiService>(
     c => c.BaseAddress = new Uri(apiBaseUrl));
 
 builder.Services.AddHttpClient<IAdminApiService, AdminApiService>(
     c => c.BaseAddress = new Uri(apiBaseUrl));
 
-//
-// ─────────────────────────────────────────────────────────────
-// ✅ ADMIN SESSION FIX (PERSIST IN BROWSER)
-// ─────────────────────────────────────────────────────────────
-//
+// Admin session persistence
 builder.Services.AddScoped<ProtectedLocalStorage>();
-builder.Services.AddScoped<AdminSession>();   // ✅ Scoped (not Singleton)
-builder.Services.AddHttpClient<AdminApiService>(c => c.BaseAddress = new Uri(apiBaseUrl));
-builder.Services.AddScoped<IAdminApiService, AdminApiService>();
+builder.Services.AddScoped<AdminSession>();
 
-//
-// ─────────────────────────────────────────────────────────────
-// 🧾 External APIs
-// ─────────────────────────────────────────────────────────────
-//
+// External APIs
 builder.Services.AddHttpClient<ITranslationService, TranslationService>();
-
-builder.Services.AddScoped<IAdminApiService>(sp => sp.GetRequiredService<AdminApiClient>());
-
-
 builder.Services.AddHttpClient<ICalorieNinjaService, CalorieNinjaService>(c =>
 {
     c.BaseAddress = new Uri("https://api.nal.usda.gov/fdc/v1/");
 });
 
-//
-// ─────────────────────────────────────────────────────────────
-// 🚀 APP PIPELINE
-// ─────────────────────────────────────────────────────────────
-//
+// Pipeline
 var app = builder.Build();
 
 app.UseForwardedHeaders(new ForwardedHeadersOptions
 {
-    ForwardedHeaders =
-        ForwardedHeaders.XForwardedFor |
-        ForwardedHeaders.XForwardedProto
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
 });
 
 if (!app.Environment.IsDevelopment())
@@ -205,7 +139,6 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
-
 app.UseRouting();
 
 app.UseAuthentication();
@@ -213,23 +146,14 @@ app.UseAuthorization();
 
 app.MapBlazorHub();
 
-//
-// ─────────────────────────────────────────────────────────────
-// 🌍 Minimal API Endpoints
-// ─────────────────────────────────────────────────────────────
-//
+// Minimal translate endpoint
 app.MapPost("/api/translate", async (TranslateRequest req, ITranslationService translator) =>
 {
     var translated = await translator.TranslateAsync(req.TargetLanguage, req.Texts.ToArray());
     return Results.Ok(new { texts = translated });
 });
 
-//
-// ─────────────────────────────────────────────────────────────
-// OAuth endpoints (UPDATED)
-// ─────────────────────────────────────────────────────────────
-// ✅ Single source of truth: always land on /google-callback page
-//
+// OAuth endpoints
 app.MapGet("/login-google", async (HttpContext ctx) =>
 {
     await ctx.ChallengeAsync(
@@ -237,9 +161,6 @@ app.MapGet("/login-google", async (HttpContext ctx) =>
         new AuthenticationProperties { RedirectUri = "/google-callback" });
 });
 
-//
-// ✅ Keep /register-google if you want, but it MUST redirect to /google-callback too
-//
 app.MapGet("/register-google", async (HttpContext ctx) =>
 {
     await ctx.ChallengeAsync(

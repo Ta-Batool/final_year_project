@@ -4,7 +4,7 @@
 @using Model
 
 @inject IAdminApiService AdminApi
-@inject IDoctorVerificationApiService VerifyApi
+@inject HttpClient Http
 
 <AdminGuard>
     <h3>Pending Doctor Approvals</h3>
@@ -38,7 +38,7 @@
                         {
                             <a class="btn secondary"
                                target="_blank"
-                               href="@VerifyApi.GetCertificateDownloadUrl(d.Id!)"
+                               href="@CertUrl(d.Id!)"
                                @onclick="() => MarkViewed(d.Id!)">
                                 View Certificate
                             </a>
@@ -96,6 +96,13 @@
 
     private string? rejectingId;
     private string rejectNotes = "";
+
+    // ✅ Render-safe API URL builder
+    private string CertUrl(string doctorId)
+    {
+        // Http.BaseAddress should be your API base, e.g. https://final-year-project-8r3w.onrender.com/
+        return new Uri(Http.BaseAddress!, $"api/doctor-verification/{doctorId}/certificate").ToString();
+    }
 
     protected override async Task OnInitializedAsync()
     {

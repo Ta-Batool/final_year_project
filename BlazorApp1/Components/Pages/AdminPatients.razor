@@ -1,8 +1,8 @@
 @page "/admin/patients"
-
-@inject BlazorApp1.Service.AdminApiClient AdminApi
 @layout BlazorApp1.Components.Layout.AdminLayout
 
+@using Model
+@inject IAdminApiService AdminApi
 
 <AdminGuard>
     <h3>Patients</h3>
@@ -48,7 +48,7 @@
 @code {
     private bool loading = true;
     private string? error;
-    private List<Model.User> patients = new();
+    private List<User> patients = new();
 
     protected override async Task OnInitializedAsync()
     {
