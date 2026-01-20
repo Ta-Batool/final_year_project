@@ -1,20 +1,30 @@
 @inherits LayoutComponentBase
 @inject NavigationManager Nav
+@inject BlazorApp1.Service.AdminSession Session
 
 <div class="admin-shell">
     <aside class="sidebar">
-        <div class="brand" @onclick="@(()=>Nav.NavigateTo("/admin/dashboard"))">
+        <div class="brand" @onclick="@(() => Go("admin/dashboard"))">
             Admin Panel
         </div>
 
         <nav class="menu">
-            <a class="@LinkClass("/admin/dashboard")" href="/admin/dashboard">Dashboard</a>
-            <a class="@LinkClass("/admin/doctors")" href="/admin/doctors">Pending Doctors</a>
-            <a class="@LinkClass("/admin/patients")" href="/admin/patients">Patients</a>
+            <NavLink class="menu-link" href="admin/dashboard" Match="NavLinkMatch.All"
+                     ActiveClass="active">
+                Dashboard
+            </NavLink>
+
+            <NavLink class="menu-link" href="admin/doctors" ActiveClass="active">
+                Pending Doctors
+            </NavLink>
+
+            <NavLink class="menu-link" href="admin/patients" ActiveClass="active">
+                Patients
+            </NavLink>
         </nav>
 
         <div class="sidebar-footer">
-            <button class="btn-logout" @onclick="Logout">Logout</button>
+            <button class="btn-logout" @onclick="LogoutAsync">Logout</button>
         </div>
     </aside>
 
@@ -30,13 +40,17 @@
 </div>
 
 @code {
-    private string LinkClass(string path)
-        => Nav.Uri.Contains(path, StringComparison.OrdinalIgnoreCase) ? "active" : "";
-
-    private void Logout()
+    private void Go(string path)
     {
-        // if you have an admin logout route, use it
-        Nav.NavigateTo("/admin/login", true);
+        // ✅ BaseUri-safe navigation (works under /BlazorApp1)
+        var url = new Uri(new Uri(Nav.BaseUri), path).ToString();
+        Nav.NavigateTo(url);
+    }
+
+    private async Task LogoutAsync()
+    {
+        await Session.LogoutAsync();
+        Go("admin"); // back to admin login at /admin
     }
 }
 
@@ -68,17 +82,18 @@
     flex-direction:column;
     gap:8px;
 }
-.menu a{
+.menu-link{
     color:#e5e7eb;
     text-decoration:none;
     padding:10px 12px;
     border-radius:10px;
     transition:all .15s ease;
+    display:block;
 }
-.menu a:hover{
+.menu-link:hover{
     background:rgba(255,255,255,0.08);
 }
-.menu a.active{
+.menu-link.active{
     background:rgba(99,102,241,0.25);
     color:white;
 }

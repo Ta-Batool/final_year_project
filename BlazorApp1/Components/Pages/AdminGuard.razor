@@ -1,7 +1,5 @@
 @inject NavigationManager Nav
 @inject BlazorApp1.Service.AdminSession Session
-@layout BlazorApp1.Components.Layout.AdminLayout
-
 
 @if (loading)
 {
@@ -26,8 +24,7 @@ else
 
         if (!Session.IsAdmin)
         {
-            // ✅ BaseUri-safe
-            var url = new Uri(new Uri(Nav.BaseUri), "admin-login").ToString();
+            var url = new Uri(new Uri(Nav.BaseUri), "admin").ToString();
             Nav.NavigateTo(url);
             return;
         }

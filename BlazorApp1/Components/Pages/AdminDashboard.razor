@@ -1,29 +1,18 @@
-@page "/admin"
-
-@inject BlazorApp1.Service.AdminSession Session
+@page "/admin/dashboard"
 @layout BlazorApp1.Components.Layout.AdminLayout
-
 @inject NavigationManager Nav
 
 <AdminGuard>
-    <h3>Admin Panel</h3>
-
-    <button class="btn btn-danger btn-sm" @onclick="LogoutAsync">Logout</button>
+    <h3>Dashboard</h3>
+    <p>Welcome to Admin Portal.</p>
 
     <div class="mt-3">
-        <a class="btn btn-primary" href="@DoctorsUrl">Doctor Approvals</a>
-        <a class="btn btn-secondary ms-2" href="@PatientsUrl">Patients</a>
+        <a class="btn btn-primary" href="@DoctorsUrl">Go to Doctor Approvals</a>
+        <a class="btn btn-secondary ms-2" href="@PatientsUrl">Go to Patients</a>
     </div>
 </AdminGuard>
 
 @code {
     private string DoctorsUrl => new Uri(new Uri(Nav.BaseUri), "admin/doctors").ToString();
     private string PatientsUrl => new Uri(new Uri(Nav.BaseUri), "admin/patients").ToString();
-
-    private async Task LogoutAsync()
-    {
-        await Session.LogoutAsync();
-        var url = new Uri(new Uri(Nav.BaseUri), "admin-login").ToString();
-        Nav.NavigateTo(url);
-    }
 }
