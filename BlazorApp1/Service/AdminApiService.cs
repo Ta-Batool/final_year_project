@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Model;
 
@@ -6,65 +7,67 @@ namespace BlazorApp1.Service
     public class AdminApiService : IAdminApiService
     {
         private readonly HttpClient _http;
-        private readonly IConfiguration _config;
+        private readonly AdminSession _session;
 
-        public AdminApiService(HttpClient http, IConfiguration config)
+        public AdminApiService(HttpClient http, AdminSession session)
         {
             _http = http;
-            _config = config;
+            _session = session;
         }
 
-        void AddAdminKey()
+        private async Task EnsureAuthAsync()
         {
-            var key = _config["ADMIN_API_KEY"];
-            _http.DefaultRequestHeaders.Remove("X-ADMIN-KEY");
-            if (!string.IsNullOrWhiteSpace(key))
-                _http.DefaultRequestHeaders.Add("X-ADMIN-KEY", key);
+            await _session.LoadAsync();
+
+            if (string.IsNullOrWhiteSpace(_session.BasicAuthHeader))
+                throw new Exception("Admin not logged in.");
+
+            _http.DefaultRequestHeaders.Authorization =
+                AuthenticationHeaderValue.Parse(_session.BasicAuthHeader);
         }
 
+        // If you don't have an overview endpoint, you can return null and not use it.
         public async Task<AdminOverviewDto?> GetOverviewAsync()
         {
-            AddAdminKey();
-            var raw = await _http.GetFromJsonAsync<dynamic>("api/admin/overview");
-            if (raw == null) return null;
+            await EnsureAuthAsync();
 
-            return new AdminOverviewDto
-            {
-                PendingDoctors = (int)raw.pendingDoctors,
-                ApprovedDoctors = (int)raw.approvedDoctors,
-                RejectedDoctors = (int)raw.rejectedDoctors,
-                Patients = (int)raw.patients
-            };
+            var resp = await _http.GetAsync("api/admin/overview");
+            if (!resp.IsSuccessStatusCode) return null;
+
+            return await resp.Content.ReadFromJsonAsync<AdminOverviewDto>();
         }
 
-        public async Task<List<Doctor>> GetDoctorsAsync(string status)
+        public async Task<List<Doctor>> GetPendingDoctorsAsync()
         {
-            AddAdminKey();
-            return await _http.GetFromJsonAsync<List<Doctor>>($"api/admin/doctors?status={status}")
-                   ?? new List<Doctor>();
+            await EnsureAuthAsync();
+
+            var res = await _http.GetFromJsonAsync<List<Doctor>>("api/admin/doctors/pending");
+            return res ?? new List<Doctor>();
+        }
+
+        public async Task ReviewDoctorAsync(string doctorId, bool approve, string? notes)
+        {
+            await EnsureAuthAsync();
+
+            var payload = new { approve, notes };
+            var resp = await _http.PostAsJsonAsync($"api/admin/doctors/{doctorId}/review", payload);
+
+            if (!resp.IsSuccessStatusCode)
+            {
+                var body = await resp.Content.ReadAsStringAsync();
+                throw new Exception($"Admin review failed: {(int)resp.StatusCode} {resp.ReasonPhrase} - {body}");
+            }
         }
 
         public async Task<List<User>> GetPatientsAsync()
         {
-            AddAdminKey();
-            return await _http.GetFromJsonAsync<List<User>>("api/admin/patients")
-                   ?? new List<User>();
+            await EnsureAuthAsync();
+
+            var res = await _http.GetFromJsonAsync<List<User>>("api/admin/patients");
+            return res ?? new List<User>();
         }
 
-        public async Task ReviewDoctorAsync(string doctorId, bool approve, string adminClientId, string? notes)
-        {
-            AddAdminKey();
-
-            var payload = new
-            {
-                approve,
-                adminClientId,
-                notes
-            };
-
-            var resp = await _http.PostAsJsonAsync($"api/admin/doctors/{doctorId}/review", payload);
-            if (!resp.IsSuccessStatusCode)
-                throw new Exception(await resp.Content.ReadAsStringAsync());
-        }
+        // If your interface still has GetDoctorsAsync(status), remove it from interface
+        // OR implement it here. For now I assume you updated interface to pending/doctors/patients/review.
     }
 }

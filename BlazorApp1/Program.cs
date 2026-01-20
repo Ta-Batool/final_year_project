@@ -165,7 +165,8 @@ builder.Services.AddHttpClient<IAdminApiService, AdminApiService>(
 //
 builder.Services.AddScoped<ProtectedLocalStorage>();
 builder.Services.AddScoped<AdminSession>();   // ✅ Scoped (not Singleton)
-builder.Services.AddScoped<AdminApiClient>();
+builder.Services.AddHttpClient<AdminApiService>(c => c.BaseAddress = new Uri(apiBaseUrl));
+builder.Services.AddScoped<IAdminApiService, AdminApiService>();
 
 //
 // ─────────────────────────────────────────────────────────────
