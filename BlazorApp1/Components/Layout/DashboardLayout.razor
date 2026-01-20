@@ -41,8 +41,6 @@
             <button class="side-btn" @onclick='() => Navigation.NavigateTo("/availability")'>
                 <i class="fas fa-clock"></i> Availability
             </button>
-
-            
         </nav>
 
         <div class="bottom-section">
@@ -100,6 +98,9 @@
     </div>
 </div>
 
+<!-- ✅ Chatbot available on doctor dashboard too -->
+<AiChatWidget />
+
 @code {
     private string displayName = "Doctor";
     private string specializationText = "";
@@ -122,14 +123,18 @@
                 return;
 
             var email = user.FindFirst(ClaimTypes.Email)?.Value ?? user.FindFirst("email")?.Value;
-            if (email == null) return;
+            if (string.IsNullOrWhiteSpace(email)) return;
+
+            email = email.Trim().ToLowerInvariant();
 
             var client = await CService.GetClientByEmailAsync(email);
             if (client == null) return;
 
             clientId = client.Id;
 
-            if (!string.Equals(client.Role, "Doctor", StringComparison.OrdinalIgnoreCase))
+            // ✅ FIX: Normalize role (prevents flicker & mismatch)
+            var role = (client.Role ?? "").Trim().ToLowerInvariant();
+            if (role != "doctor")
             {
                 errorMessage = "You are not registered as a doctor.";
                 return;
@@ -146,7 +151,6 @@
                 specializationText = doctor.Specialization ?? "";
             }
 
-            // Store IDs for other pages
             if (!string.IsNullOrEmpty(client.Id))
                 await JS.InvokeVoidAsync("localStorage.setItem", "doctorId", client.Id);
 
@@ -195,169 +199,3 @@
         showLangMenu = false;
     }
 }
-
-<style>
-    .layout {
-        display: flex;
-        height: 100vh;
-        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-        background: #f6f7fb;
-    }
-
-    .sidebar {
-        width: 280px;
-        background: linear-gradient(180deg, #0f172a 0%, #111827 100%);
-        color: white;
-        display: flex;
-        flex-direction: column;
-        padding: 18px;
-        border-right: 1px solid rgba(255,255,255,0.06);
-    }
-
-    .profile-section {
-        text-align: center;
-        padding: 14px 12px 16px;
-        border-radius: 16px;
-        background: rgba(255,255,255,0.04);
-        border: 1px solid rgba(255,255,255,0.06);
-        margin-bottom: 14px;
-    }
-
-    .profile-pic {
-        width: 84px;
-        height: 84px;
-        border-radius: 50%;
-        margin-bottom: 10px;
-        border: 3px solid rgba(255,255,255,0.22);
-        object-fit: cover;
-    }
-
-    .profile-name {
-        font-weight: 800;
-        font-size: 16px;
-        line-height: 1.1;
-    }
-
-    .profile-sub {
-        font-size: 13px;
-        color: rgba(255,255,255,0.75);
-        margin: 6px 0 12px;
-    }
-
-    .primary-btn {
-        width: 100%;
-        background: rgba(255,255,255,0.10);
-        color: white;
-        border: 1px solid rgba(255,255,255,0.10);
-        text-align: center;
-        padding: 10px 12px;
-        font-size: 14px;
-        cursor: pointer;
-        border-radius: 12px;
-        font-weight: 700;
-        transition: transform .12s, background .2s;
-    }
-    .primary-btn:hover { background: rgba(255,255,255,0.14); transform: translateY(-1px); }
-
-    .sidebar-nav {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        margin-top: 10px;
-        flex: 1;
-    }
-
-    .side-btn {
-        background: rgba(255,255,255,0.04);
-        color: white;
-        border: 1px solid rgba(255,255,255,0.06);
-        text-align: left;
-        padding: 10px 12px;
-        font-size: 15px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        border-radius: 12px;
-        transition: background 0.2s, transform 0.12s;
-    }
-    .side-btn:hover { background: rgba(255,255,255,0.08); transform: translateY(-1px); }
-
-    .bottom-section {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        position: relative;
-    }
-
-    .icon-btn {
-        background: rgba(255,255,255,0.06);
-        border: 1px solid rgba(255,255,255,0.08);
-        color: white;
-        border-radius: 12px;
-        padding: 10px 12px;
-        cursor: pointer;
-        flex: 0 0 auto;
-    }
-
-    .logout-btn {
-        flex: 1;
-        background: #ef4444;
-        border: none;
-        color: white;
-        border-radius: 12px;
-        padding: 10px 12px;
-        cursor: pointer;
-        font-weight: 800;
-    }
-
-    .language-menu {
-        position: absolute;
-        bottom: 58px;
-        left: 0;
-        background: #fff;
-        color: #111;
-        border-radius: 12px;
-        box-shadow: 0 12px 40px rgba(0,0,0,0.20);
-        overflow: hidden;
-        border: 1px solid rgba(0,0,0,0.08);
-        width: 140px;
-    }
-
-    .language-menu button {
-        display: block;
-        width: 100%;
-        padding: 10px 12px;
-        border: none;
-        background: transparent;
-        cursor: pointer;
-        text-align: left;
-        font-weight: 700;
-    }
-
-    .language-menu button:hover { background: #f3f4f6; }
-
-    .main-content {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-    }
-
-    .top-navbar {
-        background: #ffffff;
-        padding: 14px 18px;
-        border-bottom: 1px solid rgba(0,0,0,0.06);
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-    }
-
-    .title-main { font-size: 16px; font-weight: 900; color: #0f172a; }
-    .title-sub { font-size: 12px; color: #64748b; margin-top: 2px; }
-
-    .top-actions { display: flex; gap: 10px; }
-    .top-icon {
-        width: 40p
-
-</style>

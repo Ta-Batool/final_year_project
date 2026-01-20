@@ -1,0 +1,45 @@
+@using Model
+@inject MessageClientService MessageService
+@inject AuthenticationStateProvider AuthProvider
+
+<div class="chatbox">
+    <h5>Doctor Chat</h5>
+
+    <div class="messages">
+        @foreach (var msg in messages)
+        {
+            <div class="msg">@msg.Content</div>
+        }
+    </div>
+
+    <input @bind="newMessage" placeholder="Type message..." />
+    <button @onclick="Send">Send</button>
+</div>
+
+@code {
+    private List<Message> messages = new();
+    private string newMessage = "";
+    private string? doctorId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthProvider.GetAuthenticationStateAsync();
+        doctorId = auth.User.FindFirst("doctorId")?.Value
+                   ?? await JS.InvokeAsync<string>("localStorage.getItem", "doctorId");
+
+        if (!string.IsNullOrWhiteSpace(doctorId))
+        {
+            messages = await MessageService.GetDoctorMessagesAsync(doctorId);
+        }
+    }
+
+    private async Task Send()
+    {
+        if (string.IsNullOrWhiteSpace(newMessage)) return;
+
+        await MessageService.SendDoctorMessageAsync(doctorId!, newMessage);
+        newMessage = "";
+
+        messages = await MessageService.GetDoctorMessagesAsync(doctorId!);
+    }
+}

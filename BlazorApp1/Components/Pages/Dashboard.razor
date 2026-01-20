@@ -68,75 +68,73 @@ else
                 principal.FindFirst(ClaimTypes.Email)?.Value
                 ?? principal.FindFirst("email")?.Value;
 
+            clientEmail = clientEmail?.Trim().ToLowerInvariant();
+
             if (string.IsNullOrWhiteSpace(clientEmail))
             {
                 errorMessage = "No email found in your Google account.";
                 return;
             }
 
-            // 1) Client must exist
             currentClient = await CService.GetClientByEmailAsync(clientEmail);
 
             if (currentClient is null)
             {
-                // better UX: send to register instead of dead-end message
+                // No client profile -> must register
                 NavManager.NavigateTo("/register", forceLoad: true);
                 return;
             }
 
-            // 2) Role must be selected
-            var role = currentClient.Role?.Trim().ToLowerInvariant();
+            var role = (currentClient.Role ?? "").Trim().ToLowerInvariant();
+
+            // ✅ If role not chosen yet
             if (string.IsNullOrWhiteSpace(role))
             {
                 NavManager.NavigateTo("/register", forceLoad: true);
                 return;
             }
 
-            // 3) Doctor flow
+            // ✅ DOCTOR FLOW
             if (role == "doctor")
             {
                 currentDoctor = await DService.GetDoctorByClientIdAsync(currentClient.Id);
 
+                // If doctor profile not created yet -> go to doctor form
                 if (currentDoctor is null)
                 {
-                    // doctor selected but profile not created yet
                     NavManager.NavigateTo($"/form/{currentClient.Id}", forceLoad: true);
                     return;
                 }
 
-                // gate: must be approved
+                // If not approved -> go to verification upload
                 if (currentDoctor.VerificationStatus != DoctorVerificationStatus.Approved)
                 {
                     NavManager.NavigateTo("/doctor/verification", forceLoad: true);
                     return;
                 }
 
-                // If you prefer doctor dashboard page instead of showing info here:
-                // NavManager.NavigateTo("/doctordashboard", forceLoad: true);
-                // return;
-
-                return; // show doctor info
+                // Approved doctor stays on /dashboard (or you can navigate to doctor dashboard page)
+                return;
             }
 
-            // 4) Patient flow
+            // ✅ PATIENT FLOW
             if (role == "patient")
             {
                 currentUser = await UService.GetUserByClientIdAsync(currentClient.Id);
 
                 if (currentUser is null)
                 {
-                    // patient selected but profile not created yet
                     NavManager.NavigateTo($"/formuser/{currentClient.Id}", forceLoad: true);
                     return;
                 }
 
-                // patient fully registered → go to patient portal
                 NavManager.NavigateTo("/userdashboard", forceLoad: true);
                 return;
             }
 
-            // 5) Unknown role fallback
+            // ✅ Unknown role fallback
             NavManager.NavigateTo("/register", forceLoad: true);
+            return;
         }
         catch (Exception ex)
         {

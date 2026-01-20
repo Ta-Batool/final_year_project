@@ -1,17 +1,27 @@
 @using System.Net.Http.Json
+@using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Web
+@using System.Text.Json
+
 @inject HttpClient Http
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ICService CService
+@inject IJSRuntime JS
 
 <div class="ai-chat-container">
     @if (isOpen)
     {
         <div class="ai-chat-window">
             <div class="ai-chat-header">
-                <span>@(IsDoctor ? "Doctor AI Assistant" : "Health AI Assistant")</span>
-                <button @onclick="Toggle">×</button>
+                <span>@HeaderTitle</span>
+
+                <div class="ai-chat-header-actions">
+                    <button class="mini-btn" title="Clear chat" @onclick="ClearChat">🧹</button>
+                    <button class="mini-btn" title="Close" @onclick="Toggle">×</button>
+                </div>
             </div>
 
-            <div class="ai-chat-messages">
+            <div class="ai-chat-messages" @ref="messagesDiv">
                 @foreach (var msg in messages)
                 {
                     <div class="msg @(msg.IsUser ? "user" : "bot")">
@@ -21,11 +31,20 @@
             </div>
 
             <div class="ai-chat-input">
-                <input @bind="currentInput" @bind:event="oninput"
+                <input @bind="currentInput"
+                       @bind:event="oninput"
                        @onkeydown="HandleKeyDown"
                        placeholder="Type your question..." />
-                <button @onclick="Send">Send</button>
+
+                <button @onclick="Send" disabled="@isSending">
+                    @(isSending ? "..." : "Send")
+                </button>
             </div>
+
+            @if (!string.IsNullOrWhiteSpace(statusMessage))
+            {
+                <div class="ai-status">@statusMessage</div>
+            }
         </div>
     }
 
@@ -35,12 +54,24 @@
 </div>
 
 @code {
-    [Parameter] public bool IsDoctor { get; set; }
+    // ✅ Keep your existing param so you don't break pages/layouts
+    // It's now only used as fallback if role detection fails.
+    [Parameter] public bool IsDoctor { get; set; } = false;
+
+    // ✅ Add admin support (use in AdminLayout later if you want)
+    [Parameter] public bool IsAdmin { get; set; } = false;
 
     private bool isOpen;
-    private string currentInput = string.Empty;
+    private bool detectedDoctor = false;
+    private bool roleDetected = false;
 
+    private bool isSending = false;
+    private string statusMessage = "";
+
+    private string currentInput = string.Empty;
     private List<ChatMessage> messages = new();
+
+    private ElementReference messagesDiv;
 
     private class ChatMessage
     {
@@ -48,7 +79,78 @@
         public string Text { get; set; } = string.Empty;
     }
 
-    private void Toggle() => isOpen = !isOpen;
+    private string EffectiveRole
+        => IsAdmin ? "admin"
+           : (roleDetected ? (detectedDoctor ? "doctor" : "patient")
+                           : (IsDoctor ? "doctor" : "patient"));
+
+    private string HeaderTitle
+        => EffectiveRole == "admin" ? "Admin AI Tools"
+           : EffectiveRole == "doctor" ? "Doctor AI Assistant"
+           : "Health AI Assistant";
+
+    private string StorageKey => $"ai_chat_{EffectiveRole}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // 1) detect role (patient/doctor) from DB using email
+        await DetectRoleAsync();
+
+        // 2) load memory from localStorage
+        await LoadMemoryAsync();
+    }
+
+    private async Task DetectRoleAsync()
+    {
+        if (IsAdmin)
+        {
+            roleDetected = true;
+            detectedDoctor = false;
+            return;
+        }
+
+        try
+        {
+            var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = auth.User;
+
+            if (!(user.Identity?.IsAuthenticated ?? false))
+                return;
+
+            var email =
+                user.FindFirst(ClaimTypes.Email)?.Value ??
+                user.FindFirst("email")?.Value;
+
+            email = email?.Trim().ToLowerInvariant();
+
+            if (string.IsNullOrWhiteSpace(email))
+                return;
+
+            var client = await CService.GetClientByEmailAsync(email);
+            var role = (client?.Role ?? "").Trim().ToLowerInvariant();
+
+            detectedDoctor = role == "doctor";
+            roleDetected = true;
+        }
+        catch
+        {
+            // keep fallback
+        }
+    }
+
+    private void Toggle()
+    {
+        isOpen = !isOpen;
+
+        if (isOpen)
+        {
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(50);
+                await ScrollToBottomAsync();
+            });
+        }
+    }
 
     private async Task Send()
     {
@@ -58,16 +160,28 @@
         currentInput = string.Empty;
 
         messages.Add(new ChatMessage { IsUser = true, Text = text });
+        await SaveMemoryAsync();
+        await ScrollToBottomAsync();
+
+        isSending = true;
+        statusMessage = "";
 
         try
         {
+            // ✅ Send context (last 10 messages) + role prompt
+            var history = messages
+                .TakeLast(10)
+                .Select(m => new { isUser = m.IsUser, text = m.Text })
+                .ToList();
+
             var payload = new
             {
-                role = IsDoctor ? "doctor" : "patient",
-                message = text
+                role = EffectiveRole,
+                message = text,
+                systemPrompt = BuildSystemPrompt(EffectiveRole),
+                history = history
             };
 
-            // this hits your API service
             var response = await Http.PostAsJsonAsync("api/aichat/chat", payload);
 
             if (!response.IsSuccessStatusCode)
@@ -77,6 +191,8 @@
                     IsUser = false,
                     Text = "Sorry, I couldn't reach the AI assistant right now."
                 });
+                await SaveMemoryAsync();
+                await ScrollToBottomAsync();
                 return;
             }
 
@@ -87,6 +203,9 @@
                 IsUser = false,
                 Text = data?.Reply ?? "(No response received.)"
             });
+
+            await SaveMemoryAsync();
+            await ScrollToBottomAsync();
         }
         catch
         {
@@ -95,15 +214,93 @@
                 IsUser = false,
                 Text = "An error occurred while contacting the AI assistant."
             });
+
+            await SaveMemoryAsync();
+            await ScrollToBottomAsync();
+        }
+        finally
+        {
+            isSending = false;
         }
     }
 
     private void HandleKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Enter")
-        {
             _ = Send();
+    }
+
+    private string BuildSystemPrompt(string role)
+    {
+        if (role == "admin")
+        {
+            return
+                "You are an Admin AI assistant for a healthcare portal. " +
+                "Help with reviewing doctor verification, summarizing pending cases, " +
+                "drafting approval/rejection notes, and giving safe operational guidance. " +
+                "Do not invent data. Ask for missing fields if needed.";
         }
+
+        if (role == "doctor")
+        {
+            return
+                "You are a Doctor AI assistant inside a healthcare portal. " +
+                "Help with patient note drafting, appointment summaries, follow-up message drafts, " +
+                "and explaining lab values in simple terms. " +
+                "Never give definitive diagnosis. Always suggest consulting a licensed physician for emergencies.";
+        }
+
+        // patient
+        return
+            "You are a Health AI assistant for a patient. " +
+            "Explain health topics in simple language, help with reminders, symptom journaling, " +
+            "and questions to ask a doctor. Do not provide emergency medical advice. " +
+            "If symptoms are severe, advise seeking urgent care.";
+    }
+
+    private async Task ScrollToBottomAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("eval", @"
+                (function(){
+                    const el = document.querySelector('.ai-chat-messages');
+                    if(el) el.scrollTop = el.scrollHeight;
+                })();
+            ");
+        }
+        catch { }
+    }
+
+    private async Task SaveMemoryAsync()
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(messages);
+            await JS.InvokeVoidAsync("localStorage.setItem", StorageKey, json);
+        }
+        catch { }
+    }
+
+    private async Task LoadMemoryAsync()
+    {
+        try
+        {
+            var json = await JS.InvokeAsync<string>("localStorage.getItem", StorageKey);
+            if (!string.IsNullOrWhiteSpace(json))
+            {
+                var loaded = JsonSerializer.Deserialize<List<ChatMessage>>(json);
+                if (loaded != null) messages = loaded;
+            }
+        }
+        catch { }
+    }
+
+    private async Task ClearChat()
+    {
+        messages.Clear();
+        await SaveMemoryAsync();
+        statusMessage = "Chat cleared.";
     }
 
     private class AiChatResponse
@@ -111,3 +308,129 @@
         public string Reply { get; set; } = string.Empty;
     }
 }
+
+<style>
+    .ai-chat-container {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 9999;
+    }
+
+    .ai-chat-bubble {
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        border: none;
+        cursor: pointer;
+        font-size: 22px;
+        background: #2563eb;
+        color: white;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+    }
+
+    .ai-chat-window {
+        width: 340px;
+        height: 420px;
+        background: white;
+        border-radius: 14px;
+        box-shadow: 0 15px 45px rgba(0,0,0,0.25);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 10px;
+    }
+
+    .ai-chat-header {
+        background: #111827;
+        color: white;
+        padding: 10px 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-weight: 800;
+    }
+
+    .ai-chat-header-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .mini-btn {
+        border: none;
+        background: rgba(255,255,255,0.14);
+        color: white;
+        border-radius: 8px;
+        padding: 4px 8px;
+        cursor: pointer;
+        font-weight: 800;
+    }
+    .mini-btn:hover { background: rgba(255,255,255,0.20); }
+
+    .ai-chat-messages {
+        padding: 12px;
+        flex: 1;
+        overflow-y: auto;
+        background: #f3f4f6;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .msg {
+        padding: 10px 12px;
+        border-radius: 12px;
+        max-width: 85%;
+        font-size: 14px;
+        line-height: 1.25;
+        white-space: pre-wrap;
+    }
+
+    .msg.user {
+        background: #2563eb;
+        color: white;
+        margin-left: auto;
+    }
+
+    .msg.bot {
+        background: white;
+        color: #111827;
+        margin-right: auto;
+        border: 1px solid rgba(0,0,0,0.08);
+    }
+
+    .ai-chat-input {
+        display: flex;
+        gap: 8px;
+        padding: 10px;
+        background: white;
+        border-top: 1px solid rgba(0,0,0,0.08);
+    }
+
+    .ai-chat-input input {
+        flex: 1;
+        border: 1px solid rgba(0,0,0,0.15);
+        border-radius: 10px;
+        padding: 10px;
+        outline: none;
+    }
+
+    .ai-chat-input button {
+        border: none;
+        border-radius: 10px;
+        padding: 10px 14px;
+        cursor: pointer;
+        background: #22c55e;
+        color: white;
+        font-weight: 800;
+    }
+
+    .ai-status {
+        padding: 8px 10px;
+        font-size: 12px;
+        color: #334155;
+        background: #eef2ff;
+        border-top: 1px solid rgba(0,0,0,0.06);
+    }
+</style>

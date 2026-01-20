@@ -18,52 +18,47 @@
             <p class="specialization">@roleText</p>
         </div>
 
-                    <nav class="sidebar-nav">
-                <button class="side-btn" @onclick="GoToProfile">
-                    <i class="fas fa-user"></i> Edit Profile
-                </button>
+        <nav class="sidebar-nav">
+            <button class="side-btn" @onclick="GoToProfile">
+                <i class="fas fa-user"></i> Edit Profile
+            </button>
 
-                <button class="side-btn" @onclick='() => Navigation.NavigateTo("/userdashboard")'>
-                    <i class="fas fa-home"></i> Home
-                </button>
+            <button class="side-btn" @onclick='() => Navigation.NavigateTo("/userdashboard")'>
+                <i class="fas fa-home"></i> Home
+            </button>
 
-                <button class="side-btn" @onclick='() => Navigation.NavigateTo("/selectdoctor")'>
-                    <i class="fas fa-user-md"></i> Book Appointment
-                </button>
+            <button class="side-btn" @onclick='() => Navigation.NavigateTo("/selectdoctor")'>
+                <i class="fas fa-user-md"></i> Book Appointment
+            </button>
 
-                <button class="side-btn" @onclick='() => Navigation.NavigateTo("/my-appointments")'>
-                    <i class="fas fa-calendar-check"></i> My Appointments
-                </button>
+            <button class="side-btn" @onclick='() => Navigation.NavigateTo("/my-appointments")'>
+                <i class="fas fa-calendar-check"></i> My Appointments
+            </button>
 
-                <button class="side-btn" @onclick='() => Navigation.NavigateTo("/userexercises")'>
-                    <i class="fas fa-dumbbell"></i> Exercises
-                </button>
+            <button class="side-btn" @onclick='() => Navigation.NavigateTo("/userexercises")'>
+                <i class="fas fa-dumbbell"></i> Exercises
+            </button>
 
-                <button class="side-btn" @onclick='() => Navigation.NavigateTo("/medication-compliance")'>
-                    <i class="fas fa-pills"></i> Medication
-                </button>
+            <button class="side-btn" @onclick='() => Navigation.NavigateTo("/medication-compliance")'>
+                <i class="fas fa-pills"></i> Medication
+            </button>
 
-                <button class="side-btn" @onclick='() => Navigation.NavigateTo("/usermessages")'>
-                    <i class="fas fa-comments"></i> Messages
-                </button>
+            <button class="side-btn" @onclick='() => Navigation.NavigateTo("/usermessages")'>
+                <i class="fas fa-comments"></i> Messages
+            </button>
 
-                <button class="side-btn" @onclick='() => Navigation.NavigateTo("/health-logs")'>
-                    <i class="fas fa-notes-medical"></i> Health Logs
-                </button>
+            <button class="side-btn" @onclick='() => Navigation.NavigateTo("/health-logs")'>
+                <i class="fas fa-notes-medical"></i> Health Logs
+            </button>
 
-                <button class="side-btn" @onclick='() => Navigation.NavigateTo("/health-charts")'>
-                    <i class="fas fa-chart-line"></i> Health Charts
-                </button>
+            <button class="side-btn" @onclick='() => Navigation.NavigateTo("/health-charts")'>
+                <i class="fas fa-chart-line"></i> Health Charts
+            </button>
 
-                <button class="side-btn" @onclick='() => Navigation.NavigateTo("/health-alerts")'>
-                    <i class="fas fa-triangle-exclamation"></i> Alerts
-                </button>
-
-                @* Optional: keep old route if that page still exists *@
-                @* <button class="side-btn" @onclick='() => Navigation.NavigateTo("/userappointments")'>
-                    <i class="fas fa-calendar-check"></i> Appointments (Old)
-                </button> *@
-            </nav>
+            <button class="side-btn" @onclick='() => Navigation.NavigateTo("/health-alerts")'>
+                <i class="fas fa-triangle-exclamation"></i> Alerts
+            </button>
+        </nav>
 
         <div class="bottom-section">
             <button class="settings-btn" @onclick="ToggleLanguageMenu">
@@ -93,9 +88,10 @@
             @Body
         </div>
     </div>
-    <AiChatWidget IsDoctor="true" />
-
 </div>
+
+<!-- ✅ Chatbot: DO NOT force doctor -->
+<AiChatWidget />
 
 @code {
     private string displayName = "User";
@@ -113,13 +109,16 @@
             return;
 
         var email = user.FindFirst(ClaimTypes.Email)?.Value ?? user.FindFirst("email")?.Value;
-        if (email is null) return;
+        if (string.IsNullOrWhiteSpace(email)) return;
+
+        email = email.Trim().ToLowerInvariant();
 
         var client = await CService.GetClientByEmailAsync(email);
         if (client == null) return;
 
         clientId = client.Id;
-        string role = client.Role?.ToLower() ?? "user";
+
+        var role = (client.Role ?? "").Trim().ToLowerInvariant();
 
         if (role == "doctor")
         {
@@ -170,16 +169,16 @@
     }
 
     .sidebar {
-    width: 250px;
-    background: #2c3e50;
-    color: white;
-    display: flex;
-    flex-direction: column;
-    padding: 20px;
-    position: relative;
-    height: 100vh;
-    overflow: hidden;              /* ✅ prevents weird overflow */
-}
+        width: 250px;
+        background: #2c3e50;
+        color: white;
+        display: flex;
+        flex-direction: column;
+        padding: 20px;
+        position: relative;
+        height: 100vh;
+        overflow: hidden;
+    }
 
     .profile-section {
         text-align: center;
@@ -199,15 +198,15 @@
         color: #ddd;
     }
 
-   .sidebar-nav {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    margin-top: 20px;
-    flex: 1;                       /* ✅ take remaining space */
-    overflow-y: auto;              /* ✅ scroll if too many items */
-    padding-bottom: 12px;
-}
+    .sidebar-nav {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-top: 20px;
+        flex: 1;
+        overflow-y: auto;
+        padding-bottom: 12px;
+    }
 
     .side-btn {
         background: transparent;
@@ -229,7 +228,10 @@
     }
 
     .bottom-section {
-        margin-top: auto;
+        margin-top: 0;
+        padding-top: 12px;
+        border-top: 1px solid rgba(255,255,255,0.15);
+        background: #2c3e50;
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -310,11 +312,4 @@
         padding: 20px;
         overflow-y: auto;
     }
-
-    .bottom-section {
-    margin-top: 0;                 /* ✅ no need for auto now */
-    padding-top: 12px;
-    border-top: 1px solid rgba(255,255,255,0.15);
-    background: #2c3e50;           /* ✅ avoids “floating” look */
-}
 </style>

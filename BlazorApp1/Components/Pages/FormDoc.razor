@@ -1,7 +1,6 @@
 ﻿@page "/form/{ClientId}"
 
 @using System.ComponentModel.DataAnnotations
-@using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Forms
 @using System.Net.Http.Json
 @using Model
@@ -9,7 +8,7 @@
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 @inject IDService DoctorService
-@inject HttpClient Http
+@inject IHttpClientFactory HttpFactory
 
 <div class="auth-container">
     <div class="auth-left">
@@ -57,8 +56,8 @@
                     <div class="form-group">
                         <label>Phone Number</label>
 
-                        <div style="display:flex; gap:10px;">
-                            <select class="form-input" style="max-width:140px;" @onchange="OnCountryChange">
+                        <div class="phone-row">
+                            <select class="form-input country" @onchange="OnCountryChange">
                                 @foreach (var c in Countries)
                                 {
                                     <option value="@c.DialCode" selected="@(c.DialCode == selectedCountry.DialCode)">
@@ -67,10 +66,10 @@
                                 }
                             </select>
 
-                            <InputText class="form-input"
-                                       @bind-Value="phoneDigits"
-                                       placeholder="Digits only"
-                                       @oninput="OnPhoneInput" />
+                            <InputText class="form-input phone"
+                                       value="@phoneDigits"
+                                       @oninput="OnPhoneInput"
+                                       placeholder="Digits only" />
                         </div>
 
                         <small class="text-muted">
@@ -86,8 +85,7 @@
                     <!-- ✅ OTP FLOW -->
                     <div class="form-group">
                         <button type="button"
-                                class="btn-next"
-                                style="background:#111827;"
+                                class="btn-next dark"
                                 @onclick="SendOtp"
                                 disabled="@otpSending">
                             @(otpSending ? "Sending..." : "Send OTP")
@@ -102,8 +100,7 @@
                         </div>
 
                         <button type="button"
-                                class="btn-next"
-                                style="background:#0ea5e9;"
+                                class="btn-next sky"
                                 @onclick="VerifyOtp"
                                 disabled="@otpVerifying">
                             @(otpVerifying ? "Verifying..." : "Verify OTP")
@@ -145,6 +142,7 @@
                         <label>Years of Experience</label>
                         <InputNumber class="form-input" @bind-Value="doctor.ExperienceYears" />
                         <ValidationMessage For="@(() => doctor.ExperienceYears)" />
+
                         @if (!string.IsNullOrWhiteSpace(experienceError))
                         {
                             <div class="validation-message">@experienceError</div>
@@ -164,10 +162,7 @@
                     </div>
 
                     <div style="display:flex; gap:10px;">
-                        <button type="button" class="btn-next" style="background:#6b7280;" @onclick="BackToStep1">
-                            Back
-                        </button>
-
+                        <button type="button" class="btn-next gray" @onclick="BackToStep1">Back</button>
                         <button type="submit" class="btn-submit">Submit</button>
                     </div>
                 </EditForm>
@@ -177,8 +172,7 @@
 </div>
 
 @code {
-    [Parameter]
-    public string? ClientId { get; set; }
+    [Parameter] public string? ClientId { get; set; }
 
     private int step = 1;
     private Doctor doctor = new();
@@ -211,12 +205,13 @@
     private string otpCode = "";
     private string? otpMessage;
 
+    // ✅ Use API named client so it goes to backend
+    private HttpClient Api => HttpFactory.CreateClient("Api");
+
     protected override void OnInitialized()
     {
         if (!string.IsNullOrEmpty(ClientId))
-        {
             doctor.ClientId = ClientId;
-        }
     }
 
     private void OnCountryChange(ChangeEventArgs e)
@@ -235,6 +230,7 @@
         var raw = e.Value?.ToString() ?? "";
         phoneDigits = new string(raw.Where(char.IsDigit).ToArray());
         ValidatePhone();
+        StateHasChanged();
     }
 
     private bool ValidatePhone()
@@ -261,7 +257,6 @@
         doctor.Phone = $"{selectedCountry.DialCode}{phoneDigits}";
     }
 
-    // ✅ OTP calls (backend later)
     private async Task SendOtp()
     {
         errorMessage = null;
@@ -278,11 +273,15 @@
             otpSending = true;
 
             var phone = $"{selectedCountry.DialCode}{phoneDigits}";
-            var resp = await Http.PostAsJsonAsync("api/otp/send", new { phone });
+
+            // ✅ this now hits backend API BaseAddress
+            var resp = await Api.PostAsJsonAsync("api/otp/send", new { phone });
+
+            var body = await resp.Content.ReadAsStringAsync();
 
             if (!resp.IsSuccessStatusCode)
             {
-                otpMessage = await resp.Content.ReadAsStringAsync();
+                otpMessage = string.IsNullOrWhiteSpace(body) ? "Failed to send OTP." : body;
                 return;
             }
 
@@ -314,11 +313,13 @@
             otpVerifying = true;
 
             var phone = $"{selectedCountry.DialCode}{phoneDigits}";
-            var resp = await Http.PostAsJsonAsync("api/otp/verify", new { phone, code = otpCode });
+            var resp = await Api.PostAsJsonAsync("api/otp/verify", new { phone, code = otpCode });
+
+            var body = await resp.Content.ReadAsStringAsync();
 
             if (!resp.IsSuccessStatusCode)
             {
-                otpMessage = await resp.Content.ReadAsStringAsync();
+                otpMessage = string.IsNullOrWhiteSpace(body) ? "OTP verification failed." : body;
                 return;
             }
 
@@ -366,23 +367,9 @@
     {
         experienceError = null;
 
-        if (doctor.Age <= 0)
-        {
-            experienceError = "Age must be greater than 0.";
-            return false;
-        }
-
-        if (doctor.ExperienceYears < 0)
-        {
-            experienceError = "Experience cannot be negative.";
-            return false;
-        }
-
-        if (doctor.ExperienceYears > doctor.Age)
-        {
-            experienceError = "Experience years cannot be greater than age.";
-            return false;
-        }
+        if (doctor.Age <= 0) { experienceError = "Age must be greater than 0."; return false; }
+        if (doctor.ExperienceYears < 0) { experienceError = "Experience cannot be negative."; return false; }
+        if (doctor.ExperienceYears > doctor.Age) { experienceError = "Experience years cannot be greater than age."; return false; }
 
         var maxPossible = Math.Max(0, doctor.Age - 18);
         if (doctor.ExperienceYears > maxPossible)
@@ -398,7 +385,6 @@
     {
         errorMessage = null;
 
-        // Ensure phone is saved correctly
         ApplyPhoneToDoctor();
 
         if (!ValidateExperience())
@@ -409,13 +395,11 @@
 
         await DoctorService.AddDoctorAsync(doctor);
 
-        // Store doctorId (your existing logic)
         if (!string.IsNullOrEmpty(doctor.ClientId))
-        {
             await JS.InvokeVoidAsync("localStorage.setItem", "doctorId", doctor.ClientId);
-        }
 
-        Navigation.NavigateTo("/dashboard?submitted=true");
+        // ✅ go to verification upload
+        Navigation.NavigateTo("/doctor/verification", true);
     }
 }
 
@@ -424,15 +408,15 @@
     .auth-container {
         display: flex;
         justify-content: center;
-        align-items: center;
+        align-items: stretch;
         max-width: 1000px;
         margin: 40px auto;
         height: 80vh;
         border-radius: 20px;
-        overflow: hidden;
         background: #4a47a3;
         color: white;
         box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+        overflow: hidden;
     }
 
     .auth-left {
@@ -442,39 +426,30 @@
         padding: 40px;
     }
 
-    .auth-left h1 {
-        font-size: 26px;
-        margin-bottom: 12px;
-    }
-
-    .auth-left p {
-        font-size: 16px;
-        color: #ddd;
-    }
-
     .auth-right {
         flex: 1;
         display: flex;
         justify-content: center;
-        align-items: center;
+        align-items: flex-start;
+        overflow-y: auto;
+        padding: 20px 0;
     }
 
     /* White form card */
     .auth-card {
         background: #fff;
         color: #333;
-        padding: 40px;
+        padding: 32px;
         border-radius: 15px;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         width: 100%;
-        max-width: 440px;
+        max-width: 460px;
         text-align: left;
+        max-height: calc(80vh - 40px);
+        overflow-y: auto;
     }
 
-    /* Form groups */
-    .form-group {
-        margin-bottom: 18px;
-    }
+    .form-group { margin-bottom: 18px; }
 
     .form-group label {
         font-weight: bold;
@@ -483,7 +458,6 @@
         font-size: 14px;
     }
 
-    /* Inputs */
     .form-input {
         width: 100%;
         padding: 12px 14px;
@@ -499,7 +473,10 @@
         box-shadow: 0 0 5px rgba(63,61,166,0.4);
     }
 
-    /* Validation messages */
+    .phone-row { display: flex; gap: 10px; }
+    .country { max-width: 170px; }
+    .phone { flex: 1; }
+
     .validation-message {
         font-size: 13px;
         color: #e50000;
@@ -508,7 +485,6 @@
         font-weight: 700;
     }
 
-    /* Buttons */
     .btn-next, .btn-submit {
         width: 100%;
         padding: 12px;
@@ -521,26 +497,14 @@
         transition: 0.2s ease-in-out;
     }
 
-    .btn-next {
-        background: #3f3da6;
-        color: white;
-    }
+    .btn-next { background: #3f3da6; color: white; }
+    .btn-next:hover { background: #2f2b8f; }
+    .btn-next:disabled { opacity: 0.6; cursor: not-allowed; }
 
-    .btn-next:hover {
-        background: #2f2b8f;
-    }
+    .btn-next.dark { background: #111827; }
+    .btn-next.sky { background: #0ea5e9; }
+    .btn-next.gray { background: #6b7280; }
 
-    .btn-next:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-    }
-
-    .btn-submit {
-        background: #28a745;
-        color: white;
-    }
-
-    .btn-submit:hover {
-        background: #218838;
-    }
+    .btn-submit { background: #28a745; color: white; }
+    .btn-submit:hover { background: #218838; }
 </style>
