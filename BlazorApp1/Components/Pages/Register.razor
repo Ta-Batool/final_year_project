@@ -9,69 +9,159 @@
         <div class="auth-card">
             <h2 class="role-title">Choose your role</h2>
 
-            <div class="choice-container">
-                <button class="choice-btn doctor" @onclick="GoToDoc">
-                    <div class="icon"></div>
-                    <span>Doctor</span>
-                </button>
+            @if (!string.IsNullOrWhiteSpace(error))
+            {
+                <div class="alert alert-danger" style="margin-bottom:14px;">
+                    @error
+                </div>
+            }
 
-                <button class="choice-btn patient" @onclick="GoToUser">
-                    <div class="icon"></div>
-                    <span>Patient</span>
-                </button>
-            </div>
+            @if (isLoading)
+            {
+                <p style="color:white;">Loading your profile...</p>
+            }
+            else
+            {
+                <div class="choice-container">
+                    <button type="button" class="choice-btn doctor"
+                            disabled="@isSaving"
+                            @onclick="GoToDoc">
+                        <span>@(isSaving ? "Please wait..." : "Doctor")</span>
+                    </button>
+
+                    <button type="button" class="choice-btn patient"
+                            disabled="@isSaving"
+                            @onclick="GoToUser">
+                        <span>@(isSaving ? "Please wait..." : "Patient")</span>
+                    </button>
+                </div>
+            }
         </div>
     </div>
 </div>
 
 @code {
-    private Client CurrentClient = new Client();
+    private Client CurrentClient = new();
+    private bool isLoading = true;
+    private bool isSaving = false;
+    private string? error;
 
     protected override async Task OnInitializedAsync()
     {
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        var user = authState.User;
+        isLoading = true;
+        error = null;
 
-        if (user.Identity != null && user.Identity.IsAuthenticated)
+        try
         {
-            var email = user.FindFirst(c => c.Type.Contains("email"))?.Value ?? "";
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
 
-            if (!string.IsNullOrEmpty(email))
+            if (!(user.Identity?.IsAuthenticated ?? false))
             {
-                // ✅ Load client from DB
-                CurrentClient = await ClientServices.GetClientByEmailAsync(email) ?? new Client { Email = email };
+                Navigation.NavigateTo("/login-google", true);
+                return;
             }
+
+            var email = user.FindFirst(c => c.Type.Contains("email"))?.Value?.Trim().ToLowerInvariant();
+
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                error = "No email found in your Google account.";
+                return;
+            }
+
+            // ✅ Ensure Client exists (important!)
+            var client = await ClientServices.GetClientByEmailAsync(email);
+
+            if (client is null)
+            {
+                // If your CService has AddClientAsync, use it.
+                // If not, remove this block and ensure google-callback ALWAYS creates client.
+                try
+                {
+                    await ClientServices.AddClientAsync(new Client
+                    {
+                        Email = email,
+                        Name = user.FindFirst("name")?.Value ?? "",
+                        Role = null
+                    });
+
+                    client = await ClientServices.GetClientByEmailAsync(email);
+                }
+                catch
+                {
+                    // If AddClientAsync doesn't exist in your service, you’ll see this.
+                    // Then rely on GoogleCallback to create the Client.
+                }
+            }
+
+            CurrentClient = client ?? new Client { Email = email };
+        }
+        catch (Exception ex)
+        {
+            error = $"Failed to load register page: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
         }
     }
 
     private async Task GoToDoc()
     {
-        await SetRole("Doctor");
-        Navigation.NavigateTo($"/form/{CurrentClient.Id}");
-
+        await ChooseRoleAndNavigate("Doctor");
     }
 
     private async Task GoToUser()
     {
-        await SetRole("Patient");
-        Navigation.NavigateTo($"/formuser/{CurrentClient.Id}");
+        await ChooseRoleAndNavigate("Patient");
     }
 
-    private async Task SetRole(string role)
+    private async Task ChooseRoleAndNavigate(string role)
     {
+        error = null;
+
+        if (string.IsNullOrWhiteSpace(CurrentClient.Email))
+        {
+            error = "Client email missing. Please login again.";
+            return;
+        }
+
         try
         {
+            isSaving = true;
+
+            // ✅ Save role
             CurrentClient.Role = role;
             await ClientServices.UpdateClientByEmailAsync(CurrentClient.Email, CurrentClient);
+
+            // ✅ Re-fetch so we definitely have Id
+            var updated = await ClientServices.GetClientByEmailAsync(CurrentClient.Email);
+            if (updated != null)
+                CurrentClient = updated;
+
+            if (string.IsNullOrWhiteSpace(CurrentClient.Id))
+            {
+                error = "Client ID not found after saving role. Please refresh and try again.";
+                return;
+            }
+
+            // ✅ Now navigate safely
+            if (role.Equals("Doctor", StringComparison.OrdinalIgnoreCase))
+                Navigation.NavigateTo($"/form/{CurrentClient.Id}", true);
+            else
+                Navigation.NavigateTo($"/formuser/{CurrentClient.Id}", true);
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Error setting role: {ex.Message}");
+            error = $"Error setting role: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
         }
     }
-
 }
-
 
 <style>
     .auth-container {
@@ -79,7 +169,7 @@
         align-items: center;
         justify-content: center;
         height: 100vh;
-        background-color: #705ebe; /* light background */
+        background-color: #705ebe;
     }
 
     .auth-right {
@@ -89,7 +179,7 @@
     }
 
     .auth-card {
-        background-color: #b1b1b1; /* blue card */
+        background-color: #b1b1b1;
         padding: 40px;
         border-radius: 15px;
         box-shadow: 0px 4px 20px rgba(0,0,0,0.2);
@@ -126,12 +216,14 @@
         transition: transform 0.2s ease, background-color 0.2s ease;
     }
 
-        .choice-btn:hover {
-            transform: scale(1.08);
-            background-color: #f0f0f0;
-        }
+    .choice-btn:hover {
+        transform: scale(1.08);
+        background-color: #f0f0f0;
+    }
 
-    .icon {
-        font-size: 1.4rem;
+    .choice-btn:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+        transform: none;
     }
 </style>
