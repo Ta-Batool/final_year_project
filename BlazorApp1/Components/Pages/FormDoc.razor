@@ -56,15 +56,17 @@
                         <label>Phone Number</label>
 
                         <div class="phone-row">
-                            <!-- ✅ FIXED: lowercase bind-value syntax -->
-                            <select class="form-input country"
-                                    @bind-value="selectedDialCode"
-                                    @bind-value:event="onchange">
+
+                            <!-- ✅ FIX: Use InputSelect instead of raw <select> -->
+                            <InputSelect class="form-input country"
+                                         Value="selectedDialCode"
+                                         ValueChanged="OnDialCodeChanged"
+                                         ValueExpression="(()=> selectedDialCode)">
                                 @foreach (var c in Countries)
                                 {
                                     <option value="@c.DialCode">@c.Name (@c.DialCode)</option>
                                 }
-                            </select>
+                            </InputSelect>
 
                             <InputText class="form-input phone"
                                        @bind-Value="PhoneDigits"
@@ -179,6 +181,14 @@
     {
         if (!string.IsNullOrEmpty(ClientId))
             doctor.ClientId = ClientId;
+    }
+
+    // ✅ Strongly typed change handler (NO ChangeEventArgs issue)
+    private Task OnDialCodeChanged(string newValue)
+    {
+        selectedDialCode = newValue;
+        ValidatePhone();
+        return Task.CompletedTask;
     }
 
     private bool ValidatePhone()
