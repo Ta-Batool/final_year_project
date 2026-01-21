@@ -56,10 +56,10 @@
                         <label>Phone Number</label>
 
                         <div class="phone-row">
-                            <!-- ✅ FIX: use @bind-Value for normal <select> -->
+                            <!-- ✅ FIXED: lowercase bind-value syntax -->
                             <select class="form-input country"
-                                    @bind-Value="selectedDialCode"
-                                    @onchange="OnCountryChanged">
+                                    @bind-value="selectedDialCode"
+                                    @bind-value:event="onchange">
                                 @foreach (var c in Countries)
                                 {
                                     <option value="@c.DialCode">@c.Name (@c.DialCode)</option>
@@ -181,13 +181,6 @@
             doctor.ClientId = ClientId;
     }
 
-    // ✅ Trigger validation when country changes
-    private void OnCountryChanged(ChangeEventArgs e)
-    {
-        selectedDialCode = e.Value?.ToString() ?? Countries[0].DialCode;
-        ValidatePhone();
-    }
-
     private bool ValidatePhone()
     {
         phoneError = null;
@@ -273,10 +266,7 @@
 }
 
 <style>
-    html, body {
-        height: 100%;
-        overflow: hidden;
-    }
+    html, body { height: 100%; overflow: hidden; }
 
     .auth-container {
         display: flex;
@@ -294,13 +284,7 @@
         box-sizing: border-box;
     }
 
-    .auth-left {
-        flex: 1;
-        color: white;
-        text-align: center;
-        padding: 40px;
-        box-sizing: border-box;
-    }
+    .auth-left { flex: 1; text-align: center; padding: 40px; box-sizing: border-box; }
 
     .auth-right {
         flex: 1;
@@ -321,20 +305,13 @@
         width: 100%;
         max-width: 460px;
         text-align: left;
-
         max-height: calc(100vh - 140px);
         overflow-y: auto;
         box-sizing: border-box;
     }
 
     .form-group { margin-bottom: 18px; }
-
-    .form-group label {
-        font-weight: bold;
-        display: block;
-        margin-bottom: 6px;
-        font-size: 14px;
-    }
+    .form-group label { font-weight: bold; display: block; margin-bottom: 6px; font-size: 14px; }
 
     .form-input {
         width: 100%;
@@ -346,22 +323,13 @@
         box-sizing: border-box;
     }
 
-    .form-input:focus {
-        border-color: #3f3da6;
-        box-shadow: 0 0 5px rgba(63,61,166,0.4);
-    }
+    .form-input:focus { border-color: #3f3da6; box-shadow: 0 0 5px rgba(63,61,166,0.4); }
 
     .phone-row { display: flex; gap: 10px; }
     .country { max-width: 170px; }
     .phone { flex: 1; }
 
-    .validation-message {
-        font-size: 13px;
-        color: #e50000;
-        margin-top: 6px;
-        display: block;
-        font-weight: 700;
-    }
+    .validation-message { font-size: 13px; color: #e50000; margin-top: 6px; font-weight: 700; }
 
     .btn-next, .btn-submit {
         width: 100%;
@@ -377,20 +345,13 @@
 
     .btn-next { background: #3f3da6; color: white; }
     .btn-next:hover { background: #2f2b8f; }
-    .btn-next:disabled { opacity: 0.6; cursor: not-allowed; }
-
     .btn-next.gray { background: #6b7280; }
 
     .btn-submit { background: #28a745; color: white; }
     .btn-submit:hover { background: #218838; }
 
-    /* ✅ Razor fix */
     @@media (max-width: 900px) {
-        .auth-container {
-            flex-direction: column;
-            border-radius: 0;
-            padding: 20px 0;
-        }
+        .auth-container { flex-direction: column; border-radius: 0; padding: 20px 0; }
         .auth-left { padding: 20px; }
         .auth-card { max-height: calc(100vh - 220px); }
     }
