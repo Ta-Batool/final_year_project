@@ -57,23 +57,25 @@
                         <label>Phone Number</label>
 
                         <div class="phone-row">
-                            <select class="form-input country" @onchange="OnCountryChange">
+                            <!-- ✅ Use @bind, not manual selected -->
+                            <select class="form-input country"
+                                    @bind="selectedDialCode"
+                                    @bind:event="onchange">
                                 @foreach (var c in Countries)
                                 {
-                                    <option value="@c.DialCode" selected="@(c.DialCode == selectedCountry.DialCode)">
-                                        @c.Name (@c.DialCode)
-                                    </option>
+                                    <option value="@c.DialCode">@c.Name (@c.DialCode)</option>
                                 }
                             </select>
 
+                            <!-- ✅ SSR-safe binding (no value= / no @oninput) -->
                             <InputText class="form-input phone"
-                                       value="@phoneDigits"
-                                       @oninput="OnPhoneInput"
+                                       @bind-Value="PhoneDigits"
+                                       @bind-Value:event="oninput"
                                        placeholder="Digits only" />
                         </div>
 
                         <small class="text-muted">
-                            Required digits: @selectedCountry.MinDigits - @selectedCountry.MaxDigits
+                            Required digits: @SelectedCountry.MinDigits - @SelectedCountry.MaxDigits
                         </small>
 
                         @if (!string.IsNullOrWhiteSpace(phoneError))
@@ -193,8 +195,27 @@
         new("India", "+91", 10, 10),
     };
 
-    private CountryOption selectedCountry = Countries[0];
+    // ✅ bind this in <select>
+    private string selectedDialCode = Countries[0].DialCode;
+
+    // ✅ derived selected country (always consistent)
+    private CountryOption SelectedCountry =>
+        Countries.First(x => x.DialCode == selectedDialCode);
+
+    // ✅ raw digits stored here
     private string phoneDigits = "";
+
+    // ✅ SSR-safe: sanitize digits here instead of @oninput handler
+    private string PhoneDigits
+    {
+        get => phoneDigits;
+        set
+        {
+            var raw = value ?? "";
+            phoneDigits = new string(raw.Where(char.IsDigit).ToArray());
+            ValidatePhone();
+        }
+    }
 
     // ✅ OTP State
     private bool otpSending = false;
@@ -214,25 +235,6 @@
             doctor.ClientId = ClientId;
     }
 
-    private void OnCountryChange(ChangeEventArgs e)
-    {
-        var dial = e.Value?.ToString();
-        var found = Countries.FirstOrDefault(x => x.DialCode == dial);
-        if (found is not null)
-        {
-            selectedCountry = found;
-            ValidatePhone();
-        }
-    }
-
-    private void OnPhoneInput(ChangeEventArgs e)
-    {
-        var raw = e.Value?.ToString() ?? "";
-        phoneDigits = new string(raw.Where(char.IsDigit).ToArray());
-        ValidatePhone();
-        StateHasChanged();
-    }
-
     private bool ValidatePhone()
     {
         phoneError = null;
@@ -243,9 +245,9 @@
             return false;
         }
 
-        if (phoneDigits.Length < selectedCountry.MinDigits || phoneDigits.Length > selectedCountry.MaxDigits)
+        if (phoneDigits.Length < SelectedCountry.MinDigits || phoneDigits.Length > SelectedCountry.MaxDigits)
         {
-            phoneError = $"Phone must be {selectedCountry.MinDigits} digits for {selectedCountry.Name}.";
+            phoneError = $"Phone must be {SelectedCountry.MinDigits} digits for {SelectedCountry.Name}.";
             return false;
         }
 
@@ -254,7 +256,7 @@
 
     private void ApplyPhoneToDoctor()
     {
-        doctor.Phone = $"{selectedCountry.DialCode}{phoneDigits}";
+        doctor.Phone = $"{SelectedCountry.DialCode}{phoneDigits}";
     }
 
     private async Task SendOtp()
@@ -272,11 +274,10 @@
         {
             otpSending = true;
 
-            var phone = $"{selectedCountry.DialCode}{phoneDigits}";
+            var phone = $"{SelectedCountry.DialCode}{phoneDigits}";
 
             // ✅ this now hits backend API BaseAddress
             var resp = await Api.PostAsJsonAsync("api/otp/send", new { phone });
-
             var body = await resp.Content.ReadAsStringAsync();
 
             if (!resp.IsSuccessStatusCode)
@@ -312,9 +313,8 @@
         {
             otpVerifying = true;
 
-            var phone = $"{selectedCountry.DialCode}{phoneDigits}";
+            var phone = $"{SelectedCountry.DialCode}{phoneDigits}";
             var resp = await Api.PostAsJsonAsync("api/otp/verify", new { phone, code = otpCode });
-
             var body = await resp.Content.ReadAsStringAsync();
 
             if (!resp.IsSuccessStatusCode)
