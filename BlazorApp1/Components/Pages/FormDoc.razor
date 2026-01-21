@@ -1,12 +1,10 @@
-﻿@page "/form/{ClientId}"
-
+﻿@page "/form/{ClientId}"    
 @using System.ComponentModel.DataAnnotations
-@using Microsoft.AspNetCore.Components.Forms
-@using Model
-
 @inject NavigationManager Navigation
+
 @inject IJSRuntime JS
 @inject IDService DoctorService
+@using Model
 
 <div class="auth-container">
     <div class="auth-left">
@@ -16,17 +14,10 @@
 
     <div class="auth-right">
         <div class="auth-card">
-
-            @if (!string.IsNullOrWhiteSpace(errorMessage))
-            {
-                <div class="alert alert-danger">@errorMessage</div>
-            }
-
             @if (step == 1)
             {
                 <EditForm Model="@doctor" OnValidSubmit="@GoToProfessional">
                     <DataAnnotationsValidator />
-                    <ValidationSummary />
 
                     <div class="form-group">
                         <label>Full Name</label>
@@ -51,37 +42,10 @@
                         <ValidationMessage For="@(() => doctor.Age)" />
                     </div>
 
-                    <!-- ✅ Phone + Country Code -->
                     <div class="form-group">
                         <label>Phone Number</label>
-
-                        <div class="phone-row">
-
-                            <!-- ✅ FIX: Use InputSelect instead of raw <select> -->
-                            <InputSelect class="form-input country"
-                                         Value="selectedDialCode"
-                                         ValueChanged="OnDialCodeChanged"
-                                         ValueExpression="(()=> selectedDialCode)">
-                                @foreach (var c in Countries)
-                                {
-                                    <option value="@c.DialCode">@c.Name (@c.DialCode)</option>
-                                }
-                            </InputSelect>
-
-                            <InputText class="form-input phone"
-                                       @bind-Value="PhoneDigits"
-                                       @bind-Value:event="oninput"
-                                       placeholder="Digits only" />
-                        </div>
-
-                        <small class="text-muted">
-                            Required digits: @SelectedCountry.MinDigits - @SelectedCountry.MaxDigits
-                        </small>
-
-                        @if (!string.IsNullOrWhiteSpace(phoneError))
-                        {
-                            <div class="validation-message">@phoneError</div>
-                        }
+                        <InputText class="form-input" @bind-Value="doctor.Phone" placeholder="Enter phone number" />
+                        <ValidationMessage For="@(() => doctor.Phone)" />
                     </div>
 
                     <div class="form-group">
@@ -97,7 +61,6 @@
             {
                 <EditForm Model="@doctor" OnValidSubmit="@HandleSubmit">
                     <DataAnnotationsValidator />
-                    <ValidationSummary />
 
                     <div class="form-group">
                         <label>Specialization</label>
@@ -109,17 +72,6 @@
                         <label>Years of Experience</label>
                         <InputNumber class="form-input" @bind-Value="doctor.ExperienceYears" />
                         <ValidationMessage For="@(() => doctor.ExperienceYears)" />
-
-                        @if (!string.IsNullOrWhiteSpace(experienceError))
-                        {
-                            <div class="validation-message">@experienceError</div>
-                        }
-                        else if (doctor.Age > 0)
-                        {
-                            <small class="text-muted">
-                                Tip: Maximum realistic experience for age @doctor.Age is @Math.Max(0, doctor.Age - 18).
-                            </small>
-                        }
                     </div>
 
                     <div class="form-group">
@@ -128,10 +80,7 @@
                         <ValidationMessage For="@(() => doctor.PMDCNumber)" />
                     </div>
 
-                    <div style="display:flex; gap:10px;">
-                        <button type="button" class="btn-next gray" @onclick="BackToStep1">Back</button>
-                        <button type="submit" class="btn-submit">Submit</button>
-                    </div>
+                    <button type="submit" class="btn-submit">Submit</button>
                 </EditForm>
             }
         </div>
@@ -139,190 +88,106 @@
 </div>
 
 @code {
-    [Parameter] public string? ClientId { get; set; }
+    [Parameter]
+    public string? ClientId { get; set; }  // comes from URL
 
     private int step = 1;
     private Doctor doctor = new();
 
-    private string? errorMessage;
-    private string? phoneError;
-    private string? experienceError;
-
-    private record CountryOption(string Name, string DialCode, int MinDigits, int MaxDigits);
-
-    private static readonly List<CountryOption> Countries = new()
-    {
-        new("Pakistan", "+92", 10, 10),
-        new("UAE", "+971", 9, 9),
-        new("USA", "+1", 10, 10),
-        new("UK", "+44", 10, 10),
-        new("India", "+91", 10, 10),
-    };
-
-    private string selectedDialCode = Countries[0].DialCode;
-
-    private CountryOption SelectedCountry =>
-        Countries.First(x => x.DialCode == selectedDialCode);
-
-    private string phoneDigits = "";
-
-    private string PhoneDigits
-    {
-        get => phoneDigits;
-        set
-        {
-            var raw = value ?? "";
-            phoneDigits = new string(raw.Where(char.IsDigit).ToArray());
-            ValidatePhone();
-        }
-    }
-
     protected override void OnInitialized()
     {
         if (!string.IsNullOrEmpty(ClientId))
+        {
             doctor.ClientId = ClientId;
-    }
-
-    // ✅ Strongly typed change handler (NO ChangeEventArgs issue)
-    private Task OnDialCodeChanged(string newValue)
-    {
-        selectedDialCode = newValue;
-        ValidatePhone();
-        return Task.CompletedTask;
-    }
-
-    private bool ValidatePhone()
-    {
-        phoneError = null;
-
-        if (string.IsNullOrWhiteSpace(phoneDigits))
-        {
-            phoneError = "Phone number is required.";
-            return false;
+            Console.WriteLine($"✅ Client ID set: {doctor.ClientId}");
         }
-
-        if (phoneDigits.Length < SelectedCountry.MinDigits || phoneDigits.Length > SelectedCountry.MaxDigits)
+        else
         {
-            phoneError = $"Phone must be {SelectedCountry.MinDigits} digits for {SelectedCountry.Name}.";
-            return false;
+            Console.WriteLine("⚠️ ClientId not found in URL!");
         }
-
-        return true;
     }
 
-    private void ApplyPhoneToDoctor()
-    {
-        doctor.Phone = $"{SelectedCountry.DialCode}{phoneDigits}";
-    }
-
-    private void BackToStep1()
-    {
-        errorMessage = null;
-        experienceError = null;
-        step = 1;
-    }
-
-    private void GoToProfessional()
-    {
-        errorMessage = null;
-
-        if (!ValidatePhone())
-        {
-            errorMessage = "Please correct phone number before continuing.";
-            return;
-        }
-
-        ApplyPhoneToDoctor();
-        step = 2;
-    }
-
-    private bool ValidateExperience()
-    {
-        experienceError = null;
-
-        if (doctor.Age <= 0) { experienceError = "Age must be greater than 0."; return false; }
-        if (doctor.ExperienceYears < 0) { experienceError = "Experience cannot be negative."; return false; }
-        if (doctor.ExperienceYears > doctor.Age) { experienceError = "Experience years cannot be greater than age."; return false; }
-
-        var maxPossible = Math.Max(0, doctor.Age - 18);
-        if (doctor.ExperienceYears > maxPossible)
-        {
-            experienceError = $"Experience is too high. Maximum allowed for age {doctor.Age} is {maxPossible}.";
-            return false;
-        }
-
-        return true;
-    }
+    private void GoToProfessional() => step = 2;
 
     private async Task HandleSubmit()
     {
-        errorMessage = null;
-
-        ApplyPhoneToDoctor();
-
-        if (!ValidateExperience())
-        {
-            errorMessage = "Please fix experience validation.";
-            return;
-        }
-
         await DoctorService.AddDoctorAsync(doctor);
 
+        // ⭐ store doctorId for chat/messages
         if (!string.IsNullOrEmpty(doctor.ClientId))
+        {
             await JS.InvokeVoidAsync("localStorage.setItem", "doctorId", doctor.ClientId);
+        }
 
-        Navigation.NavigateTo("/doctor/verification", true);
+        Navigation.NavigateTo("/dashboard?submitted=true");
     }
 }
 
 <style>
-    html, body { height: 100%; overflow: hidden; }
-
+    /* Container */
     .auth-container {
         display: flex;
         justify-content: center;
-        align-items: stretch;
+        align-items: center;
         max-width: 1000px;
-        margin: 0 auto;
-        height: 100vh;
+        margin: 40px auto;
+        height: 80vh;
         border-radius: 20px;
+        overflow: hidden;
         background: #4a47a3;
         color: white;
         box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
-        overflow: hidden;
-        padding: 40px 0;
-        box-sizing: border-box;
     }
 
-    .auth-left { flex: 1; text-align: center; padding: 40px; box-sizing: border-box; }
+    .auth-left {
+        flex: 1;
+        color: white;
+        text-align: center;
+        padding: 40px;
+    }
+
+        .auth-left h1 {
+            font-size: 26px;
+            margin-bottom: 12px;
+        }
+
+        .auth-left p {
+            font-size: 16px;
+            color: #ddd;
+        }
 
     .auth-right {
         flex: 1;
         display: flex;
         justify-content: center;
-        align-items: flex-start;
-        overflow: hidden;
-        padding: 0;
-        box-sizing: border-box;
+        align-items: center;
     }
 
+    /* White form card */
     .auth-card {
         background: #fff;
         color: #333;
-        padding: 32px;
+        padding: 40px;
         border-radius: 15px;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         width: 100%;
-        max-width: 460px;
+        max-width: 420px; /* slightly wider */
         text-align: left;
-        max-height: calc(100vh - 140px);
-        overflow-y: auto;
-        box-sizing: border-box;
     }
 
-    .form-group { margin-bottom: 18px; }
-    .form-group label { font-weight: bold; display: block; margin-bottom: 6px; font-size: 14px; }
+    /* Form groups */
+    .form-group {
+        margin-bottom: 18px;
+    }
 
+        .form-group label {
+            font-weight: bold;
+            display: block;
+            margin-bottom: 6px;
+            font-size: 14px;
+        }
+
+    /* Inputs */
     .form-input {
         width: 100%;
         padding: 12px 14px;
@@ -333,14 +198,20 @@
         box-sizing: border-box;
     }
 
-    .form-input:focus { border-color: #3f3da6; box-shadow: 0 0 5px rgba(63,61,166,0.4); }
+        .form-input:focus {
+            border-color: #3f3da6;
+            box-shadow: 0 0 5px rgba(63,61,166,0.4);
+        }
 
-    .phone-row { display: flex; gap: 10px; }
-    .country { max-width: 170px; }
-    .phone { flex: 1; }
+    /* Validation messages */
+    .validation-message {
+        font-size: 13px;
+        color: #e50000;
+        margin-top: 4px;
+        display: block;
+    }
 
-    .validation-message { font-size: 13px; color: #e50000; margin-top: 6px; font-weight: 700; }
-
+    /* Buttons */
     .btn-next, .btn-submit {
         width: 100%;
         padding: 12px;
@@ -353,16 +224,21 @@
         transition: 0.2s ease-in-out;
     }
 
-    .btn-next { background: #3f3da6; color: white; }
-    .btn-next:hover { background: #2f2b8f; }
-    .btn-next.gray { background: #6b7280; }
-
-    .btn-submit { background: #28a745; color: white; }
-    .btn-submit:hover { background: #218838; }
-
-    @@media (max-width: 900px) {
-        .auth-container { flex-direction: column; border-radius: 0; padding: 20px 0; }
-        .auth-left { padding: 20px; }
-        .auth-card { max-height: calc(100vh - 220px); }
+    .btn-next {
+        background: #3f3da6;
+        color: white;
     }
+
+        .btn-next:hover {
+            background: #2f2b8f;
+        }
+
+    .btn-submit {
+        background: #28a745;
+        color: white;
+    }
+
+        .btn-submit:hover {
+            background: #218838;
+        }
 </style>
