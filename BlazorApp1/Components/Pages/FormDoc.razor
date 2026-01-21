@@ -26,6 +26,7 @@
             {
                 <EditForm Model="@doctor" OnValidSubmit="@GoToProfessional">
                     <DataAnnotationsValidator />
+                    <ValidationSummary />
 
                     <div class="form-group">
                         <label>Full Name</label>
@@ -55,9 +56,10 @@
                         <label>Phone Number</label>
 
                         <div class="phone-row">
+                            <!-- ✅ FIX: use @bind-Value for normal <select> -->
                             <select class="form-input country"
-                                    @bind="selectedDialCode"
-                                    @bind:event="onchange">
+                                    @bind-Value="selectedDialCode"
+                                    @onchange="OnCountryChanged">
                                 @foreach (var c in Countries)
                                 {
                                     <option value="@c.DialCode">@c.Name (@c.DialCode)</option>
@@ -93,6 +95,7 @@
             {
                 <EditForm Model="@doctor" OnValidSubmit="@HandleSubmit">
                     <DataAnnotationsValidator />
+                    <ValidationSummary />
 
                     <div class="form-group">
                         <label>Specialization</label>
@@ -176,6 +179,13 @@
     {
         if (!string.IsNullOrEmpty(ClientId))
             doctor.ClientId = ClientId;
+    }
+
+    // ✅ Trigger validation when country changes
+    private void OnCountryChanged(ChangeEventArgs e)
+    {
+        selectedDialCode = e.Value?.ToString() ?? Countries[0].DialCode;
+        ValidatePhone();
     }
 
     private bool ValidatePhone()
@@ -263,25 +273,23 @@
 }
 
 <style>
-    /* ✅ Prevent page/body from creating a 2nd scrollbar */
     html, body {
         height: 100%;
         overflow: hidden;
     }
 
-    /* Container */
     .auth-container {
         display: flex;
         justify-content: center;
         align-items: stretch;
         max-width: 1000px;
         margin: 0 auto;
-        height: 100vh;                /* ✅ full screen */
+        height: 100vh;
         border-radius: 20px;
         background: #4a47a3;
         color: white;
         box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
-        overflow: hidden;             /* ✅ no outer scroll */
+        overflow: hidden;
         padding: 40px 0;
         box-sizing: border-box;
     }
@@ -294,18 +302,16 @@
         box-sizing: border-box;
     }
 
-    /* ✅ IMPORTANT: remove scroll from auth-right */
     .auth-right {
         flex: 1;
         display: flex;
         justify-content: center;
         align-items: flex-start;
-        overflow: hidden;             /* ✅ prevents 2nd scrollbar */
+        overflow: hidden;
         padding: 0;
         box-sizing: border-box;
     }
 
-    /* ✅ Only this scrolls */
     .auth-card {
         background: #fff;
         color: #333;
@@ -316,8 +322,8 @@
         max-width: 460px;
         text-align: left;
 
-        max-height: calc(100vh - 140px); /* ✅ fits screen */
-        overflow-y: auto;                 /* ✅ single scrollbar */
+        max-height: calc(100vh - 140px);
+        overflow-y: auto;
         box-sizing: border-box;
     }
 
@@ -378,7 +384,7 @@
     .btn-submit { background: #28a745; color: white; }
     .btn-submit:hover { background: #218838; }
 
-    /* Responsive */
+    /* ✅ Razor fix */
     @@media (max-width: 900px) {
         .auth-container {
             flex-direction: column;
