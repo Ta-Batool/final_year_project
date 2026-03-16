@@ -1,0 +1,105 @@
+@using System.Net.Http.Json
+@inject HttpClient Http
+
+<button class="btn btn-outline-primary" @onclick="OpenList">Workout Routines</button>
+
+@if (showList)
+{
+    <div style="position:fixed; inset:0; background:rgba(0,0,0,0.4);" @onclick="CloseAll">
+        <div style="background:#fff; max-width:760px; margin:7% auto; padding:16px; border-radius:12px;"
+             @onclick:stopPropagation="true">
+
+            <h4>Workout Routines</h4>
+
+            @if (loading) { <p>Loading...</p> }
+            else if (!string.IsNullOrEmpty(error)) { <div class="alert alert-danger">@error</div> }
+            else
+            {
+                <div class="list-group">
+                    @foreach (var r in routines)
+                    {
+                        <button class="list-group-item list-group-item-action" @onclick="() => OpenRoutine(r)">
+                            <b>@r.Name</b> — @r.Level — @r.Goal
+                        </button>
+                    }
+                </div>
+            }
+
+            @if (openRoutine is not null)
+            {
+                <hr />
+                <h5>@openRoutine.Name</h5>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Exercise</th>
+                            <th>Sets</th>
+                            <th>Reps</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var it in openRoutine.Items)
+                        {
+                            <tr>
+                                <td>@it.ExerciseName</td>
+                                <td>@it.Sets</td>
+                                <td>@it.Reps</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+
+            <div class="d-flex justify-content-end gap-2">
+                <button class="btn btn-secondary" @onclick="CloseAll">Close</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    bool showList = false;
+    bool loading = false;
+    string error = "";
+
+    List<RoutineDto> routines = new();
+    RoutineDto? openRoutine;
+
+    async Task OpenList()
+    {
+        showList = true;
+        openRoutine = null;
+        await Load();
+    }
+
+    async Task Load()
+    {
+        loading = true;
+        error = "";
+        try
+        {
+            routines = await Http.GetFromJsonAsync<List<RoutineDto>>("api/Workout/routines") ?? new();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { loading = false; }
+    }
+
+    void OpenRoutine(RoutineDto r) => openRoutine = r;
+    void CloseAll() { showList = false; openRoutine = null; }
+
+    class RoutineItemDto
+    {
+        public string ExerciseId { get; set; } = "";
+        public string ExerciseName { get; set; } = "";
+        public int Sets { get; set; }
+        public int Reps { get; set; }
+    }
+    class RoutineDto
+    {
+        public string Id { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string Level { get; set; } = "";
+        public string Goal { get; set; } = "";
+        public List<RoutineItemDto> Items { get; set; } = new();
+    }
+}

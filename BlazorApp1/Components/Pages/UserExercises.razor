@@ -6,6 +6,7 @@
 @using Microsoft.AspNetCore.Components.Web
 @using System.Security.Claims
 @using System.Linq
+@using System.Net.Http.Json
 @using Model
 @using BlazorApp1.Components.Layout
 @using BlazorApp1.Service
@@ -23,8 +24,8 @@
 @* ✅ FIX: You DO have this in frontend (ExercisePlanService : IExercisePlanService) *@
 @inject IExercisePlanService ExercisePlanService
 
-@* ❌ REMOVED because you said you don't have it (this line causes build failure) *@
-@* @inject IExercisePlanApiClient ExercisePlanApiClient *@
+@* ✅ NEW: HttpClient for Workout Routines API *@
+@inject HttpClient Http
 
 @layout UserDashboardLayout
 
@@ -84,7 +85,7 @@ else
         </div>
     }
 
-    @* 🔢 ENERGY SUMMARY (YOUR ORIGINAL CARD) *@
+    @* 🔢 ENERGY SUMMARY *@
     <div class="summary-card card">
         <h3>Today's Energy Summary (@selectedDate.ToString("dd MMM yyyy"))</h3>
         <p>
@@ -139,11 +140,18 @@ else
             </div>
         }
 
-        @* 🏃 LEFT: EXERCISES (UNCHANGED CORE LOGIC) *@
+        @* 🏃 LEFT: EXERCISES *@
         <div class="card">
-            <h3>Today's Exercises</h3>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;">
+                <h3 style="margin:0;">Today's Exercises</h3>
 
-            <div class="form-group">
+                @* ✅ NEW: Workout routines popup trigger *@
+                <button class="btn-secondary" @onclick="OpenWorkoutRoutinesAsync" title="See admin-added workout routines">
+                    Workout Routines
+                </button>
+            </div>
+
+            <div class="form-group mt-2">
                 <label>Search exercise</label>
                 <div style="display:flex; gap:0.5rem;">
                     <input class="form-control"
@@ -288,6 +296,93 @@ else
             </div>
         </div>
     </div>
+
+    @* ✅ NEW: Workout routines modal *@
+    @if (showWorkoutModal)
+    {
+        <div style="position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:9999;" @onclick="CloseWorkoutModal">
+            <div style="background:#fff; max-width:850px; margin:6% auto; padding:16px; border-radius:12px;"
+                 @onclick:stopPropagation="true">
+
+                <div style="display:flex; align-items:center; justify-content:space-between;">
+                    <h3 style="margin:0;">Workout Routines</h3>
+                    <button class="btn-secondary" @onclick="CloseWorkoutModal">Close</button>
+                </div>
+
+                @if (workoutLoading)
+                {
+                    <p class="mt-2">Loading routines...</p>
+                }
+                else if (!string.IsNullOrEmpty(workoutError))
+                {
+                    <div class="alert alert-danger mt-2">@workoutError</div>
+                }
+                else if (workoutRoutines.Count == 0)
+                {
+                    <p class="mt-2 muted">No routines added by admin yet.</p>
+                }
+                else
+                {
+                    <div class="row mt-2">
+                        <div class="col-md-5">
+                            <p class="small-text">Select a routine:</p>
+                            <div class="list-group" style="max-height:360px; overflow:auto;">
+                                @foreach (var r in workoutRoutines)
+                                {
+                                    <button class="list-group-item list-group-item-action @(selectedRoutine?.Id == r.Id ? "active" : "")"
+                                            @onclick="() => SelectRoutine(r)">
+                                        <div style="display:flex;flex-direction:column;">
+                                            <strong>@r.Name</strong>
+                                            <span class="small-text">@r.Level · @r.Goal</span>
+                                        </div>
+                                    </button>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="col-md-7">
+                            @if (selectedRoutine is null)
+                            {
+                                <p class="muted mt-4">Choose a routine to view details.</p>
+                            }
+                            else
+                            {
+                                <h4 class="mt-1">@selectedRoutine.Name</h4>
+                                <p class="small-text">
+                                    <b>Level:</b> @selectedRoutine.Level ·
+                                    <b>Goal:</b> @selectedRoutine.Goal
+                                </p>
+
+                                <table class="table table-bordered">
+                                    <thead>
+                                        <tr>
+                                            <th>Exercise</th>
+                                            <th style="width:120px;">Sets</th>
+                                            <th style="width:120px;">Reps</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var it in selectedRoutine.Items)
+                                        {
+                                            <tr>
+                                                <td>@it.ExerciseName</td>
+                                                <td>@it.Sets</td>
+                                                <td>@it.Reps</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+
+                                <p class="small-text muted">
+                                    Tip: Start light and focus on form. Increase gradually week by week.
+                                </p>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
 }
 
 @code {
@@ -337,6 +432,13 @@ else
         DurationMinutes = 30
     };
 
+    // ✅ NEW: workout routines modal state
+    private bool showWorkoutModal = false;
+    private bool workoutLoading = false;
+    private string workoutError = "";
+    private List<WorkoutRoutineDto> workoutRoutines = new();
+    private WorkoutRoutineDto? selectedRoutine;
+
     protected override async Task OnInitializedAsync()
     {
         try
@@ -384,7 +486,7 @@ else
         // ✅ Priority-C
         metabolism = await MetabolismService.GetSummaryAsync(currentClient.Id!);
 
-        // ✅ FIX: use your existing frontend-only ExercisePlanService
+        // ✅ use your existing frontend-only ExercisePlanService
         if (metabolism != null)
             exercisePlan = await ExercisePlanService.BuildPlanAsync(metabolism);
         else
@@ -476,5 +578,60 @@ else
         await HydrationService.UpdateTargetAsync(currentClient!.Id!, targetMl);
         await LoadDataAsync();
         isSavingHydration = false;
+    }
+
+    // ============================================================
+    // ✅ NEW: Workout routines integration (admin-added)
+    // ============================================================
+
+    private async Task OpenWorkoutRoutinesAsync()
+    {
+        showWorkoutModal = true;
+        workoutError = "";
+        selectedRoutine = null;
+
+        // load only once per open to keep it fast
+        workoutLoading = true;
+        try
+        {
+            workoutRoutines = await Http.GetFromJsonAsync<List<WorkoutRoutineDto>>("api/Workout/routines") ?? new();
+        }
+        catch (Exception ex)
+        {
+            workoutError = "Failed to load workouts: " + ex.Message;
+            workoutRoutines = new();
+        }
+        finally
+        {
+            workoutLoading = false;
+        }
+    }
+
+    private void CloseWorkoutModal()
+    {
+        showWorkoutModal = false;
+        selectedRoutine = null;
+    }
+
+    private void SelectRoutine(WorkoutRoutineDto r)
+    {
+        selectedRoutine = r;
+    }
+
+    private class WorkoutRoutineItemDto
+    {
+        public string ExerciseId { get; set; } = "";
+        public string ExerciseName { get; set; } = "";
+        public int Sets { get; set; }
+        public int Reps { get; set; }
+    }
+
+    private class WorkoutRoutineDto
+    {
+        public string Id { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string Level { get; set; } = "";
+        public string Goal { get; set; } = "";
+        public List<WorkoutRoutineItemDto> Items { get; set; } = new();
     }
 }

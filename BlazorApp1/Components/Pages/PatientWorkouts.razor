@@ -1,0 +1,89 @@
+@page "/patient/workouts"
+@using System.Net.Http.Json
+@inject HttpClient Http
+
+<h3>Workout Routines</h3>
+
+@if (loading) { <p>Loading...</p> }
+else if (!string.IsNullOrEmpty(error)) { <div class="alert alert-danger">@error</div> }
+else
+{
+    <div class="list-group">
+        @foreach (var r in routines)
+        {
+            <button class="list-group-item list-group-item-action" @onclick="() => Open(r)">
+                <b>@r.Name</b> — @r.Level — @r.Goal
+            </button>
+        }
+    </div>
+
+    @if (openRoutine is not null)
+    {
+        <div style="position:fixed; inset:0; background:rgba(0,0,0,0.4);" @onclick="Close">
+            <div style="background:#fff; max-width:720px; margin:8% auto; padding:16px; border-radius:12px;"
+                 @onclick:stopPropagation="true">
+                <h4>@openRoutine.Name</h4>
+                <p><b>Level:</b> @openRoutine.Level | <b>Goal:</b> @openRoutine.Goal</p>
+
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Exercise</th>
+                            <th>Sets</th>
+                            <th>Reps</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var it in openRoutine.Items)
+                        {
+                            <tr>
+                                <td>@it.ExerciseName</td>
+                                <td>@it.Sets</td>
+                                <td>@it.Reps</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+
+                <button class="btn btn-secondary" @onclick="Close">Close</button>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    bool loading = true;
+    string error = "";
+
+    List<RoutineDto> routines = new();
+    RoutineDto? openRoutine;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            routines = await Http.GetFromJsonAsync<List<RoutineDto>>("api/Workout/routines") ?? new();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { loading = false; }
+    }
+
+    void Open(RoutineDto r) => openRoutine = r;
+    void Close() => openRoutine = null;
+
+    class RoutineItemDto
+    {
+        public string ExerciseId { get; set; } = "";
+        public string ExerciseName { get; set; } = "";
+        public int Sets { get; set; }
+        public int Reps { get; set; }
+    }
+    class RoutineDto
+    {
+        public string Id { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string Level { get; set; } = "";
+        public string Goal { get; set; } = "";
+        public List<RoutineItemDto> Items { get; set; } = new();
+    }
+}

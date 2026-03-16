@@ -1,0 +1,247 @@
+@page "/admin/workouts"
+@using System.Net.Http.Json
+@inject IHttpClientFactory HttpFactory
+
+<h3>Admin — Workouts</h3>
+
+@if (!string.IsNullOrEmpty(error))
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card p-3 mb-3">
+            <h5>Create Exercise</h5>
+            <input class="form-control mb-2" placeholder="Name" @bind="exName" />
+            <input class="form-control mb-2" placeholder="Target Muscle" @bind="exMuscle" />
+            <textarea class="form-control mb-2" placeholder="Description" @bind="exDesc"></textarea>
+            <button class="btn btn-primary" @onclick="AddExercise">Add</button>
+        </div>
+
+        <div class="card p-3">
+            <h5>Exercises</h5>
+            <ul class="list-group">
+                @foreach (var e in exercises)
+                {
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span><b>@e.Name</b> — @e.TargetMuscle</span>
+                        <button class="btn btn-sm btn-danger" @onclick="() => DeleteExercise(e.Id)">Delete</button>
+                    </li>
+                }
+            </ul>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card p-3 mb-3">
+            <h5>Create Routine</h5>
+            <input class="form-control mb-2" placeholder="Routine Name" @bind="rName" />
+            <div class="d-flex gap-2 mb-2">
+                <select class="form-select" @bind="rLevel">
+                    <option>Beginner</option>
+                    <option>Intermediate</option>
+                    <option>Advanced</option>
+                </select>
+                <select class="form-select" @bind="rGoal">
+                    <option>Fat Loss</option>
+                    <option>Muscle</option>
+                    <option>Strength</option>
+                </select>
+            </div>
+
+            <div class="border rounded p-2 mb-2">
+                <div class="d-flex gap-2 mb-2">
+                    <select class="form-select" @bind="selectedExerciseId">
+                        <option value="">-- select exercise --</option>
+                        @foreach (var e in exercises)
+                        {
+                            <option value="@e.Id">@e.Name</option>
+                        }
+                    </select>
+                    <input class="form-control" type="number" @bind="sets" />
+                    <input class="form-control" type="number" @bind="reps" />
+                    <button class="btn btn-secondary" @onclick="AddRoutineItem">Add</button>
+                </div>
+                <small>Sets / Reps</small>
+
+                <ul class="list-group mt-2">
+                    @foreach (var it in routineItems)
+                    {
+                        <li class="list-group-item d-flex justify-content-between">
+                            <span>@it.ExerciseName — @it.Sets x @it.Reps</span>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => RemoveItem(it)">x</button>
+                        </li>
+                    }
+                </ul>
+            </div>
+
+            <button class="btn btn-success" @onclick="CreateRoutine">Create Routine</button>
+        </div>
+
+        <div class="card p-3">
+            <h5>Routines</h5>
+            <ul class="list-group">
+                @foreach (var r in routines)
+                {
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span><b>@r.Name</b> — @r.Level — @r.Goal</span>
+                        <button class="btn btn-sm btn-danger" @onclick="() => DeleteRoutine(r.Id)">Delete</button>
+                    </li>
+                }
+            </ul>
+        </div>
+    </div>
+</div>
+
+@code {
+    private HttpClient Api => HttpFactory.CreateClient("Api");
+
+    string error = "";
+
+    List<ExerciseDto> exercises = new();
+    List<RoutineDto> routines = new();
+
+    // exercise form
+    string exName = "";
+    string exMuscle = "";
+    string exDesc = "";
+
+    // routine form
+    string rName = "";
+    string rLevel = "Beginner";
+    string rGoal = "Fat Loss";
+
+    string selectedExerciseId = "";
+    int sets = 3;
+    int reps = 12;
+
+    List<RoutineItemDto> routineItems = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Reload();
+    }
+
+    async Task Reload()
+    {
+        error = "";
+
+        // ✅ avoid crashing circuit: show API error instead of throwing
+        var exRes = await Api.GetAsync("api/Workout/exercises");
+        if (!exRes.IsSuccessStatusCode)
+        {
+            error = $"Exercises API returned {(int)exRes.StatusCode} {exRes.ReasonPhrase}";
+            exercises = new();
+            routines = new();
+            return;
+        }
+
+        exercises = await exRes.Content.ReadFromJsonAsync<List<ExerciseDto>>() ?? new();
+
+        var rRes = await Api.GetAsync("api/Workout/routines");
+        if (!rRes.IsSuccessStatusCode)
+        {
+            error = $"Routines API returned {(int)rRes.StatusCode} {rRes.ReasonPhrase}";
+            routines = new();
+            return;
+        }
+
+        routines = await rRes.Content.ReadFromJsonAsync<List<RoutineDto>>() ?? new();
+    }
+
+    async Task AddExercise()
+    {
+        error = "";
+        var dto = new ExerciseDto { Name = exName, TargetMuscle = exMuscle, Description = exDesc };
+
+        var resp = await Api.PostAsJsonAsync("api/Workout/exercises", dto);
+        if (!resp.IsSuccessStatusCode)
+        {
+            error = await resp.Content.ReadAsStringAsync();
+            return;
+        }
+
+        exName = exMuscle = exDesc = "";
+        await Reload();
+    }
+
+    async Task DeleteExercise(string id)
+    {
+        await Api.DeleteAsync($"api/Workout/exercises/{id}");
+        await Reload();
+    }
+
+    void AddRoutineItem()
+    {
+        if (string.IsNullOrWhiteSpace(selectedExerciseId)) return;
+        var ex = exercises.FirstOrDefault(x => x.Id == selectedExerciseId);
+        if (ex is null) return;
+
+        routineItems.Add(new RoutineItemDto
+        {
+            ExerciseId = ex.Id,
+            ExerciseName = ex.Name,
+            Sets = sets,
+            Reps = reps
+        });
+    }
+
+    void RemoveItem(RoutineItemDto it) => routineItems.Remove(it);
+
+    async Task CreateRoutine()
+    {
+        error = "";
+        if (routineItems.Count == 0) { error = "Add at least one item."; return; }
+
+        var dto = new RoutineDto
+        {
+            Name = rName,
+            Level = rLevel,
+            Goal = rGoal,
+            Items = routineItems
+        };
+
+        var resp = await Api.PostAsJsonAsync("api/Workout/routines", dto);
+        if (!resp.IsSuccessStatusCode)
+        {
+            error = await resp.Content.ReadAsStringAsync();
+            return;
+        }
+
+        rName = "";
+        routineItems = new();
+        await Reload();
+    }
+
+    async Task DeleteRoutine(string id)
+    {
+        await Api.DeleteAsync($"api/Workout/routines/{id}");
+        await Reload();
+    }
+
+    class ExerciseDto
+    {
+        public string Id { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string Description { get; set; } = "";
+        public string TargetMuscle { get; set; } = "";
+    }
+
+    class RoutineItemDto
+    {
+        public string ExerciseId { get; set; } = "";
+        public string ExerciseName { get; set; } = "";
+        public int Sets { get; set; }
+        public int Reps { get; set; }
+    }
+
+    class RoutineDto
+    {
+        public string Id { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string Level { get; set; } = "";
+        public string Goal { get; set; } = "";
+        public List<RoutineItemDto> Items { get; set; } = new();
+    }
+}

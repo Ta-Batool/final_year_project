@@ -14,8 +14,6 @@ namespace API.Services
             var client = new MongoClient(mongoSettings.Value.ConnectionString);
             var database = client.GetDatabase(mongoSettings.Value.DatabaseName);
             _clients = database.GetCollection<Client>("Client");
-
-            // Ensure unique email index
             CreateUniqueEmailIndex();
         }
 
@@ -28,15 +26,11 @@ namespace API.Services
         }
 
         public async Task<List<Client>> GetAllAsync()
-        {
-            return await _clients.Find(c => true).ToListAsync();
-        }
+            => await _clients.Find(c => true).ToListAsync();
 
         public async Task<Client?> GetByEmailAsync(string email)
         {
-            if (string.IsNullOrWhiteSpace(email))
-                return null;
-
+            if (string.IsNullOrWhiteSpace(email)) return null;
             email = email.ToLowerInvariant();
             return await _clients.Find(c => c.Email == email).FirstOrDefaultAsync();
         }
@@ -58,6 +52,27 @@ namespace API.Services
         {
             email = email.ToLowerInvariant();
             await _clients.DeleteOneAsync(c => c.Email == email);
+        }
+
+        // ✅ NEW: Set Premium by ClientId
+        public async Task<bool> SetPremiumByIdAsync(string clientId, bool isPremium)
+        {
+            if (string.IsNullOrWhiteSpace(clientId)) return false;
+
+            var update = Builders<Client>.Update.Set(c => c.IsPremium, isPremium);
+            var result = await _clients.UpdateOneAsync(c => c.Id == clientId, update);
+            return result.ModifiedCount > 0;
+        }
+
+        // ✅ NEW: Set Premium by Email
+        public async Task<bool> SetPremiumByEmailAsync(string email, bool isPremium)
+        {
+            if (string.IsNullOrWhiteSpace(email)) return false;
+
+            email = email.ToLowerInvariant();
+            var update = Builders<Client>.Update.Set(c => c.IsPremium, isPremium);
+            var result = await _clients.UpdateOneAsync(c => c.Email == email, update);
+            return result.ModifiedCount > 0;
         }
     }
 }

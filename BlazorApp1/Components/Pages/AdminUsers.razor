@@ -1,0 +1,63 @@
+@page "/admin/users"
+@using System.Net.Http.Json
+@inject HttpClient Http
+
+<h3>Admin — Clients (Paid/Unpaid)</h3>
+
+@if (!string.IsNullOrEmpty(error))
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+@if (loading)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Premium</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var c in clients)
+            {
+                <tr>
+                    <td>@c.Name</td>
+                    <td>@c.Email</td>
+                    <td>@(c.IsPremium ? "Paid ✅" : "Free ❌")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    bool loading = true;
+    string error = "";
+    List<ClientDto> clients = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // assumes you add this endpoint in your existing ClientController:
+            // GET api/Client/all
+            clients = await Http.GetFromJsonAsync<List<ClientDto>>("api/Client/all") ?? new();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { loading = false; }
+    }
+
+    class ClientDto
+    {
+        public string Id { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string Email { get; set; } = "";
+        public bool IsPremium { get; set; }
+    }
+}

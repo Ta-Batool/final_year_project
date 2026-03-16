@@ -3,52 +3,55 @@
 @layout UserDashboardLayout
 
 @using BlazorApp1.Components.Layout
+@using BlazorApp1.Components.Common
 @using Model
 @using Microsoft.AspNetCore.Components
 @inject IDService DoctorService
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
-<div class="doctor-page">
-    <h2>👨‍⚕️ Select a Doctor</h2>
+<PremiumGuard>
+    <div class="doctor-page">
+        <h2>👨‍⚕️ Select a Doctor</h2>
 
-    @if (isLoading)
-    {
-        <p>Loading doctors...</p>
-    }
-    else if (doctors == null || doctors.Count == 0)
-    {
-        <p>No doctors found.</p>
-    }
-    else
-    {
-        <table class="doctor-table">
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Specialization</th>
-                    <th>Phone</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var doc in doctors)
-                {
+        @if (isLoading)
+        {
+            <p>Loading doctors...</p>
+        }
+        else if (doctors == null || doctors.Count == 0)
+        {
+            <p>No doctors found.</p>
+        }
+        else
+        {
+            <table class="doctor-table">
+                <thead>
                     <tr>
-                        <td>@doc.Name</td>
-                        <td>@doc.Specialization</td>
-                        <td>@doc.Phone</td>
-                        <td>
-                            <button class="btn btn-select" @onclick="() => ChooseDoctor(doc)">
-                                Select
-                            </button>
-                        </td>
+                        <th>Name</th>
+                        <th>Specialization</th>
+                        <th>Phone</th>
+                        <th>Action</th>
                     </tr>
-                }
-            </tbody>
-        </table>
-    }
-</div>
+                </thead>
+                <tbody>
+                    @foreach (var doc in doctors)
+                    {
+                        <tr>
+                            <td>@doc.Name</td>
+                            <td>@doc.Specialization</td>
+                            <td>@doc.Phone</td>
+                            <td>
+                                <button class="btn btn-select" @onclick="() => ChooseDoctor(doc)">
+                                    Select
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</PremiumGuard>
 
 @code {
     [Parameter] public string? mode { get; set; }
@@ -79,7 +82,6 @@
         // -------------------------
         if (string.Equals(mode, "chat", StringComparison.OrdinalIgnoreCase))
         {
-            // Chat route in your app expects doctorClientId + userId
             var userId = await JS.InvokeAsync<string>("localStorage.getItem", "userId");
 
             if (string.IsNullOrWhiteSpace(userId))
@@ -94,6 +96,8 @@
                 return;
             }
 
+            // NOTE: your other page uses /user-chat/{doctorClientId}/{userId}
+            // here you used /messages/... earlier - keep your existing route if it's correct.
             Nav.NavigateTo($"/messages/{doc.ClientId}/{userId}");
             return;
         }
@@ -101,18 +105,14 @@
         // -------------------------
         // MODE: appointments / booking (default)
         // -------------------------
-        // For booking + availability, we MUST use Doctor.Id (Mongo _id)
         if (string.IsNullOrWhiteSpace(doc.Id))
         {
             Console.WriteLine("❌ Doctor Id missing. Cannot book appointment.");
             return;
         }
 
-        // Optional: store selected doctor id for later use
         await JS.InvokeVoidAsync("localStorage.setItem", "selectedDoctorId", doc.Id);
 
-        // ✅ Go to your booking page that uses availability endpoints
-        // Make sure you have a page: @page "/book/{DoctorId}"
         Nav.NavigateTo($"/book/{doc.Id}");
     }
 }

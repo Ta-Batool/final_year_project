@@ -3,6 +3,7 @@
 @layout BlazorApp1.Components.Layout.UserDashboardLayout
 
 @using Microsoft.AspNetCore.Authorization
+@using BlazorApp1.Components.Common
 @using BlazorApp1.Service
 @using Model
 @inject IJSRuntime JS
@@ -10,83 +11,85 @@
 @inject AppointmentApiService ApptApi
 @inject IDService DoctorService
 
-<h2>📅 Book Appointment</h2>
+<PremiumGuard>
+    <h2>📅 Book Appointment</h2>
 
-@if (!string.IsNullOrWhiteSpace(error))
-{
-    <div class="alert alert-danger">@error</div>
-}
+    @if (!string.IsNullOrWhiteSpace(error))
+    {
+        <div class="alert alert-danger">@error</div>
+    }
 
-@if (isLoading)
-{
-    <p>Loading...</p>
-}
-else
-{
-    <div class="card">
-        <p><strong>Doctor:</strong> @doctorName</p>
+    @if (isLoading)
+    {
+        <p>Loading...</p>
+    }
+    else
+    {
+        <div class="card">
+            <p><strong>Doctor:</strong> @doctorName</p>
 
-        <div class="form-group">
-            <label>Select Date</label>
-            <input type="date" class="form-control" value="@dateStr" @onchange="OnDateChanged" />
-        </div>
-
-        <div class="form-group">
-            <label>Slot Size (minutes)</label>
-            <input type="number" class="form-control" @bind="slotMinutes" min="10" step="5" />
-        </div>
-
-        <div class="form-group">
-            <label>Appointment Duration (minutes)</label>
-            <input type="number" class="form-control" @bind="durationMinutes" min="10" step="5" />
-        </div>
-
-        <div class="form-group">
-            <label>Notes (optional)</label>
-            <textarea class="form-control" @bind="notes"></textarea>
-        </div>
-
-        <button class="btn-primary" @onclick="LoadAvailability" disabled="@busy">
-            @(busy ? "Loading..." : "Load Available Slots")
-        </button>
-    </div>
-
-    <div class="card mt">
-        <h3>Available Slots</h3>
-
-        @if (availability == null)
-        {
-            <p>Select date and click “Load Available Slots”.</p>
-        }
-        else if (availability.AvailableSlots == null || availability.AvailableSlots.Count == 0)
-        {
-            <p>No slots available for this date.</p>
-        }
-        else
-        {
-            <div class="slots">
-                @foreach (var s in availability.AvailableSlots)
-                {
-                    <button class="slot-btn" @onclick="() => BookSlot(s)" disabled="@busy">
-                        @s.Start.ToString("hh:mm tt") - @s.End.ToString("hh:mm tt")
-                    </button>
-                }
-            </div>
-
-            <hr style="margin:16px 0;" />
-
-            <h4>Or choose a precise time</h4>
             <div class="form-group">
-                <label>Time</label>
-                <input type="time" class="form-control" @bind="manualTime" />
+                <label>Select Date</label>
+                <input type="date" class="form-control" value="@dateStr" @onchange="OnDateChanged" />
             </div>
 
-            <button class="btn-primary" @onclick="BookManualTime" disabled="@busy">
-                Book This Time
+            <div class="form-group">
+                <label>Slot Size (minutes)</label>
+                <input type="number" class="form-control" @bind="slotMinutes" min="10" step="5" />
+            </div>
+
+            <div class="form-group">
+                <label>Appointment Duration (minutes)</label>
+                <input type="number" class="form-control" @bind="durationMinutes" min="10" step="5" />
+            </div>
+
+            <div class="form-group">
+                <label>Notes (optional)</label>
+                <textarea class="form-control" @bind="notes"></textarea>
+            </div>
+
+            <button class="btn-primary" @onclick="LoadAvailability" disabled="@busy">
+                @(busy ? "Loading..." : "Load Available Slots")
             </button>
-        }
-    </div>
-}
+        </div>
+
+        <div class="card mt">
+            <h3>Available Slots</h3>
+
+            @if (availability == null)
+            {
+                <p>Select date and click “Load Available Slots”.</p>
+            }
+            else if (availability.AvailableSlots == null || availability.AvailableSlots.Count == 0)
+            {
+                <p>No slots available for this date.</p>
+            }
+            else
+            {
+                <div class="slots">
+                    @foreach (var s in availability.AvailableSlots)
+                    {
+                        <button class="slot-btn" @onclick="() => BookSlot(s)" disabled="@busy">
+                            @s.Start.ToString("hh:mm tt") - @s.End.ToString("hh:mm tt")
+                        </button>
+                    }
+                </div>
+
+                <hr style="margin:16px 0;" />
+
+                <h4>Or choose a precise time</h4>
+                <div class="form-group">
+                    <label>Time</label>
+                    <input type="time" class="form-control" @bind="manualTime" />
+                </div>
+
+                <button class="btn-primary" @onclick="BookManualTime" disabled="@busy">
+                    Book This Time
+                </button>
+            }
+        </div>
+    }
+</PremiumGuard>
 
 @code {
     [Parameter] public string DoctorId { get; set; } = "";
@@ -208,13 +211,11 @@ else
             if (manualTime == null)
                 throw new Exception("Please select a time.");
 
-            // ensure availability loaded
             if (availability == null)
                 availability = await ApptApi.GetAvailabilityAsync(DoctorId, selectedDate, slotMinutes);
 
             var start = selectedDate.Date.Add(manualTime.Value.ToTimeSpan());
 
-            // must match an available slot start
             var ok = availability?.AvailableSlots?.Any(s => s.Start == start) == true;
             if (!ok)
                 throw new Exception("This time is not available. Please choose from available slots.");

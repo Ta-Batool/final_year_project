@@ -2,6 +2,7 @@
 @layout UserDashboardLayout
 
 @using BlazorApp1.Components.Layout
+@using BlazorApp1.Components.Common
 @using Model
 @using BlazorApp1.Service
 @inject MessageClientService MessageService
@@ -9,63 +10,65 @@
 @inject IJSRuntime JS
 @inject NavigationManager Nav
 
-<div class="chat-page">
-    <h2>💬 Your Conversations</h2>
+<PremiumGuard>
+    <div class="chat-page">
+        <h2>💬 Your Conversations</h2>
 
-    @if (isLoading)
-    {
-        <p>Loading conversations...</p>
-    }
-    else if (!string.IsNullOrEmpty(loadError))
-    {
-        <p class="error">Error loading conversations: @loadError</p>
-    }
-    else if (string.IsNullOrWhiteSpace(currentUserClientId))
-    {
-        <div class="empty-state">
-            <p>Could not detect your User ClientId.</p>
-            <p class="hint">Make sure a valid user is logged in, or set <code>localStorage['userId']</code>.</p>
-        </div>
-    }
-    else if (conversations.Count == 0)
-    {
-        <div class="empty-state">
-            @if (isPatient)
-            {
-                <p><strong>You have no conversation so far.</strong></p>
-                <p class="hint">Please make an appointment with a doctor first.</p>
-                <button class="start-chat-btn" @onclick="GoToAppointments">
-                    Make Appointment
-                </button>
-            }
-            else
-            {
-                <p>No messages yet.</p>
-                <button class="start-chat-btn" @onclick="GoToDoctorList">
-                    Start Chat
-                </button>
-            }
-        </div>
-    }
-    else
-    {
-        <div class="conversation-list">
-            @foreach (var convo in conversations)
-            {
-                <div class="conversation-card">
-                    <div class="info">
-                        <h3>@convo.DoctorName</h3>
-                        <p><strong>Doctor ClientId:</strong> @convo.DoctorClientId</p>
-                    </div>
-                    <button class="open-btn"
-                            @onclick="() => OpenChat(convo.DoctorClientId)">
-                        Open Chat
+        @if (isLoading)
+        {
+            <p>Loading conversations...</p>
+        }
+        else if (!string.IsNullOrEmpty(loadError))
+        {
+            <p class="error">Error loading conversations: @loadError</p>
+        }
+        else if (string.IsNullOrWhiteSpace(currentUserClientId))
+        {
+            <div class="empty-state">
+                <p>Could not detect your User ClientId.</p>
+                <p class="hint">Make sure a valid user is logged in, or set <code>localStorage['userId']</code>.</p>
+            </div>
+        }
+        else if (conversations.Count == 0)
+        {
+            <div class="empty-state">
+                @if (isPatient)
+                {
+                    <p><strong>You have no conversation so far.</strong></p>
+                    <p class="hint">Please make an appointment with a doctor first.</p>
+                    <button class="start-chat-btn" @onclick="GoToAppointments">
+                        Make Appointment
                     </button>
-                </div>
-            }
-        </div>
-    }
-</div>
+                }
+                else
+                {
+                    <p>No messages yet.</p>
+                    <button class="start-chat-btn" @onclick="GoToDoctorList">
+                        Start Chat
+                    </button>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="conversation-list">
+                @foreach (var convo in conversations)
+                {
+                    <div class="conversation-card">
+                        <div class="info">
+                            <h3>@convo.DoctorName</h3>
+                            <p><strong>Doctor ClientId:</strong> @convo.DoctorClientId</p>
+                        </div>
+                        <button class="open-btn"
+                                @onclick="() => OpenChat(convo.DoctorClientId)">
+                            Open Chat
+                        </button>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</PremiumGuard>
 
 @code {
     private class ConversationDoctor
@@ -81,7 +84,6 @@
     private string? loadError;
     private bool _loadedFromJs = false;
 
-    // ✅ Patient restriction flag
     private bool isPatient = false;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -95,7 +97,6 @@
         {
             currentUserClientId = await JS.InvokeAsync<string>("localStorage.getItem", "userId");
 
-            // Try to read role from localStorage (set this at login)
             var role = await JS.InvokeAsync<string>("localStorage.getItem", "role");
             isPatient = string.Equals(role, "Patient", StringComparison.OrdinalIgnoreCase);
 
@@ -139,21 +140,18 @@
         if (string.IsNullOrWhiteSpace(currentUserClientId))
             return;
 
-        // ✅ Optional: even if they somehow click, block patients with no appointment here too
-        // (Real enforcement should be backend, but this helps UI safety)
         Nav.NavigateTo($"/user-chat/{doctorClientId}/{currentUserClientId}");
     }
 
     private void GoToDoctorList()
     {
-        // Doctors or allowed users can select doctor for chat
         Nav.NavigateTo("/selectdoctor/chat");
     }
 
     private void GoToAppointments()
     {
-        // ✅ Change this route if your appointment booking page is different
-        Nav.NavigateTo("/book-appointment");
+        // ✅ FIX: your actual appointment page is /userappointments (not /book-appointment)
+        Nav.NavigateTo("/userappointments");
     }
 }
 

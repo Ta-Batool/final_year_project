@@ -4,49 +4,52 @@
 
 @using Microsoft.AspNetCore.Authorization
 @using BlazorApp1.Components.Layout
+@using BlazorApp1.Components.Common
 @using BlazorApp1.Service
 @using Model
 @inject AppointmentApiService ApptApi
 @inject IJSRuntime JS
 
-<h3>📅 My Appointments</h3>
+<PremiumGuard>
+    <h3>📅 My Appointments</h3>
 
-@if (busy)
-{
-    <p>Loading appointments...</p>
-}
-else if (!string.IsNullOrWhiteSpace(error))
-{
-    <div class="alert alert-danger">@error</div>
-}
-else if (appointments == null || appointments.Count == 0)
-{
-    <p>No appointments found.</p>
-}
-else
-{
-    <table class="table">
-        <thead>
-            <tr>
-                <th>Date</th>
-                <th>Time</th>
-                <th>Status</th>
-                <th>Notes</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var a in appointments.OrderBy(a => a.Start))
-            {
+    @if (busy)
+    {
+        <p>Loading appointments...</p>
+    }
+    else if (!string.IsNullOrWhiteSpace(error))
+    {
+        <div class="alert alert-danger">@error</div>
+    }
+    else if (appointments == null || appointments.Count == 0)
+    {
+        <p>No appointments found.</p>
+    }
+    else
+    {
+        <table class="table">
+            <thead>
                 <tr>
-                    <td>@a.Start.ToString("yyyy-MM-dd")</td>
-                    <td>@a.Start.ToString("hh:mm tt")</td>
-                    <td>@a.Status</td>
-                    <td>@a.Notes</td>
+                    <th>Date</th>
+                    <th>Time</th>
+                    <th>Status</th>
+                    <th>Notes</th>
                 </tr>
-            }
-        </tbody>
-    </table>
-}
+            </thead>
+            <tbody>
+                @foreach (var a in appointments.OrderBy(a => a.Start))
+                {
+                    <tr>
+                        <td>@a.Start.ToString("yyyy-MM-dd")</td>
+                        <td>@a.Start.ToString("hh:mm tt")</td>
+                        <td>@a.Status</td>
+                        <td>@a.Notes</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</PremiumGuard>
 
 @code {
     bool busy = true;
@@ -59,7 +62,6 @@ else
         {
             busy = true;
 
-            // 🔑 Your app already uses localStorage userId everywhere
             var userId = await JS.InvokeAsync<string?>("localStorage.getItem", "userId");
 
             if (string.IsNullOrWhiteSpace(userId))

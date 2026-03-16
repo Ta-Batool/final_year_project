@@ -1,7 +1,8 @@
-﻿using System.Net;
+﻿using System;
+using System.Collections.Generic;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Model;
 
@@ -18,64 +19,60 @@ namespace BlazorApp1.Service
 
         public async Task<List<Doctor>> GetAllDoctorsAsync()
         {
-            return await _http.GetFromJsonAsync<List<Doctor>>("api/doctors");
+            return await _http.GetFromJsonAsync<List<Doctor>>("api/doctors")
+                   ?? new List<Doctor>();
         }
 
         public async Task AddDoctorAsync(Doctor doctor)
         {
-            var response = await _http.PostAsJsonAsync("api/doctors", doctor);
-            if (!response.IsSuccessStatusCode)
-            {
-                var error = await response.Content.ReadAsStringAsync();
-                throw new Exception($"API Error: {error}");
-            }
+            var res = await _http.PostAsJsonAsync("api/doctors", doctor);
+            res.EnsureSuccessStatusCode();
         }
 
         public async Task<Doctor> GetDoctorByIdAsync(string id)
         {
-            return await _http.GetFromJsonAsync<Doctor>($"api/doctors/{id}");
+            var doctor = await _http.GetFromJsonAsync<Doctor>($"api/doctors/{id}");
+            if (doctor is null)
+                throw new InvalidOperationException($"Doctor not found for id: {id}");
+            return doctor;
         }
 
         public async Task UpdateDoctorAsync(string id, Doctor doctor)
         {
-            var response = await _http.PutAsJsonAsync($"api/doctors/{id}", doctor);
-            if (!response.IsSuccessStatusCode)
-            {
-                var error = await response.Content.ReadAsStringAsync();
-                throw new Exception($"API Error: {error}");
-            }
+            var res = await _http.PutAsJsonAsync($"api/doctors/{id}", doctor);
+            res.EnsureSuccessStatusCode();
         }
 
         public async Task DeleteDoctorAsync(string id)
         {
-            var response = await _http.DeleteAsync($"api/doctors/{id}");
-            if (!response.IsSuccessStatusCode)
-            {
-                var error = await response.Content.ReadAsStringAsync();
-                throw new Exception($"API Error: {error}");
-            }
+            var res = await _http.DeleteAsync($"api/doctors/{id}");
+            res.EnsureSuccessStatusCode();
         }
 
         public async Task<Doctor?> GetDoctorByClientIdAsync(string clientId)
         {
-            try
-            {
-                return await _http.GetFromJsonAsync<Doctor>($"api/doctors/by-client/{clientId}");
-            }
-            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
-            {
+            if (string.IsNullOrWhiteSpace(clientId))
                 return null;
-            }
+
+            var url = $"api/doctors/by-client/{Uri.EscapeDataString(clientId)}";
+            var res = await _http.GetAsync(url);
+
+            if (res.StatusCode == HttpStatusCode.NotFound)
+                return null;
+
+            res.EnsureSuccessStatusCode();
+
+            return await res.Content.ReadFromJsonAsync<Doctor>();
         }
 
         public async Task UpdateDoctorByClientIdAsync(string clientId, Doctor doctor)
         {
-            var response = await _http.PutAsJsonAsync($"api/doctors/by-client/{clientId}", doctor);
-            if (!response.IsSuccessStatusCode)
-            {
-                var error = await response.Content.ReadAsStringAsync();
-                throw new Exception($"API Error: {error}");
-            }
+            if (string.IsNullOrWhiteSpace(clientId))
+                throw new ArgumentException("clientId is required", nameof(clientId));
+
+            var url = $"api/doctors/by-client/{Uri.EscapeDataString(clientId)}";
+            var res = await _http.PutAsJsonAsync(url, doctor);
+            res.EnsureSuccessStatusCode();
         }
     }
 }

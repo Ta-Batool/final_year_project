@@ -5,6 +5,7 @@ using System;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.IO;
+using Microsoft.AspNetCore.Http;
 
 namespace API.Controllers
 {
@@ -26,7 +27,6 @@ namespace API.Controllers
             _userService = userService;
         }
 
-        // 🔹 Get all messages (mainly for admin/debug)
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Message>>> GetAll()
         {
@@ -34,7 +34,6 @@ namespace API.Controllers
             return Ok(messages);
         }
 
-        // 🔹 Get single message by id
         [HttpGet("{id}")]
         public async Task<ActionResult<Message>> GetById(string id)
         {
@@ -43,25 +42,18 @@ namespace API.Controllers
             return Ok(message);
         }
 
-        // 🔹 1-1 conversation between one user and one doctor
-        //     GET api/message/conversation?userClientId=...&doctorClientId=...
         [HttpGet("conversation")]
         public async Task<ActionResult<IEnumerable<Message>>> GetConversation(
             [FromQuery] string userClientId,
             [FromQuery] string doctorClientId)
         {
-            if (string.IsNullOrWhiteSpace(userClientId) ||
-                string.IsNullOrWhiteSpace(doctorClientId))
-            {
+            if (string.IsNullOrWhiteSpace(userClientId) || string.IsNullOrWhiteSpace(doctorClientId))
                 return BadRequest("userClientId and doctorClientId are required.");
-            }
 
             var messages = await _messageService.GetConversationAsync(userClientId, doctorClientId);
             return Ok(messages);
         }
 
-        // ⭐ NEW: all messages in a group conversation
-        //     GET api/message/by-conversation/{conversationId}
         [HttpGet("by-conversation/{conversationId}")]
         public async Task<ActionResult<IEnumerable<Message>>> GetByConversationId(string conversationId)
         {
@@ -72,32 +64,26 @@ namespace API.Controllers
             return Ok(messages);
         }
 
-        // 🔹 Create new TEXT message (no attachment)
         [HttpPost]
         public async Task<ActionResult<Message>> Create([FromBody] Message message)
         {
-            // allow either text OR attachment (for safety),
-            // but this endpoint is intended for text-only
-            if (message == null ||
-                (string.IsNullOrWhiteSpace(message.Text) && message.AttachmentData == null))
-            {
+            if (message == null || (string.IsNullOrWhiteSpace(message.Text) && message.AttachmentData == null))
                 return BadRequest("Message cannot be completely empty.");
-            }
 
             if (message.SentAt == default)
-            {
                 message.SentAt = DateTime.UtcNow;
-            }
 
             await _messageService.CreateAsync(message);
-
-            // Return 201 with the created object
             return CreatedAtAction(nameof(GetById), new { id = message.Id }, message);
         }
 
-        // 🔹 Create message WITH attachment (image/file/audio)
-        //     POST api/message/with-attachment (multipart/form-data)
+        // ✅ Upload endpoint (Swagger-safe + larger request support)
         [HttpPost("with-attachment")]
+        [Consumes("multipart/form-data")]
+        [Produces("application/json")]
+        [RequestSizeLimit(25_000_000)] // 25 MB
+        [RequestFormLimits(MultipartBodyLengthLimit = 25_000_000)]
+        [ApiExplorerSettings(IgnoreApi = true)] // ✅ OPTION A: prevent Swagger crash
         public async Task<ActionResult<Message>> CreateWithAttachment(
             [FromForm] IFormFile file,
             [FromForm] string senderId,
@@ -108,13 +94,16 @@ namespace API.Controllers
             [FromForm] string doctorClientId,
             [FromForm] string? text,
             [FromForm] bool isVoice = false,
-            [FromForm] string? conversationId = null)        // ⭐ NEW
+            [FromForm] string? conversationId = null)
         {
-            if (file == null || file.Length == 0)
+            if (file == null || file.Length <= 0)
                 return BadRequest("File is required.");
 
+            if (string.IsNullOrWhiteSpace(senderId) || string.IsNullOrWhiteSpace(receiverId))
+                return BadRequest("senderId and receiverId are required.");
+
             byte[] data;
-            using (var ms = new MemoryStream())
+            await using (var ms = new MemoryStream())
             {
                 await file.CopyToAsync(ms);
                 data = ms.ToArray();
@@ -123,18 +112,18 @@ namespace API.Controllers
             var message = new Message
             {
                 SenderId = senderId,
-                SenderName = senderName,
+                SenderName = senderName ?? "",
                 ReceiverId = receiverId,
-                ReceiverName = receiverName,
-                UserClientId = userClientId,
-                DoctorClientId = doctorClientId,
+                ReceiverName = receiverName ?? "",
+                UserClientId = userClientId ?? "",
+                DoctorClientId = doctorClientId ?? "",
                 Text = text ?? string.Empty,
                 SentAt = DateTime.UtcNow,
                 AttachmentFileName = file.FileName,
                 AttachmentContentType = file.ContentType,
                 AttachmentData = data,
                 IsVoiceMessage = isVoice,
-                ConversationId = conversationId     // ⭐ store group id if provided
+                ConversationId = conversationId
             };
 
             await _messageService.CreateAsync(message);
@@ -142,8 +131,6 @@ namespace API.Controllers
             return CreatedAtAction(nameof(GetById), new { id = message.Id }, message);
         }
 
-        // 🔹 Download / stream attachment for a message
-        //     GET api/message/{id}/attachment
         [HttpGet("{id}/attachment")]
         public async Task<IActionResult> GetAttachment(string id)
         {
@@ -157,7 +144,6 @@ namespace API.Controllers
             return File(message.AttachmentData, contentType, fileName);
         }
 
-        // 🔹 Update
         [HttpPut("{id}")]
         public async Task<IActionResult> Update(string id, [FromBody] Message updatedMessage)
         {
@@ -169,7 +155,6 @@ namespace API.Controllers
             return NoContent();
         }
 
-        // 🔹 Delete
         [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(string id)
         {
@@ -180,8 +165,6 @@ namespace API.Controllers
             return NoContent();
         }
 
-        // 🔹 For doctor: list userClientIds this doctor has messaged
-        //     GET api/message/doctor/{doctorClientId}/users
         [HttpGet("doctor/{doctorClientId}/users")]
         public async Task<ActionResult<IEnumerable<string>>> GetUsersForDoctor(string doctorClientId)
         {
@@ -192,8 +175,6 @@ namespace API.Controllers
             return Ok(users);
         }
 
-        // 🔹 For user: list doctorClientIds this user has messaged
-        //     GET api/message/user/{userClientId}/doctors
         [HttpGet("user/{userClientId}/doctors")]
         public async Task<ActionResult<IEnumerable<string>>> GetDoctorsForUser(string userClientId)
         {

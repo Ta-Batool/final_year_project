@@ -1,10 +1,9 @@
-﻿@page "/form/{ClientId}"    
+﻿@page "/form/{ClientId}"
 @using System.ComponentModel.DataAnnotations
+@using Model
 @inject NavigationManager Navigation
-
 @inject IJSRuntime JS
 @inject IDService DoctorService
-@using Model
 
 <div class="auth-container">
     <div class="auth-left">
@@ -62,6 +61,16 @@
                 <EditForm Model="@doctor" OnValidSubmit="@HandleSubmit">
                     <DataAnnotationsValidator />
 
+                    @if (!string.IsNullOrWhiteSpace(step2Error))
+                    {
+                        <div class="alert alert-danger">@step2Error</div>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(submitError))
+                    {
+                        <div class="alert alert-danger">@submitError</div>
+                    }
+
                     <div class="form-group">
                         <label>Specialization</label>
                         <InputText class="form-input" @bind-Value="doctor.Specialization" placeholder="Enter specialization" />
@@ -80,7 +89,13 @@
                         <ValidationMessage For="@(() => doctor.PMDCNumber)" />
                     </div>
 
-                    <button type="submit" class="btn-submit">Submit</button>
+                    <button type="submit" class="btn-submit" disabled="@isSubmitting">
+                        @(isSubmitting ? "Submitting..." : "Submit")
+                    </button>
+
+                    <button type="button" class="btn-back" @onclick="GoBack" disabled="@isSubmitting">
+                        Back
+                    </button>
                 </EditForm>
             }
         </div>
@@ -94,9 +109,13 @@
     private int step = 1;
     private Doctor doctor = new();
 
+    private string? step2Error;
+    private string? submitError;
+    private bool isSubmitting = false;
+
     protected override void OnInitialized()
     {
-        if (!string.IsNullOrEmpty(ClientId))
+        if (!string.IsNullOrWhiteSpace(ClientId))
         {
             doctor.ClientId = ClientId;
             Console.WriteLine($"✅ Client ID set: {doctor.ClientId}");
@@ -107,19 +126,66 @@
         }
     }
 
-    private void GoToProfessional() => step = 2;
+    private void GoToProfessional()
+    {
+        // Clean old errors when moving forward
+        step2Error = null;
+        submitError = null;
+
+        step = 2;
+    }
+
+    private void GoBack()
+    {
+        step2Error = null;
+        submitError = null;
+        step = 1;
+    }
 
     private async Task HandleSubmit()
     {
-        await DoctorService.AddDoctorAsync(doctor);
+        // Step-2 required checks (DO NOT put these as [Required] in model,
+        // because your step-1 would fail on Next)
+        step2Error = null;
+        submitError = null;
 
-        // ⭐ store doctorId for chat/messages
-        if (!string.IsNullOrEmpty(doctor.ClientId))
+        if (string.IsNullOrWhiteSpace(doctor.Specialization))
         {
-            await JS.InvokeVoidAsync("localStorage.setItem", "doctorId", doctor.ClientId);
+            step2Error = "Specialization is required.";
+            return;
         }
 
-        Navigation.NavigateTo("/dashboard?submitted=true");
+        if (string.IsNullOrWhiteSpace(doctor.PMDCNumber))
+        {
+            step2Error = "PMDC Number is required.";
+            return;
+        }
+
+        // Prevent double submits
+        if (isSubmitting) return;
+        isSubmitting = true;
+
+        try
+        {
+            await DoctorService.AddDoctorAsync(doctor);
+
+            // Store doctorId for chat/messages
+            // Your code stores doctor.ClientId (not Mongo Id). Keeping same behavior.
+            if (!string.IsNullOrWhiteSpace(doctor.ClientId))
+            {
+                await JS.InvokeVoidAsync("localStorage.setItem", "doctorId", doctor.ClientId);
+            }
+
+            Navigation.NavigateTo("/dashboard?submitted=true");
+        }
+        catch (Exception ex)
+        {
+            submitError = "Error submitting form: " + ex.Message;
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
     }
 }
 
@@ -146,15 +212,15 @@
         padding: 40px;
     }
 
-        .auth-left h1 {
-            font-size: 26px;
-            margin-bottom: 12px;
-        }
+    .auth-left h1 {
+        font-size: 26px;
+        margin-bottom: 12px;
+    }
 
-        .auth-left p {
-            font-size: 16px;
-            color: #ddd;
-        }
+    .auth-left p {
+        font-size: 16px;
+        color: #ddd;
+    }
 
     .auth-right {
         flex: 1;
@@ -180,12 +246,12 @@
         margin-bottom: 18px;
     }
 
-        .form-group label {
-            font-weight: bold;
-            display: block;
-            margin-bottom: 6px;
-            font-size: 14px;
-        }
+    .form-group label {
+        font-weight: bold;
+        display: block;
+        margin-bottom: 6px;
+        font-size: 14px;
+    }
 
     /* Inputs */
     .form-input {
@@ -198,10 +264,10 @@
         box-sizing: border-box;
     }
 
-        .form-input:focus {
-            border-color: #3f3da6;
-            box-shadow: 0 0 5px rgba(63,61,166,0.4);
-        }
+    .form-input:focus {
+        border-color: #3f3da6;
+        box-shadow: 0 0 5px rgba(63,61,166,0.4);
+    }
 
     /* Validation messages */
     .validation-message {
@@ -212,7 +278,7 @@
     }
 
     /* Buttons */
-    .btn-next, .btn-submit {
+    .btn-next, .btn-submit, .btn-back {
         width: 100%;
         padding: 12px;
         border: none;
@@ -229,16 +295,30 @@
         color: white;
     }
 
-        .btn-next:hover {
-            background: #2f2b8f;
-        }
+    .btn-next:hover {
+        background: #2f2b8f;
+    }
 
     .btn-submit {
         background: #28a745;
         color: white;
     }
 
-        .btn-submit:hover {
-            background: #218838;
-        }
+    .btn-submit:hover {
+        background: #218838;
+    }
+
+    .btn-back {
+        background: #6c757d;
+        color: white;
+    }
+
+    .btn-back:hover {
+        background: #5a6268;
+    }
+
+    .btn-submit:disabled, .btn-back:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+    }
 </style>

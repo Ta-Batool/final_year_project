@@ -1,26 +1,36 @@
-cd /path/to/final_year_project
-
-
-# If .gitignore doesn't exist, create it; otherwise, open and add lines
-cat >> .gitignore << 'EOF'
+# =========================
 # Build output
+# =========================
 bin/
 obj/
 
-# VS/IDE stuff
+# =========================
+# IDE / OS files
+# =========================
 .vs/
+.idea/
 *.user
 *.suo
+*.swp
+.DS_Store
 
+# =========================
 # Logs
+# =========================
 *.log
-EOF
 
+# =========================
+# Environment variables
+# =========================
+.env
+**/.env
 
-API/appsettings.json
-API/appsettings.Development.json
-API/appsettings.Production.json
-
-BlazorApp1/appsettings.json
-BlazorApp1/appsettings.Development.json
-BlazorApp1/appsettings.Production.json
+# =========================
+# App settings (contain secrets)
+# =========================
+appsettings.json
+appsettings.Development.json
+appsettings.Production.json
+**/appsettings.json
+**/appsettings.Development.json
+**/appsettings.Production.json

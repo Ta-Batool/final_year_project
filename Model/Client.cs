@@ -12,6 +12,8 @@ namespace Model
         [BsonId]
         [BsonRepresentation(MongoDB.Bson.BsonType.ObjectId)]
         public string? Id { get; set; }
+        public bool IsPremium { get; set; } = false;
+
         public string? Email { get; set; }
         public string? Name { get; set; }
         public string? Role { get; set; }

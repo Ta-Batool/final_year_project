@@ -16,6 +16,19 @@
             <img src="https://via.placeholder.com/80" alt="Profile" class="profile-pic" />
             <h4>@displayName</h4>
             <p class="specialization">@roleText</p>
+
+            @* ✅ NEW: Upgrade button (Patient only, non-premium only) *@
+            @if (isPatient && !isPremium)
+            {
+                <button class="upgrade-btn" @onclick="GoToUpgrade">
+                    ⭐ Upgrade Now
+                </button>
+                <p class="small-upgrade-text">Unlock consultation & premium features</p>
+            }
+            else if (isPatient && isPremium)
+            {
+                <div class="premium-badge">Premium ✅</div>
+            }
         </div>
 
         <nav class="sidebar-nav">
@@ -27,12 +40,25 @@
                 <i class="fas fa-home"></i> Home
             </button>
 
+            @* ✅ NEW: Fitness Coach Assistant page *@
+            <button class="side-btn" @onclick='() => Navigation.NavigateTo("/patient/coach")'>
+                <i class="fas fa-robot"></i> Fitness Coach
+            </button>
+
             <button class="side-btn" @onclick='() => Navigation.NavigateTo("/selectdoctor")'>
                 <i class="fas fa-user-md"></i> Book Appointment
+                @if (isPatient && !isPremium)
+                {
+                    <span class="lock-badge">🔒</span>
+                }
             </button>
 
             <button class="side-btn" @onclick='() => Navigation.NavigateTo("/my-appointments")'>
                 <i class="fas fa-calendar-check"></i> My Appointments
+                @if (isPatient && !isPremium)
+                {
+                    <span class="lock-badge">🔒</span>
+                }
             </button>
 
             <button class="side-btn" @onclick='() => Navigation.NavigateTo("/userexercises")'>
@@ -45,6 +71,10 @@
 
             <button class="side-btn" @onclick='() => Navigation.NavigateTo("/usermessages")'>
                 <i class="fas fa-comments"></i> Messages
+                @if (isPatient && !isPremium)
+                {
+                    <span class="lock-badge">🔒</span>
+                }
             </button>
 
             <button class="side-btn" @onclick='() => Navigation.NavigateTo("/health-logs")'>
@@ -58,6 +88,14 @@
             <button class="side-btn" @onclick='() => Navigation.NavigateTo("/health-alerts")'>
                 <i class="fas fa-triangle-exclamation"></i> Alerts
             </button>
+
+            @* ✅ Optional: direct access to payment page in nav (patient only, non-premium only) *@
+            @if (isPatient && !isPremium)
+            {
+                <button class="side-btn" @onclick="GoToUpgrade">
+                    <i class="fas fa-credit-card"></i> Upgrade (Payment)
+                </button>
+            }
         </nav>
 
         <div class="bottom-section">
@@ -82,6 +120,14 @@
     <div class="main-content">
         <header class="top-navbar">
             <h5>@headerTitle</h5>
+
+            @* ✅ Optional: top right upgrade button too (patient only, non-premium only) *@
+            @if (isPatient && !isPremium)
+            {
+                <button class="top-upgrade-btn" @onclick="GoToUpgrade">
+                    Upgrade
+                </button>
+            }
         </header>
 
         <div class="page-body">
@@ -98,7 +144,12 @@
     private string roleText = "";
     private string headerTitle = "";
     private string? clientId;
+
     private bool showLangMenu = false;
+
+    // ✅ NEW premium state
+    private bool isPremium = false;
+    private bool isPatient = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -118,10 +169,15 @@
 
         clientId = client.Id;
 
+        // ✅ premium flag comes from client model
+        isPremium = client.IsPremium;
+
         var role = (client.Role ?? "").Trim().ToLowerInvariant();
 
         if (role == "doctor")
         {
+            isPatient = false;
+
             var doc = await DService.GetDoctorByClientIdAsync(client.Id);
             displayName = doc?.Name != null ? $"Dr. {doc.Name}" : "Doctor";
             roleText = "Doctor";
@@ -129,6 +185,8 @@
         }
         else
         {
+            isPatient = true;
+
             var usr = await UService.GetUserByClientIdAsync(client.Id);
             displayName = usr?.Name ?? client.Name ?? "User";
             roleText = "Patient";
@@ -140,6 +198,12 @@
     {
         if (clientId != null)
             Navigation.NavigateTo($"/userprofile/{clientId}");
+    }
+
+    void GoToUpgrade()
+    {
+        // ✅ your dummy payment page route
+        Navigation.NavigateTo("/patient/subscribe");
     }
 
     void Logout()
@@ -196,6 +260,41 @@
     .specialization {
         font-size: 14px;
         color: #ddd;
+        margin-bottom: 10px;
+    }
+
+    /* ✅ NEW: upgrade button styles */
+    .upgrade-btn {
+        width: 100%;
+        background: #f59e0b;
+        border: none;
+        color: #111827;
+        font-weight: 700;
+        padding: 10px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        margin-top: 10px;
+        transition: transform 0.15s ease, opacity 0.15s ease;
+    }
+    .upgrade-btn:hover {
+        opacity: 0.95;
+        transform: translateY(-1px);
+    }
+    .small-upgrade-text {
+        font-size: 12px;
+        color: #e5e7eb;
+        margin-top: 6px;
+    }
+    .premium-badge {
+        margin-top: 10px;
+        display: inline-block;
+        background: rgba(34, 197, 94, 0.2);
+        border: 1px solid rgba(34, 197, 94, 0.35);
+        color: #bbf7d0;
+        font-weight: 700;
+        padding: 6px 10px;
+        border-radius: 999px;
+        font-size: 12px;
     }
 
     .sidebar-nav {
@@ -221,10 +320,19 @@
         gap: 10px;
         border-radius: 5px;
         transition: background 0.2s;
+        position: relative;
     }
 
     .side-btn:hover {
         background: rgba(255,255,255,0.2);
+    }
+
+    .lock-badge {
+        margin-left: auto;
+        font-size: 13px;
+        background: rgba(255,255,255,0.15);
+        padding: 2px 8px;
+        border-radius: 999px;
     }
 
     .bottom-section {
@@ -306,6 +414,19 @@
         align-items: center;
         padding: 0 20px;
         border-bottom: 1px solid #ddd;
+    }
+
+    .top-upgrade-btn {
+        background: #111827;
+        color: #fff;
+        border: none;
+        padding: 8px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 700;
+    }
+    .top-upgrade-btn:hover {
+        opacity: 0.9;
     }
 
     .page-body {

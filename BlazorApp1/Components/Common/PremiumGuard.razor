@@ -1,0 +1,60 @@
+@using System.Security.Claims
+@using Model
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Nav
+@inject ICService CService
+
+@if (loading)
+{
+    <p>Checking subscription...</p>
+}
+else if (!isPremium)
+{
+    <div class="alert alert-warning">
+        <h4 style="margin-bottom:6px;">Premium feature 🔒</h4>
+        <p style="margin-bottom:10px;">
+            This section is available for paid patients only.
+        </p>
+
+        <a class="btn btn-warning" href="/patient/subscribe">Upgrade Now</a>
+    </div>
+}
+else
+{
+    @ChildContent
+}
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    bool loading = true;
+    bool isPremium = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = auth.User;
+
+            var email = user.FindFirst(ClaimTypes.Email)?.Value ?? user.FindFirst("email")?.Value;
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                // if not logged in, kick out
+                Nav.NavigateTo("/login-google", true);
+                return;
+            }
+
+            var client = await CService.GetClientByEmailAsync(email.Trim().ToLowerInvariant());
+            isPremium = client?.IsPremium == true;
+        }
+        catch
+        {
+            isPremium = false;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+}
