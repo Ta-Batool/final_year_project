@@ -12,7 +12,7 @@ namespace API.Services
             _checkIns = db.GetCollection<DailyCheckIn>("DailyCheckIns");
         }
 
-        // 1 check-in per client per day (UTC)
+        // One check-in per client per day
         public async Task<DailyCheckIn> UpsertAsync(DailyCheckIn input)
         {
             input.DateUtc = input.DateUtc.Date;
@@ -21,15 +21,29 @@ namespace API.Services
                 x.ClientId == input.ClientId && x.DateUtc == input.DateUtc);
 
             var existing = await _checkIns.Find(filter).FirstOrDefaultAsync();
+
             if (existing is null)
             {
                 await _checkIns.InsertOneAsync(input);
                 return input;
             }
 
-            input.Id = existing.Id;
-            await _checkIns.ReplaceOneAsync(filter, input);
-            return input;
+            // Safe merge: only overwrite when meaningful value is provided
+            existing.WeightKg = input.WeightKg > 0 ? input.WeightKg : existing.WeightKg;
+            existing.HeightCm = input.HeightCm > 0 ? input.HeightCm : existing.HeightCm;
+            existing.Steps = input.Steps > 0 ? input.Steps : existing.Steps;
+            existing.ExerciseMinutes = input.ExerciseMinutes > 0 ? input.ExerciseMinutes : existing.ExerciseMinutes;
+            existing.SleepHours = input.SleepHours > 0 ? input.SleepHours : existing.SleepHours;
+            existing.WaterCups = input.WaterCups > 0 ? input.WaterCups : existing.WaterCups;
+
+            if (!string.IsNullOrWhiteSpace(input.FoodNotes))
+                existing.FoodNotes = input.FoodNotes.Trim();
+
+            if (!string.IsNullOrWhiteSpace(input.ExerciseNotes))
+                existing.ExerciseNotes = input.ExerciseNotes.Trim();
+
+            await _checkIns.ReplaceOneAsync(filter, existing);
+            return existing;
         }
 
         public async Task<List<DailyCheckIn>> GetMonthAsync(string clientId, int year, int month)
@@ -38,9 +52,14 @@ namespace API.Services
             var end = start.AddMonths(1);
 
             var filter = Builders<DailyCheckIn>.Filter.Where(x =>
-                x.ClientId == clientId && x.DateUtc >= start && x.DateUtc < end);
+                x.ClientId == clientId &&
+                x.DateUtc >= start &&
+                x.DateUtc < end);
 
-            return await _checkIns.Find(filter).SortBy(x => x.DateUtc).ToListAsync();
+            return await _checkIns
+                .Find(filter)
+                .SortBy(x => x.DateUtc)
+                .ToListAsync();
         }
     }
 }

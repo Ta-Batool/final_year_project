@@ -3,13 +3,9 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace API.Controllers
 {
-    public class SubscribeRequest
+    public class CreateCheckoutRequest
     {
         public string ClientId { get; set; } = "";
-        public string CardNumber { get; set; } = "";
-        public string CardName { get; set; } = "";
-        public string Expiry { get; set; } = "";
-        public string Cvv { get; set; } = "";
         public int AmountPkr { get; set; } = 1500;
     }
 
@@ -24,21 +20,30 @@ namespace API.Controllers
             _payments = payments;
         }
 
-        [HttpPost("subscribe")]
-        public async Task<IActionResult> Subscribe([FromBody] SubscribeRequest req)
+        [HttpPost("create-checkout-session")]
+        public async Task<IActionResult> CreateCheckoutSession([FromBody] CreateCheckoutRequest req)
         {
             if (string.IsNullOrWhiteSpace(req.ClientId))
                 return BadRequest("ClientId required");
 
-            if (string.IsNullOrWhiteSpace(req.CardNumber))
-                return BadRequest("Card number required");
+            var url = await _payments.CreateStripeCheckoutSessionAsync(req.ClientId, req.AmountPkr);
+            return Ok(new { checkoutUrl = url });
+        }
 
-            // ✅ This must:
-            // 1) create payment record
-            // 2) set client.IsPremium = true in MongoDB
-            var rec = await _payments.SubscribeAsync(req.ClientId, req.CardNumber, req.AmountPkr);
+        [HttpGet("success")]
+        public async Task<IActionResult> PaymentSuccess([FromQuery] string sessionId)
+        {
+            if (string.IsNullOrWhiteSpace(sessionId))
+                return BadRequest("Session id missing");
 
-            return Ok(rec);
+            await _payments.ConfirmStripePaymentAsync(sessionId);
+            return Redirect($"{_payments.BlazorBaseUrl}/userdashboard?payment=success");
+        }
+
+        [HttpGet("cancel")]
+        public IActionResult PaymentCancel()
+        {
+            return Redirect($"{_payments.BlazorBaseUrl}/patient/subscribe?payment=cancel");
         }
 
         [HttpGet]

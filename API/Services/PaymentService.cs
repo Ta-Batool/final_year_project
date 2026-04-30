@@ -1,5 +1,8 @@
+using MongoDB.Bson;
+using MongoDB.Bson.Serialization.Attributes;
 using MongoDB.Driver;
 using Model;
+using Stripe.Checkout;
 
 namespace API.Services
 {
@@ -7,37 +10,106 @@ namespace API.Services
     {
         private readonly IMongoCollection<PaymentRecord> _payments;
         private readonly IMongoCollection<Client> _clients;
+        private readonly IConfiguration _config;
 
-        public PaymentService(IMongoDatabase database)
+        public string BlazorBaseUrl { get; }
+
+        public PaymentService(IMongoDatabase database, IConfiguration config)
         {
             _payments = database.GetCollection<PaymentRecord>("Payments");
             _clients = database.GetCollection<Client>("Client");
+            _config = config;
+
+            BlazorBaseUrl = _config["BLAZOR_BASE_URL"] ?? "https://localhost:7126";
         }
 
-        public async Task<PaymentRecord> SubscribeAsync(string clientId, string cardNumber, int amountPkr)
+        public async Task<string> CreateStripeCheckoutSessionAsync(string clientId, int amountPkr)
         {
-            // 1️⃣ Save payment record
+            if (amountPkr <= 0)
+                amountPkr = 1500;
+
+            var apiBaseUrl = _config["API_BASE_URL"] ?? "https://localhost:7191";
+
+            var options = new SessionCreateOptions
+            {
+                PaymentMethodTypes = new List<string> { "card" },
+                Mode = "payment",
+                SuccessUrl = $"{apiBaseUrl}/api/Payments/success?sessionId={{CHECKOUT_SESSION_ID}}",
+                CancelUrl = $"{apiBaseUrl}/api/Payments/cancel",
+                ClientReferenceId = clientId,
+
+                Metadata = new Dictionary<string, string>
+                {
+                    { "clientId", clientId },
+                    { "amountPkr", amountPkr.ToString() }
+                },
+
+                LineItems = new List<SessionLineItemOptions>
+                {
+                    new SessionLineItemOptions
+                    {
+                        Quantity = 1,
+                        PriceData = new SessionLineItemPriceDataOptions
+                        {
+                            Currency = "pkr",
+                            UnitAmount = amountPkr * 100,
+                            ProductData = new SessionLineItemPriceDataProductDataOptions
+                            {
+                                Name = "NutriNest Premium Subscription",
+                                Description = "Premium access for personalized nutrition and fitness features"
+                            }
+                        }
+                    }
+                }
+            };
+
+            var service = new SessionService();
+            var session = await service.CreateAsync(options);
+
             var payment = new PaymentRecord
             {
                 ClientId = clientId,
                 AmountPkr = amountPkr,
-                CardLast4 = cardNumber.Length >= 4 ? cardNumber[^4..] : cardNumber,
-                Status = "PAID",
-                PaidAt = DateTime.UtcNow
+                StripeSessionId = session.Id,
+                Status = "PENDING",
+                CreatedAt = DateTime.UtcNow
             };
 
             await _payments.InsertOneAsync(payment);
 
-            // 2️⃣ Update client premium flag
+            return session.Url;
+        }
+
+        public async Task ConfirmStripePaymentAsync(string sessionId)
+        {
+            var service = new SessionService();
+            var session = await service.GetAsync(sessionId);
+
+            if (session.PaymentStatus != "paid")
+                throw new Exception("Payment not completed.");
+
+            var clientId = session.ClientReferenceId;
+
+            if (string.IsNullOrWhiteSpace(clientId) && session.Metadata.ContainsKey("clientId"))
+                clientId = session.Metadata["clientId"];
+
+            if (string.IsNullOrWhiteSpace(clientId))
+                throw new Exception("ClientId missing from Stripe session.");
+
+            await _payments.UpdateOneAsync(
+                p => p.StripeSessionId == sessionId,
+                Builders<PaymentRecord>.Update
+                    .Set(p => p.Status, "PAID")
+                    .Set(p => p.PaidAt, DateTime.UtcNow)
+            );
+
             var result = await _clients.UpdateOneAsync(
                 c => c.Id == clientId,
                 Builders<Client>.Update.Set(c => c.IsPremium, true)
             );
 
-            if (result.ModifiedCount == 0)
-                throw new Exception("Client not found or premium not updated.");
-
-            return payment;
+            if (result.MatchedCount == 0)
+                throw new Exception("Client not found. Premium not updated.");
         }
 
         public async Task<List<PaymentRecord>> GetAllAsync()
@@ -49,11 +121,17 @@ namespace API.Services
 
     public class PaymentRecord
     {
-        public string Id { get; set; } = "";
+        [BsonId]
+        [BsonRepresentation(BsonType.ObjectId)]
+        public string? Id { get; set; }
+
         public string ClientId { get; set; } = "";
         public int AmountPkr { get; set; }
-        public string CardLast4 { get; set; } = "";
-        public string Status { get; set; } = "PAID";
-        public DateTime PaidAt { get; set; } = DateTime.UtcNow;
+
+        public string StripeSessionId { get; set; } = "";
+        public string Status { get; set; } = "PENDING";
+
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime? PaidAt { get; set; }
     }
 }

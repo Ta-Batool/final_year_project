@@ -7,37 +7,50 @@ using API.Ai;
 using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Models;
 using Microsoft.AspNetCore.Http;
+using Stripe;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ✅ Load .env (LOCAL ONLY). Put your .env in API/.env
+// =======================
+// Load .env
+// =======================
 DotNetEnv.Env.Load(Path.Combine(Directory.GetCurrentDirectory(), ".env"));
 DotNetEnv.Env.Load(Path.Combine(Directory.GetCurrentDirectory(), "API", ".env"));
 
-// ✅ Allow environment variables (and .env via DotNetEnv) to override appsettings
 builder.Configuration.AddEnvironmentVariables();
+
+// =======================
+// Stripe Config
+// =======================
+StripeConfiguration.ApiKey = builder.Configuration["STRIPE_SECRET_KEY"];
+
+if (string.IsNullOrWhiteSpace(StripeConfiguration.ApiKey))
+{
+    throw new Exception("STRIPE_SECRET_KEY is missing. Add it in API/.env");
+}
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 
-// ✅ Swagger (FIX multipart/form-data + IFormFile)
+// =======================
+// Swagger
+// =======================
 builder.Services.AddSwaggerGen(c =>
 {
-    // Fix file uploads with [FromForm] IFormFile
     c.MapType<IFormFile>(() => new OpenApiSchema
     {
         Type = "string",
         Format = "binary"
     });
 
-    // Also adjust requestBody schema for multipart endpoints
     c.OperationFilter<API.Swagger.MultipartFormOperationFilter>();
 });
 
-// ✅ Bind Mongo settings
+// =======================
+// MongoDB
+// =======================
 builder.Services.Configure<MongoDBSettings>(builder.Configuration.GetSection("MongoDB"));
 
-// ✅ Register Mongo Client + Database for DI
 builder.Services.AddSingleton<IMongoClient>(sp =>
 {
     var settings = sp.GetRequiredService<IOptions<MongoDBSettings>>().Value;
@@ -59,7 +72,9 @@ builder.Services.AddSingleton<IMongoDatabase>(sp =>
     return client.GetDatabase(settings.DatabaseName);
 });
 
-// ✅ Existing services
+// =======================
+// Existing Services
+// =======================
 builder.Services.AddSingleton<DoctorService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IClientService, ClientService>();
@@ -74,30 +89,32 @@ builder.Services.AddSingleton<IHydrationService, HydrationService>();
 builder.Services.AddSingleton<DoctorPatientService>();
 builder.Services.AddSingleton<HealthLogService>();
 builder.Services.AddSingleton<DietPlanService>();
-
-// ✅ Keep only ONE ExercisePlanService registration
 builder.Services.AddSingleton<ExercisePlanService>();
-
 builder.Services.AddSingleton<DailyChecklistService>();
 builder.Services.AddHttpClient<ICaloriesBurnedApiService, CaloriesBurnedApiService>();
 builder.Services.AddSingleton<BPLogService>();
 builder.Services.AddSingleton<GlucoseLogService>();
 builder.Services.AddSingleton<WeightLogService>();
 
-// ✅ New premium / coach / workouts services
+// Premium / coach / workouts services
 builder.Services.AddSingleton<CheckInService>();
-builder.Services.AddSingleton<FitnessCoachService>();
+builder.Services.AddScoped<FitnessCoachService>();
 builder.Services.AddSingleton<PaymentService>();
 builder.Services.AddSingleton<WorkoutService>();
 
+// OTP
 builder.Services.Configure<API.Otp.OtpSettings>(builder.Configuration.GetSection("Otp"));
+builder.Services.Configure<API.Otp.TwilioSettings>(builder.Configuration.GetSection("Twilio"));
 builder.Services.AddSingleton<API.Services.OtpService>();
 
-// ✅ Admin (Basic Auth) for /api/admin endpoints
+// Admin
 builder.Services.AddSingleton<API.Security.AdminAuth>();
 
 builder.Services.AddSignalR();
 
+// =======================
+// CORS
+// =======================
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowBlazor", policy =>
@@ -118,6 +135,9 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+// =======================
+// Middleware
+// =======================
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -131,7 +151,16 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapGet("/", () => Results.Ok("API is running"));
-app.MapGet("/health", () => Results.Ok(new { status = "Healthy" }));
+
+app.MapGet("/health", (IConfiguration config) =>
+{
+    return Results.Ok(new
+    {
+        status = "Healthy",
+        stripeConfigured = !string.IsNullOrWhiteSpace(config["STRIPE_SECRET_KEY"]),
+        blazorBaseUrl = config["BLAZOR_BASE_URL"] ?? "https://localhost:7126"
+    });
+});
 
 app.MapControllers();
 app.MapHub<CallHub>("/callHub");

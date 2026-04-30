@@ -6,57 +6,34 @@
 @inject AuthenticationStateProvider AuthState
 @inject NavigationManager Nav
 
-<h3>Dummy Payment Gateway</h3>
+<div class="subscribe-page">
+    <div class="subscribe-card">
+        <h2>Upgrade to Premium</h2>
+        <p>Get access to premium NutriNest features.</p>
 
-@if (!string.IsNullOrEmpty(error))
-{
-    <div class="alert alert-danger">@error</div>
-}
+        @if (!string.IsNullOrWhiteSpace(error))
+        {
+            <div class="error-box">@error</div>
+        }
 
-<div class="card p-3" style="max-width:520px;">
-    <div class="mb-2">
-        <label>Card Number</label>
-        <input class="form-control" @bind="cardNumber" placeholder="4111 1111 1111 1111" />
-    </div>
-
-    <div class="mb-2">
-        <label>Name on Card</label>
-        <input class="form-control" @bind="cardName" />
-    </div>
-
-    <div class="row">
-        <div class="col-6 mb-2">
-            <label>Expiry</label>
-            <input class="form-control" @bind="expiry" placeholder="12/29" />
+        <div class="price-box">
+            <span>PKR</span>
+            <strong>@amountPkr</strong>
         </div>
-        <div class="col-6 mb-2">
-            <label>CVV</label>
-            <input class="form-control" @bind="cvv" placeholder="123" />
-        </div>
-    </div>
 
-    <div class="mb-2">
-        <label>Amount (PKR)</label>
-        <input class="form-control" type="number" @bind="amountPkr" />
-    </div>
+        <button class="btn-pay" @onclick="PayWithStripe" disabled="@busy">
+            @(busy ? "Redirecting..." : "Pay with Stripe")
+        </button>
 
-    <button class="btn btn-success" @onclick="Pay" disabled="@busy">
-        @(busy ? "Processing..." : "Pay (Dummy)")
-    </button>
+        <p class="note">Secure checkout powered by Stripe. We do not store card details.</p>
+    </div>
 </div>
 
 @code {
-    string error = "";
-    bool busy = false;
-
-    string email = "";
-    string clientId = "";
-
-    string cardNumber = "";
-    string cardName = "";
-    string expiry = "";
-    string cvv = "";
-    int amountPkr = 1500;
+    private string error = "";
+    private bool busy = false;
+    private string clientId = "";
+    private int amountPkr = 1500;
 
     protected override async Task OnInitializedAsync()
     {
@@ -65,23 +42,20 @@
             var state = await AuthState.GetAuthenticationStateAsync();
             var user = state.User;
 
-            email = user.FindFirst(ClaimTypes.Email)?.Value
-                 ?? user.FindFirst("email")?.Value
-                 ?? "";
+            var email = user.FindFirst(ClaimTypes.Email)?.Value
+                ?? user.FindFirst("email")?.Value
+                ?? "";
 
             if (string.IsNullOrWhiteSpace(email))
             {
-                error = "Not logged in.";
+                error = "You are not logged in.";
                 return;
             }
 
-            email = email.Trim().ToLowerInvariant();
+            var client = await Http.GetFromJsonAsync<ClientDto>(
+                $"api/Clients/{Uri.EscapeDataString(email.Trim().ToLowerInvariant())}");
 
-            // ✅ Correct endpoint (your logs show it works):
-            // GET /api/Clients/{email}
-            var client = await Http.GetFromJsonAsync<ClientDto>($"api/Clients/{Uri.EscapeDataString(email)}");
-
-            if (client is null || string.IsNullOrWhiteSpace(client.Id))
+            if (client == null || string.IsNullOrWhiteSpace(client.Id))
             {
                 error = "Client not found.";
                 return;
@@ -95,38 +69,39 @@
         }
     }
 
-    async Task Pay()
+    private async Task PayWithStripe()
     {
         try
         {
-            error = "";
             busy = true;
+            error = "";
 
             if (string.IsNullOrWhiteSpace(clientId))
-                throw new Exception("ClientId missing. Reload page.");
+                throw new Exception("ClientId missing. Please reload the page.");
 
-            var req = new SubscribeRequest
+            var response = await Http.PostAsJsonAsync(
+                "api/Payments/create-checkout-session",
+                new CreateCheckoutRequest
+                {
+                    ClientId = clientId,
+                    AmountPkr = amountPkr
+                });
+
+            if (!response.IsSuccessStatusCode)
             {
-                ClientId = clientId,
-                CardNumber = (cardNumber ?? "").Replace(" ", ""),
-                CardName = cardName ?? "",
-                Expiry = expiry ?? "",
-                Cvv = cvv ?? "",
-                AmountPkr = amountPkr
-            };
-
-            // ✅ POST /api/Payments/subscribe
-            // This MUST update DB premium flag in backend
-            var resp = await Http.PostAsJsonAsync("api/Payments/subscribe", req);
-
-            if (!resp.IsSuccessStatusCode)
-            {
-                error = await resp.Content.ReadAsStringAsync();
+                error = await response.Content.ReadAsStringAsync();
                 return;
             }
 
-            // ✅ Go back to Home (you wanted home after upgrade)
-            Nav.NavigateTo("/userdashboard", forceLoad: true);
+            var result = await response.Content.ReadFromJsonAsync<CheckoutResponse>();
+
+            if (string.IsNullOrWhiteSpace(result?.CheckoutUrl))
+            {
+                error = "Stripe checkout URL not received.";
+                return;
+            }
+
+            Nav.NavigateTo(result.CheckoutUrl, forceLoad: true);
         }
         catch (Exception ex)
         {
@@ -138,15 +113,95 @@
         }
     }
 
-    class ClientDto { public string Id { get; set; } = ""; }
+    private class ClientDto
+    {
+        public string Id { get; set; } = "";
+    }
 
-    class SubscribeRequest
+    private class CreateCheckoutRequest
     {
         public string ClientId { get; set; } = "";
-        public string CardNumber { get; set; } = "";
-        public string CardName { get; set; } = "";
-        public string Expiry { get; set; } = "";
-        public string Cvv { get; set; } = "";
         public int AmountPkr { get; set; }
     }
+
+    private class CheckoutResponse
+    {
+        public string CheckoutUrl { get; set; } = "";
+    }
 }
+
+<style>
+    .subscribe-page {
+        min-height: calc(100vh - 90px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 40px 20px;
+        background: #f7f7fb;
+    }
+
+    .subscribe-card {
+        width: 100%;
+        max-width: 520px;
+        background: #fff;
+        padding: 36px;
+        border-radius: 22px;
+        box-shadow: 0 18px 45px rgba(0,0,0,0.14);
+        text-align: center;
+    }
+
+    .subscribe-card h2 {
+        font-size: 28px;
+        font-weight: 800;
+        color: #24214f;
+        margin-bottom: 10px;
+    }
+
+    .price-box {
+        background: #4a47a3;
+        color: white;
+        padding: 22px;
+        border-radius: 18px;
+        margin: 24px 0;
+    }
+
+    .price-box strong {
+        font-size: 42px;
+        margin-left: 8px;
+    }
+
+    .btn-pay {
+        width: 100%;
+        height: 50px;
+        border: none;
+        border-radius: 12px;
+        background: #28a745;
+        color: white;
+        font-size: 16px;
+        font-weight: 700;
+        cursor: pointer;
+    }
+
+    .btn-pay:hover {
+        background: #218838;
+    }
+
+    .btn-pay:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+    }
+
+    .note {
+        margin-top: 14px;
+        font-size: 13px;
+        color: #777;
+    }
+
+    .error-box {
+        background: #ffe2e2;
+        color: #b00020;
+        padding: 10px;
+        border-radius: 10px;
+        margin: 16px 0;
+    }
+</style>

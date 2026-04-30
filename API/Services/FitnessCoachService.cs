@@ -1,114 +1,251 @@
+using API.Ai;
 using Model;
+using MongoDB.Driver;
+using System.Globalization;
+using System.Text.Json;
 
 namespace API.Services
 {
     public class FitnessCoachService
     {
-        private readonly CheckInService _checkIns;
+        private readonly IMongoCollection<User> _users;
+        private readonly IMongoCollection<HealthLog> _healthLogs;
+        private readonly IMongoCollection<WeightLog> _weightLogs;
+        private readonly IMongoCollection<Meal> _meals;
+        private readonly IMongoCollection<ExerciseEntry> _exercises;
+        private readonly IMongoCollection<DailyCheckIn> _checkIns;
+        private readonly IAiAssistantService _ai;
 
-        public FitnessCoachService(CheckInService checkIns)
+        public FitnessCoachService(IMongoDatabase database, IAiAssistantService ai)
         {
-            _checkIns = checkIns;
-        }
-
-        public static double CalcBmi(double weightKg, double heightCm)
-        {
-            if (heightCm <= 0) return 0;
-            var h = heightCm / 100.0;
-            return weightKg / (h * h);
+            _users = database.GetCollection<User>("User");
+            _healthLogs = database.GetCollection<HealthLog>("HealthLogs");
+            _weightLogs = database.GetCollection<WeightLog>("WeightLog");
+            _meals = database.GetCollection<Meal>("Meals");
+            _exercises = database.GetCollection<ExerciseEntry>("ExerciseEntries");
+            _checkIns = database.GetCollection<DailyCheckIn>("DailyCheckIns");
+            _ai = ai;
         }
 
         public async Task<object> GetMonthlySummaryAsync(string clientId, int year, int month)
         {
-            var items = await _checkIns.GetMonthAsync(clientId, year, month);
+            var from = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
+            var to = from.AddMonths(1);
 
-            if (items == null || items.Count == 0)
+            var user = await _users.Find(x => x.ClientId == clientId).FirstOrDefaultAsync();
+
+            var healthLogs = await _healthLogs.Find(x =>
+                    x.UserId == clientId &&
+                    x.Timestamp >= from &&
+                    x.Timestamp < to)
+                .SortBy(x => x.Timestamp)
+                .ToListAsync();
+
+            var weightLogs = await _weightLogs.Find(x =>
+                    x.UserId == clientId &&
+                    x.LoggedAt >= from &&
+                    x.LoggedAt < to)
+                .SortBy(x => x.LoggedAt)
+                .ToListAsync();
+
+            var meals = await _meals.Find(x =>
+                    x.ClientId == clientId &&
+                    x.Date >= from &&
+                    x.Date < to)
+                .SortBy(x => x.Date)
+                .ToListAsync();
+
+            var exercises = await _exercises.Find(x =>
+                    x.ClientId == clientId &&
+                    x.Date >= from &&
+                    x.Date < to)
+                .SortBy(x => x.Date)
+                .ToListAsync();
+
+            var checkIns = await _checkIns.Find(x =>
+                    x.ClientId == clientId &&
+                    x.DateUtc >= from &&
+                    x.DateUtc < to)
+                .SortBy(x => x.DateUtc)
+                .ToListAsync();
+
+            double profileWeight = ParseDouble(user?.Weight);
+            double profileHeight = ParseHeightCm(user?.Height);
+            int age = user?.Age > 0 ? user.Age : 25;
+            string gender = !string.IsNullOrWhiteSpace(user?.Gender) ? user.Gender! : user?.Sex ?? "Male";
+
+            double latestWeight =
+                weightLogs.LastOrDefault()?.WeightKg > 0 ? weightLogs.Last().WeightKg :
+                healthLogs.LastOrDefault(x => x.WeightKg > 0)?.WeightKg > 0 ? healthLogs.Last(x => x.WeightKg > 0).WeightKg :
+                checkIns.LastOrDefault(x => x.WeightKg > 0)?.WeightKg > 0 ? checkIns.Last(x => x.WeightKg > 0).WeightKg :
+                profileWeight;
+
+            double latestHeight =
+                healthLogs.LastOrDefault(x => x.HeightCm > 0)?.HeightCm > 0 ? healthLogs.Last(x => x.HeightCm > 0).HeightCm :
+                checkIns.LastOrDefault(x => x.HeightCm > 0)?.HeightCm > 0 ? checkIns.Last(x => x.HeightCm > 0).HeightCm :
+                profileHeight;
+
+            var firstWeight =
+                weightLogs.FirstOrDefault()?.WeightKg > 0 ? weightLogs.First().WeightKg :
+                healthLogs.FirstOrDefault(x => x.WeightKg > 0)?.WeightKg > 0 ? healthLogs.First(x => x.WeightKg > 0).WeightKg :
+                checkIns.FirstOrDefault(x => x.WeightKg > 0)?.WeightKg > 0 ? checkIns.First(x => x.WeightKg > 0).WeightKg :
+                latestWeight;
+
+            double? bmi = null;
+            if (latestWeight > 0 && latestHeight > 0)
             {
-                return new
-                {
-                    year,
-                    month,
-                    hasData = false,
-                    message = "No check-ins found for this month."
-                };
+                var h = latestHeight / 100.0;
+                bmi = Math.Round(latestWeight / (h * h), 2);
             }
 
-            var ordered = items.OrderBy(x => x.DateUtc).ToList();
+            int bmr = 0;
+            int maintenance = 0;
 
-            var first = ordered.First();
-            var last = ordered.Last();
-
-            double startW = first.WeightKg;
-            double endW = last.WeightKg;
-            double diff = endW - startW;
-
-            double avgSteps = ordered.Average(x => x.Steps);
-            double avgExercise = ordered.Average(x => x.ExerciseMinutes);
-
-            double bmiStart = CalcBmi(startW, first.HeightCm);
-            double bmiEnd = CalcBmi(endW, last.HeightCm);
-
-            double expectedLossKg =
-                (avgExercise >= 30 && avgSteps >= 6000) ? 1.5 :
-                (avgExercise >= 20 || avgSteps >= 5000) ? 1.0 :
-                0.5;
-
-            var suggestions = new List<string>
+            if (latestWeight > 0 && latestHeight > 0)
             {
-                "Aim for protein in each meal (eggs, chicken, dal) to reduce cravings.",
-                "Try 7–8 hours of sleep; poor sleep increases hunger.",
-                "Keep water intake around 8–10 cups daily."
-            };
+                var female = gender.Equals("Female", StringComparison.OrdinalIgnoreCase);
+                var rawBmr = female
+                    ? (10 * latestWeight) + (6.25 * latestHeight) - (5 * age) - 161
+                    : (10 * latestWeight) + (6.25 * latestHeight) - (5 * age) + 5;
 
-            if (avgExercise < 20)
-                suggestions.Add("Increase exercise to at least 20–30 minutes per day, such as a brisk walk.");
+                bmr = (int)Math.Round(rawBmr);
+                maintenance = (int)Math.Round(rawBmr * 1.375); // light activity default
+            }
 
-            if (avgSteps < 5000)
-                suggestions.Add("Gradually target 6,000 to 8,000 steps per day.");
+            int totalCaloriesConsumed = meals.Sum(x => x.Calories ?? 0);
+            int totalCaloriesBurned = exercises.Sum(x => x.CaloriesBurned ?? 0);
+            int mealDays = meals.Select(x => x.Date.Date).Distinct().Count();
+            int exerciseDays = exercises.Select(x => x.Date.Date).Distinct().Count();
 
-            var routine = new List<object>
-            {
-                new { day = "Mon", plan = "30 min brisk walk + 10 min stretching" },
-                new { day = "Tue", plan = "Bodyweight: squats 3x12, pushups 3x8, plank 3x30s" },
-                new { day = "Wed", plan = "35 min brisk walk" },
-                new { day = "Thu", plan = "Lower body: lunges 3x10, glute bridge 3x12, calf raises 3x15" },
-                new { day = "Fri", plan = "40 min walk + mobility" },
-                new { day = "Sat", plan = "Full body: squats 3x12, rows/band 3x12, plank 3x40s" },
-                new { day = "Sun", plan = "Light walk 20 min + rest" }
-            };
+            double avgCaloriesConsumed = mealDays > 0
+                ? Math.Round((double)totalCaloriesConsumed / mealDays)
+                : 0;
+
+            double avgCaloriesBurned = exerciseDays > 0
+                ? Math.Round((double)totalCaloriesBurned / exerciseDays)
+                : 0;
+
+            double avgSteps = checkIns.Any(x => x.Steps > 0)
+                ? Math.Round(checkIns.Where(x => x.Steps > 0).Average(x => x.Steps))
+                : 0;
+
+            double avgExerciseMinutes =
+                exercises.Any(x => x.DurationMinutes > 0)
+                    ? Math.Round(exercises.Where(x => x.DurationMinutes > 0).Average(x => x.DurationMinutes!.Value))
+                    : checkIns.Any(x => x.ExerciseMinutes > 0)
+                        ? Math.Round(checkIns.Where(x => x.ExerciseMinutes > 0).Average(x => x.ExerciseMinutes))
+                        : 0;
+
+            int dailyAverageNet = (int)Math.Round(avgCaloriesConsumed - avgCaloriesBurned);
+            int dailyDeficitOrSurplus = maintenance > 0 ? dailyAverageNet - maintenance : 0;
+
+            double expectedMonthlyWeightChangeKg = maintenance > 0
+                ? Math.Round((dailyDeficitOrSurplus * DateTime.DaysInMonth(year, month)) / 7700.0, 2)
+                : 0;
 
             return new
             {
                 year,
                 month,
-                hasData = true,
-                checkins = ordered.Count,
-                startWeightKg = Math.Round(startW, 2),
-                endWeightKg = Math.Round(endW, 2),
-                changeKg = Math.Round(diff, 2),
-                bmiStart = Math.Round(bmiStart, 2),
-                bmiEnd = Math.Round(bmiEnd, 2),
-                avgSteps = Math.Round(avgSteps, 0),
-                avgExerciseMinutes = Math.Round(avgExercise, 0),
-                expectedNextMonthLossKg = expectedLossKg,
-                suggestions,
-                routine
+                hasData = user != null || healthLogs.Any() || weightLogs.Any() || meals.Any() || exercises.Any() || checkIns.Any(),
+
+                profile = new
+                {
+                    name = user?.Name,
+                    gender,
+                    age,
+                    profileWeight,
+                    profileHeight
+                },
+
+                checkins = checkIns.Count,
+                healthLogs = healthLogs.Count,
+                weightLogs = weightLogs.Count,
+
+                latestWeightKg = latestWeight,
+                latestHeightCm = latestHeight,
+                startWeightKg = firstWeight,
+                endWeightKg = latestWeight,
+                changeKg = latestWeight > 0 && firstWeight > 0 ? Math.Round(latestWeight - firstWeight, 2) : 0,
+                bmi,
+
+                bmr,
+                maintenanceCalories = maintenance,
+
+                mealsLogged = meals.Count,
+                mealDays,
+                totalCaloriesConsumed,
+                avgCaloriesConsumed,
+
+                exercisesLogged = exercises.Count,
+                exerciseDays,
+                totalCaloriesBurned,
+                avgCaloriesBurned,
+                avgSteps,
+                avgExerciseMinutes,
+
+                dailyAverageNetCalories = dailyAverageNet,
+                dailyDeficitOrSurplus,
+                expectedMonthlyWeightChangeKg,
+
+                recentMeals = meals
+                    .OrderByDescending(x => x.Date)
+                    .Take(10)
+                    .Select(x => new
+                    {
+                        date = x.Date.ToString("yyyy-MM-dd"),
+                        x.Type,
+                        x.Foods,
+                        x.Calories
+                    }),
+
+                recentExercises = exercises
+                    .OrderByDescending(x => x.Date)
+                    .Take(10)
+                    .Select(x => new
+                    {
+                        date = x.Date.ToString("yyyy-MM-dd"),
+                        x.Name,
+                        x.Type,
+                        x.DurationMinutes,
+                        x.CaloriesBurned
+                    }),
+
+                message = "Summary built from profile, health logs, weight logs, meals, exercises and check-ins."
             };
         }
 
         public async Task<object> ChatAsync(string clientId, string message, int year, int month)
         {
             var summary = await GetMonthlySummaryAsync(clientId, year, month);
-            var msg = (message ?? "").ToLowerInvariant();
 
-            string reply =
-                msg.Contains("diet") || msg.Contains("food")
-                    ? "Share your last 2 meals plus snacks, and I’ll suggest calorie-friendly swaps."
-                : msg.Contains("workout") || msg.Contains("exercise")
-                    ? "Tell me your available time per day (20/30/45 min) and equipment (none/dumbbells), and I’ll adjust your plan."
-                : msg.Contains("bmi")
-                    ? "BMI is only a rough indicator. Weight trend, waist measurement, sleep, and activity matter too."
-                : "I’m your fitness coach. Send your food and exercise routine today, and I’ll guide you. You can also ask any health or fitness question.";
+            var contextJson = JsonSerializer.Serialize(summary, new JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
+
+            var prompt = $"""
+            You are NutriNest AI Fitness Coach.
+
+            Use this real user data:
+            {contextJson}
+
+            User question:
+            {message}
+
+            Your job:
+            - Answer the exact question.
+            - Use profile weight, height, BMI, BMR, maintenance calories, food calories, exercise calories burned, net calories and health logs.
+            - Compare daily calorie intake with calories burned and BMR/maintenance.
+            - Predict whether the user is likely losing, gaining or maintaining weight.
+            - Give personalized suggestions based on missing or available data.
+            - If some data is missing, clearly say what is missing.
+            - Do not give generic repeated answers.
+            - Keep it practical and friendly.
+            - Do not diagnose disease or prescribe medicine.
+            """;
+
+            var reply = await _ai.GetPatientReplyAsync(clientId, prompt);
 
             return new
             {
@@ -118,6 +255,30 @@ namespace API.Services
                 reply,
                 context = summary
             };
+        }
+
+        private static double ParseDouble(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return 0;
+
+            value = value.Trim().Replace("kg", "", StringComparison.OrdinalIgnoreCase)
+                                .Replace("cm", "", StringComparison.OrdinalIgnoreCase);
+
+            return double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var result)
+                ? result
+                : 0;
+        }
+
+        private static double ParseHeightCm(string? value)
+        {
+            var h = ParseDouble(value);
+            if (h <= 0) return 0;
+
+            // If user entered 5.7, treat it as feet-style height and convert approx to cm
+            if (h > 3 && h < 9)
+                return Math.Round(h * 30.48, 2);
+
+            return h;
         }
     }
 }

@@ -30,7 +30,9 @@ builder.Services.AddRazorPages()
 builder.Services.AddServerSideBlazor()
     .AddCircuitOptions(o => o.DetailedErrors = true);
 
-// ✅ Cookie policy (FIXED for OAuth correlation cookies)
+// =======================
+// Cookie Policy (FIXED)
+// =======================
 builder.Services.Configure<CookiePolicyOptions>(options =>
 {
     options.MinimumSameSitePolicy = SameSiteMode.Unspecified;
@@ -40,7 +42,6 @@ builder.Services.Configure<CookiePolicyOptions>(options =>
 
 static void FixSameSite(CookieOptions options)
 {
-    // If SameSite=None then cookie MUST be Secure, otherwise browsers drop it
     if (options.SameSite == SameSiteMode.None)
     {
         options.Secure = true;
@@ -48,7 +49,7 @@ static void FixSameSite(CookieOptions options)
 }
 
 // =======================
-// Authentication (Cookies + Google)
+// Authentication
 // =======================
 builder.Services
     .AddAuthentication(options =>
@@ -63,10 +64,8 @@ builder.Services
         options.Cookie.Name = ".FypAuth";
         options.AccessDeniedPath = "/access-denied";
 
-        // ✅ MAIN auth cookie should be Lax (more stable)
-        // Correlation cookie will remain None (needed for Google redirect)
+        // Main cookie
         options.Cookie.SameSite = SameSiteMode.Lax;
-
         options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
         options.Cookie.HttpOnly = true;
         options.Cookie.Path = "/";
@@ -76,9 +75,8 @@ builder.Services
         options.ClientId = builder.Configuration["Authentication:Google:ClientId"] ?? "";
         options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"] ?? "";
 
-        // ✅ keep your callback
-        // Google console redirect must be: https://localhost:7126/google-callback
-        options.CallbackPath = "/google-callback";
+        // ✅ FIXED: separate internal callback
+        options.CallbackPath = "/signin-google";
 
         options.SaveTokens = true;
 
@@ -87,7 +85,7 @@ builder.Services
 
         options.ClaimActions.MapJsonKey("urn:google:picture", "picture", "url");
 
-        // ✅ correlation cookie must be None for cross-site redirect
+        // Correlation cookie fix
         options.CorrelationCookie.SameSite = SameSiteMode.None;
         options.CorrelationCookie.SecurePolicy = CookieSecurePolicy.Always;
         options.CorrelationCookie.HttpOnly = true;
@@ -105,9 +103,8 @@ var apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? "http://localhost:5092/"
 builder.Services.AddHttpClient("Api", c => c.BaseAddress = new Uri(apiBaseUrl));
 builder.Services.AddScoped(sp => sp.GetRequiredService<IHttpClientFactory>().CreateClient("Api"));
 
-// Typed HTTP services (UNCHANGED)
+// Typed HTTP services
 builder.Services.AddHttpClient<HealthApiService>(c => c.BaseAddress = new Uri(apiBaseUrl));
-
 builder.Services.AddHttpClient<IDService, DService>(c => c.BaseAddress = new Uri(apiBaseUrl));
 builder.Services.AddHttpClient<IUService, UService>(c => c.BaseAddress = new Uri(apiBaseUrl));
 builder.Services.AddHttpClient<ICService, CService>(c => c.BaseAddress = new Uri(apiBaseUrl));
@@ -125,25 +122,22 @@ builder.Services.AddHttpClient<IMedicationService, MedicationService>(c => c.Bas
 builder.Services.AddHttpClient<MessageClientService>(c => c.BaseAddress = new Uri(apiBaseUrl));
 builder.Services.AddHttpClient<ConversationClientService>(c => c.BaseAddress = new Uri(apiBaseUrl));
 
-// Non-HTTP logic services
+// Non-HTTP services
 builder.Services.AddScoped<MetabolismApiService>();
 builder.Services.AddScoped<IExercisePlanService, ExercisePlanService>();
 builder.Services.AddScoped<AppointmentApiService>();
 builder.Services.AddScoped<DoctorPatientsApiService>();
 builder.Services.AddScoped<ExerciseApiClient>();
 
-// Doctor verification + Admin API
 builder.Services.AddHttpClient<IDoctorVerificationApiService, DoctorVerificationApiService>(
     c => c.BaseAddress = new Uri(apiBaseUrl));
 
 builder.Services.AddHttpClient<IAdminApiService, AdminApiService>(
     c => c.BaseAddress = new Uri(apiBaseUrl));
 
-// Admin session persistence
 builder.Services.AddScoped<ProtectedLocalStorage>();
 builder.Services.AddScoped<AdminSession>();
 
-// External APIs
 builder.Services.AddHttpClient<ITranslationService, TranslationService>();
 builder.Services.AddHttpClient<ICalorieNinjaService, CalorieNinjaService>(c =>
 {
@@ -169,7 +163,7 @@ if (!app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 
-// ✅ IMPORTANT: CookiePolicy must come BEFORE Routing/Auth
+// VERY IMPORTANT
 app.UseCookiePolicy();
 
 app.UseRouting();
@@ -177,30 +171,31 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Required
 app.MapRazorPages();
 app.MapBlazorHub();
 
-// Minimal translate endpoint
+// API endpoint
 app.MapPost("/api/translate", async (TranslateRequest req, ITranslationService translator) =>
 {
     var translated = await translator.TranslateAsync(req.TargetLanguage, req.Texts.ToArray());
     return Results.Ok(new { texts = translated });
 });
 
-// OAuth endpoints
+// =======================
+// OAuth Endpoints
+// =======================
 app.MapGet("/login-google", async (HttpContext ctx) =>
 {
     await ctx.ChallengeAsync(
         GoogleDefaults.AuthenticationScheme,
-        new AuthenticationProperties { RedirectUri = "/dashboard" });
+        new AuthenticationProperties { RedirectUri = "/google-callback" });
 });
 
 app.MapGet("/register-google", async (HttpContext ctx) =>
 {
     await ctx.ChallengeAsync(
         GoogleDefaults.AuthenticationScheme,
-        new AuthenticationProperties { RedirectUri = "/dashboard" });
+        new AuthenticationProperties { RedirectUri = "/google-callback" });
 });
 
 app.MapGet("/logout", async (HttpContext ctx) =>
@@ -212,6 +207,9 @@ app.MapGet("/logout", async (HttpContext ctx) =>
 app.MapFallbackToPage("/_Host");
 app.Run();
 
+// =======================
+// DTO
+// =======================
 public class TranslateRequest
 {
     public string TargetLanguage { get; set; } = "ur";

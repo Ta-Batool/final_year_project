@@ -1,164 +1,73 @@
-using System.Security.Cryptography;
-using System.Text;
-using API.MongoModel;
+using API.Otp;
 using Microsoft.Extensions.Options;
-using MongoDB.Driver;
+using PhoneNumbers;
+using Twilio;
+using Twilio.Rest.Verify.V2.Service;
 
 namespace API.Services
 {
     public class OtpService
     {
-        private readonly IMongoCollection<OtpRequest> _otps;
-        private readonly Otp.OtpSettings _settings;
+        private readonly TwilioSettings _twilio;
+        private readonly PhoneNumberUtil _phoneUtil = PhoneNumberUtil.GetInstance();
 
-        public OtpService(IOptions<MongoDBSettings> mongoSettings, IOptions<Otp.OtpSettings> otpSettings)
+        public OtpService(IOptions<TwilioSettings> twilioOptions)
         {
-            _settings = otpSettings.Value;
-
-            var client = new MongoClient(mongoSettings.Value.ConnectionString);
-            var database = client.GetDatabase(mongoSettings.Value.DatabaseName);
-
-            _otps = database.GetCollection<OtpRequest>("OtpRequests");
-
-            CreateIndexes();
+            _twilio = twilioOptions.Value;
+            TwilioClient.Init(_twilio.AccountSid, _twilio.AuthToken);
         }
 
-        private void CreateIndexes()
+        public (bool ok, string message, string e164Phone) ValidatePhone(string countryIso, string phone)
         {
-            // Index phone for fast lookup
-            _otps.Indexes.CreateOne(new CreateIndexModel<OtpRequest>(
-                Builders<OtpRequest>.IndexKeys.Ascending(x => x.Phone)));
-
-            // TTL index on ExpiresAtUtc (Mongo will auto delete after expiry)
-            // NOTE: TTL works on Date fields; Mongo deletes docs whose field value is older than now.
-            // We set ExpiresAtUtc in the future; when that time passes, Mongo removes it.
-            var ttlOptions = new CreateIndexOptions { ExpireAfter = TimeSpan.Zero };
-            _otps.Indexes.CreateOne(new CreateIndexModel<OtpRequest>(
-                Builders<OtpRequest>.IndexKeys.Ascending(x => x.ExpiresAtUtc), ttlOptions));
-        }
-
-        public static string NormalizePhone(string phone)
-        {
-            phone = (phone ?? "").Trim();
-            // Keep + and digits only
-            var filtered = new string(phone.Where(c => char.IsDigit(c) || c == '+').ToArray());
-            return filtered;
-        }
-
-        private string HashOtp(string phone, string otp)
-        {
-            // hash = SHA256(secret + phone + otp)
-            var input = $"{_settings.SecretKey}|{phone}|{otp}";
-            using var sha = SHA256.Create();
-            var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(input));
-            return Convert.ToHexString(bytes);
-        }
-
-        private string GenerateOtp()
-        {
-            // 6-digit random (cryptographically secure)
-            int max = (int)Math.Pow(10, _settings.CodeLength);
-            int min = max / 10;
-
-            var value = RandomNumberGenerator.GetInt32(min, max);
-            return value.ToString().PadLeft(_settings.CodeLength, '0');
-        }
-
-        public async Task<(bool ok, string message, string? otpForDev)> SendAsync(string phone)
-        {
-            phone = NormalizePhone(phone);
-            if (string.IsNullOrWhiteSpace(phone) || phone.Length < 8)
-                return (false, "Invalid phone number.", null);
-
-            var now = DateTime.UtcNow;
-
-            // Rate limit: max sends per hour
-            var oneHourAgo = now.AddHours(-1);
-            var sendsLastHour = await _otps.CountDocumentsAsync(x =>
-                x.Phone == phone && x.CreatedAtUtc >= oneHourAgo);
-
-            if (sendsLastHour >= _settings.MaxSendsPerHour)
-                return (false, "Too many OTP requests. Please try again later.", null);
-
-            // Rate limit: min seconds between sends
-            var last = await _otps.Find(x => x.Phone == phone)
-                .SortByDescending(x => x.CreatedAtUtc)
-                .FirstOrDefaultAsync();
-
-            if (last != null)
+            try
             {
-                var seconds = (now - last.LastSentAtUtc).TotalSeconds;
-                if (seconds < _settings.MinSecondsBetweenSends)
-                {
-                    var wait = Math.Ceiling(_settings.MinSecondsBetweenSends - seconds);
-                    return (false, $"Please wait {wait} seconds before requesting another OTP.", null);
-                }
+                var parsed = _phoneUtil.Parse(phone, countryIso);
+
+                if (!_phoneUtil.IsValidNumber(parsed))
+                    return (false, "Invalid phone number for selected country.", "");
+
+                var e164 = _phoneUtil.Format(parsed, PhoneNumberFormat.E164);
+                return (true, "Valid phone number.", e164);
             }
-
-            var otp = GenerateOtp();
-            var hash = HashOtp(phone, otp);
-
-            var doc = new OtpRequest
+            catch
             {
-                Phone = phone,
-                CodeHash = hash,
-                CreatedAtUtc = now,
-                LastSentAtUtc = now,
-                ExpiresAtUtc = now.AddMinutes(_settings.ExpiryMinutes),
-                FailedAttempts = 0,
-                UsedAtUtc = null
-            };
-
-            await _otps.InsertOneAsync(doc);
-
-            // Later: integrate real SMS sending here (Twilio etc.)
-            Console.WriteLine($"[OTP] Phone={phone} OTP={otp} (dev log)");
-
-            // Return OTP only in dev/testing if enabled
-            var otpForDev = _settings.ReturnOtpInResponse ? otp : null;
-            return (true, "OTP sent.", otpForDev);
+                return (false, "Invalid phone number format.", "");
+            }
         }
 
-        public async Task<(bool ok, string message)> VerifyAsync(string phone, string code)
+        public async Task<(bool ok, string message)> SendAsync(string countryIso, string phone)
         {
-            phone = NormalizePhone(phone);
-            code = (code ?? "").Trim();
+            var validation = ValidatePhone(countryIso, phone);
 
-            if (string.IsNullOrWhiteSpace(phone) || string.IsNullOrWhiteSpace(code))
-                return (false, "Phone and OTP are required.");
+            if (!validation.ok)
+                return (false, validation.message);
 
-            var now = DateTime.UtcNow;
+            await VerificationResource.CreateAsync(
+                to: validation.e164Phone,
+                channel: "sms",
+                pathServiceSid: _twilio.VerifyServiceSid
+            );
 
-            // Get latest OTP that is not used and not expired
-            var otpDoc = await _otps.Find(x =>
-                    x.Phone == phone &&
-                    x.UsedAtUtc == null &&
-                    x.ExpiresAtUtc > now)
-                .SortByDescending(x => x.CreatedAtUtc)
-                .FirstOrDefaultAsync();
+            return (true, "OTP sent successfully.");
+        }
 
-            if (otpDoc == null)
-                return (false, "No valid OTP found. Please request a new OTP.");
+        public async Task<(bool ok, string message, string e164Phone)> VerifyAsync(string countryIso, string phone, string code)
+        {
+            var validation = ValidatePhone(countryIso, phone);
 
-            if (otpDoc.FailedAttempts >= _settings.MaxFailedAttempts)
-                return (false, "Too many wrong attempts. Please request a new OTP.");
+            if (!validation.ok)
+                return (false, validation.message, "");
 
-            var hash = HashOtp(phone, code);
+            var result = await VerificationCheckResource.CreateAsync(
+                to: validation.e164Phone,
+                code: code,
+                pathServiceSid: _twilio.VerifyServiceSid
+            );
 
-            if (!string.Equals(hash, otpDoc.CodeHash, StringComparison.OrdinalIgnoreCase))
-            {
-                // increment failed attempts
-                var updateFail = Builders<OtpRequest>.Update.Inc(x => x.FailedAttempts, 1);
-                await _otps.UpdateOneAsync(x => x.Id == otpDoc.Id, updateFail);
+            if (result.Status == "approved")
+                return (true, "OTP verified successfully.", validation.e164Phone);
 
-                return (false, "Invalid OTP.");
-            }
-
-            // Mark as used
-            var updateUsed = Builders<OtpRequest>.Update.Set(x => x.UsedAtUtc, now);
-            await _otps.UpdateOneAsync(x => x.Id == otpDoc.Id, updateUsed);
-
-            return (true, "OTP verified.");
+            return (false, "Invalid or expired OTP.", validation.e164Phone);
         }
     }
 }

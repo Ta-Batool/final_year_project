@@ -15,25 +15,22 @@ namespace Model
 
         public string? ClientId { get; set; }
 
+        public string? GoogleId { get; set; } = "";
+
+        public string? AuthProvider { get; set; } = "Google";
+
         [Required(ErrorMessage = "Name is required.")]
         public string? Name { get; set; } = "";
 
-        // 🔹 Added to match FormUser.razor
         [Required(ErrorMessage = "Email is required.")]
         [EmailAddress(ErrorMessage = "Enter a valid email.")]
         public string? Email { get; set; } = "";
 
-        // 🔹 You can keep both Sex and Gender for now
         [Required(ErrorMessage = "Gender is required.")]
         public string? Gender { get; set; } = "";
 
-        // ⚠️ In a real app you’d hash this, but for now we just match the form
-        [Required(ErrorMessage = "Password is required.")]
-        [MinLength(6, ErrorMessage = "Password must be at least 6 characters.")]
-        public string? Password { get; set; } = "";
-
         [Range(10, 120, ErrorMessage = "Age must be between 10 and 120.")]
-        public int Age { get; set; }   // 🔹 Added
+        public int Age { get; set; }
 
         public string? Reason { get; set; } = "";
         public string? Time { get; set; } = "";

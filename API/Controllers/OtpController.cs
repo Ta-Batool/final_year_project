@@ -14,30 +14,33 @@ namespace API.Controllers
             _otp = otp;
         }
 
-        public record SendOtpRequest(string Phone);
-        public record VerifyOtpRequest(string Phone, string Code);
+        public record SendOtpRequest(string CountryIso, string Phone);
+        public record VerifyOtpRequest(string CountryIso, string Phone, string Code);
 
         [HttpPost("send")]
         public async Task<IActionResult> Send([FromBody] SendOtpRequest req)
         {
-            var (ok, message, otpForDev) = await _otp.SendAsync(req.Phone);
+            var result = await _otp.SendAsync(req.CountryIso, req.Phone);
 
-            if (!ok) return BadRequest(message);
+            if (!result.ok)
+                return BadRequest(new { message = result.message });
 
-            // In dev you may return OTP for testing
-            if (!string.IsNullOrWhiteSpace(otpForDev))
-                return Ok(new { message, otp = otpForDev });
-
-            return Ok(new { message });
+            return Ok(new { message = result.message });
         }
 
         [HttpPost("verify")]
         public async Task<IActionResult> Verify([FromBody] VerifyOtpRequest req)
         {
-            var (ok, message) = await _otp.VerifyAsync(req.Phone, req.Code);
-            if (!ok) return BadRequest(message);
+            var result = await _otp.VerifyAsync(req.CountryIso, req.Phone, req.Code);
 
-            return Ok(new { message });
+            if (!result.ok)
+                return BadRequest(new { message = result.message });
+
+            return Ok(new
+            {
+                message = result.message,
+                phone = result.e164Phone
+            });
         }
     }
 }

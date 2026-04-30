@@ -8,14 +8,13 @@ namespace API.Controllers
     [Route("api/[controller]")]
     public class UsersController : ControllerBase
     {
-        private readonly IUserService _userService;   // use interface
+        private readonly IUserService _userService;
 
-        public UsersController(IUserService userService)  // inject interface
+        public UsersController(IUserService userService)
         {
             _userService = userService;
         }
 
-        // GET: api/users
         [HttpGet]
         public async Task<ActionResult<IEnumerable<User>>> GetAllUsers()
         {
@@ -23,7 +22,6 @@ namespace API.Controllers
             return Ok(users);
         }
 
-        // GET: api/users/{id}
         [HttpGet("{id}")]
         public async Task<ActionResult<User>> GetUser(string id)
         {
@@ -35,18 +33,29 @@ namespace API.Controllers
             return Ok(user);
         }
 
-        // POST: api/users
         [HttpPost]
         public async Task<IActionResult> CreateUser([FromBody] User user)
         {
             if (user == null)
                 return BadRequest("User data is required.");
 
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            if (string.IsNullOrWhiteSpace(user.Email))
+                return BadRequest("Email is required.");
+
+            if (string.IsNullOrWhiteSpace(user.ClientId))
+                user.ClientId = user.GoogleId;
+
+            user.AuthProvider = "Google";
+            user.Sex = user.Gender;
+            user.RegisterDate = DateTime.Now;
+
             await _userService.CreateAsync(user);
             return Ok(user);
         }
 
-        // PUT: api/users/{id}
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateUser(string id, [FromBody] User user)
         {
@@ -59,7 +68,6 @@ namespace API.Controllers
             return NoContent();
         }
 
-        // DELETE: api/users/{id}
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteUser(string id)
         {
@@ -71,7 +79,6 @@ namespace API.Controllers
             return NoContent();
         }
 
-        // PUT: api/users/by-client/{clientId}
         [HttpPut("by-client/{clientId}")]
         public async Task<IActionResult> UpdateUserByClientId(string clientId, [FromBody] User updatedUser)
         {
@@ -82,14 +89,12 @@ namespace API.Controllers
             if (existingUser == null)
                 return NotFound();
 
-            // keep same Mongo Id
             updatedUser.Id = existingUser.Id;
+            await _userService.UpdateAsync(existingUser.Id!, updatedUser);
 
-            await _userService.UpdateAsync(existingUser.Id, updatedUser);
             return NoContent();
         }
 
-        // GET: api/users/by-client/{clientId}
         [HttpGet("by-client/{clientId}")]
         public async Task<ActionResult<User>> GetByClientId(string clientId)
         {
