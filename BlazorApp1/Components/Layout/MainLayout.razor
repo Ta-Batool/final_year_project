@@ -7,7 +7,6 @@
 }
 
 <div class="page">
-    <!-- Navbar -->
     @if (!hideNavbar)
     {
         <header>
@@ -21,11 +20,15 @@
         </header>
     }
 
-    <!-- Page content -->
     <main class="content @(hideNavbar ? "no-navbar" : "")">
         @Body
     </main>
 </div>
+
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+<script src="/js/firebase-phone-auth.js"></script>
+
 
 <style>
     body {
@@ -54,12 +57,10 @@
         z-index: 1000;
     }
 
-
     .navbar-right {
         display: flex;
         gap: 1rem;
     }
-
 
     .nav-btn {
         background: white;
@@ -73,11 +74,10 @@
         transition: background 0.2s, transform 0.1s;
     }
 
-        .nav-btn:hover {
-            background: #f0f0f0;
-            transform: translateY(-1px);
-        }
-
+    .nav-btn:hover {
+        background: #f0f0f0;
+        transform: translateY(-1px);
+    }
 
     .content {
         flex-grow: 1;
@@ -85,8 +85,7 @@
         background: #f9f9f9;
     }
 
-        .content.no-navbar {
-            padding: 0;
-        }
-
+    .content.no-navbar {
+        padding: 0;
+    }
 </style>

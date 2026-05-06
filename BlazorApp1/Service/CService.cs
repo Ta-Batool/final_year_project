@@ -1,8 +1,5 @@
 ﻿using System.Net;
-using System.Net.Http;
 using System.Net.Http.Json;
-using System.Collections.Generic;
-using System.Threading.Tasks;
 using Model;
 
 namespace BlazorApp1.Service
@@ -16,37 +13,52 @@ namespace BlazorApp1.Service
             _http = http;
         }
 
-        // Get client by email (nullable)
         public async Task<Client?> GetClientByEmailAsync(string email)
         {
-            try
+            var safeEmail = Uri.EscapeDataString(email.Trim().ToLowerInvariant());
+
+            var response = await _http.GetAsync($"api/clients/{safeEmail}");
+
+            if (response.StatusCode == HttpStatusCode.NotFound)
+                return null;
+
+            if (!response.IsSuccessStatusCode)
             {
-                return await _http.GetFromJsonAsync<Client>($"api/clients/{email}");
-            }
-            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
-            {
+                var error = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"GetClientByEmailAsync failed: {error}");
                 return null;
             }
+
+            return await response.Content.ReadFromJsonAsync<Client>();
         }
 
         public async Task<List<Client>> GetAllClientsAsync()
         {
-            return await _http.GetFromJsonAsync<List<Client>>("api/clients");
+            return await _http.GetFromJsonAsync<List<Client>>("api/clients")
+                   ?? new List<Client>();
         }
 
         public async Task AddClientAsync(Client client)
         {
             var response = await _http.PostAsJsonAsync("api/clients", client);
+
             if (!response.IsSuccessStatusCode)
             {
                 var error = await response.Content.ReadAsStringAsync();
+
+                if (error.Contains("Client already exists", StringComparison.OrdinalIgnoreCase))
+                    return;
+
                 throw new Exception($"API Error: {error}");
             }
         }
 
         public async Task UpdateClientByEmailAsync(string email, Client client)
         {
-            var response = await _http.PutAsJsonAsync($"api/clients/{email}", client);
+            var safeEmail = Uri.EscapeDataString(email.Trim().ToLowerInvariant());
+
+            var response = await _http.PutAsJsonAsync($"api/clients/{safeEmail}", client);
+
             if (!response.IsSuccessStatusCode)
             {
                 var error = await response.Content.ReadAsStringAsync();
@@ -56,7 +68,10 @@ namespace BlazorApp1.Service
 
         public async Task DeleteClientAsync(string email)
         {
-            var response = await _http.DeleteAsync($"api/clients/{email}");
+            var safeEmail = Uri.EscapeDataString(email.Trim().ToLowerInvariant());
+
+            var response = await _http.DeleteAsync($"api/clients/{safeEmail}");
+
             if (!response.IsSuccessStatusCode)
             {
                 var error = await response.Content.ReadAsStringAsync();

@@ -17,14 +17,12 @@
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         var principal = authState.User;
 
-        // 0) Must be authenticated
         if (!(principal.Identity?.IsAuthenticated ?? false))
         {
             Navigation.NavigateTo("/login-google", forceLoad: true);
             return;
         }
 
-        // 1) Read claims safely
         var email =
             principal.FindFirst(ClaimTypes.Email)?.Value
             ?? principal.FindFirst("email")?.Value
@@ -39,13 +37,21 @@
 
         if (string.IsNullOrWhiteSpace(email))
         {
-            // If Google did not return email, user cannot be linked
             Navigation.NavigateTo("/login-google", forceLoad: true);
             return;
         }
 
-        // 2) Ensure Client exists (create on first login)
-        var client = await CService.GetClientByEmailAsync(email);
+        Client? client = null;
+
+        try
+        {
+            client = await CService.GetClientByEmailAsync(email);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Client lookup failed: " + ex.Message);
+            client = null;
+        }
 
         if (client is null)
         {
@@ -56,13 +62,12 @@
                 Role = null
             });
 
-            // first time -> choose role
             Navigation.NavigateTo("/register", forceLoad: true);
             return;
         }
 
-        // 3) If role not selected, go to role selection
         var role = client.Role?.Trim();
+
         if (string.IsNullOrWhiteSpace(role))
         {
             Navigation.NavigateTo("/register", forceLoad: true);
@@ -71,19 +76,16 @@
 
         role = role.ToLowerInvariant();
 
-        // 4) Route correctly based on role + profile existence
         if (role == "patient")
         {
             var user = await UService.GetUserByClientIdAsync(client.Id!);
 
-            // Patient role chosen but profile not created yet
             if (user is null)
             {
                 Navigation.NavigateTo($"/formuser/{client.Id}", forceLoad: true);
                 return;
             }
 
-            // Fully registered patient -> patient portal
             Navigation.NavigateTo("/userdashboard", forceLoad: true);
             return;
         }
@@ -92,19 +94,16 @@
         {
             var doc = await DService.GetDoctorByClientIdAsync(client.Id!);
 
-            // Doctor role chosen but profile not created yet
             if (doc is null)
             {
                 Navigation.NavigateTo($"/form/{client.Id}", forceLoad: true);
                 return;
             }
 
-            // Doctor exists -> go dashboard (dashboard will gate verification)
             Navigation.NavigateTo("/dashboard", forceLoad: true);
             return;
         }
 
-        // 5) Unknown role -> reselect role
         Navigation.NavigateTo("/register", forceLoad: true);
     }
 }

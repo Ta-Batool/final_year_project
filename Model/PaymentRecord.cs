@@ -10,13 +10,15 @@ namespace Model
         public string? Id { get; set; }
 
         public string ClientId { get; set; } = "";
-        public DateTime PaidAtUtc { get; set; } = DateTime.UtcNow;
 
-        // dummy gateway details (do NOT store full card)
-        public string CardLast4 { get; set; } = "";
-        public string TransactionRef { get; set; } = "";
-        public int AmountPkr { get; set; } = 0;
+        public int AmountPkr { get; set; }
 
-        public string Status { get; set; } = "Success"; // Success/Failed
+        public string StripeSessionId { get; set; } = "";
+
+        public string Status { get; set; } = "PENDING";
+
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+        public DateTime? PaidAt { get; set; }
     }
 }
